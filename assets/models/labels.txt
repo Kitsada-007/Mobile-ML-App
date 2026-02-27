@@ -1,0 +1,11 @@
+dont_go_straight_arrow
+dont_turn_left
+dont_turn_right
+go_straight_arrow
+green_light_circle
+off_light
+red_light_circle
+sign_number
+turn_left
+turn_right
+yellow_light
