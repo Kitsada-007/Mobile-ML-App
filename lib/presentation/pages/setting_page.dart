@@ -20,8 +20,22 @@ class _SettingState extends State<SettingPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text("SettingPage"),
+        backgroundColor: Colors.white,
+        elevation: 0,
         automaticallyImplyLeading: false,
+        title: const Text(
+          'Settings',
+          style: TextStyle(
+            color: Color(0xFF1A1D2E),
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.3,
+          ),
+        ),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: const Color(0xFFEEEFF3)),
+        ),
       ),
       bottomNavigationBar: MyBottomNavigationBar(),
 
