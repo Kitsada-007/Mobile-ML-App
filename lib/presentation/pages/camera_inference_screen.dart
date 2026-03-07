@@ -7,6 +7,7 @@ import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_infe
 import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_inference_overlay.dart';
 
 import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_controls.dart';
+import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_logo_overlay.dart';
 import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/threshold_slider.dart';
 
 /// A screen that demonstrates real-time YOLO inference using the device camera.

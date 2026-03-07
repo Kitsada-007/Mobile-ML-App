@@ -28,11 +28,11 @@ class CameraInferenceOverlay extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // ModelSelector(
-          //   selectedModel: controller.selectedModel,
-          //   isModelLoading: controller.isModelLoading,
-          //   onModelChanged: controller.changeModel,
-          // ),
+          ModelSelector(
+            selectedModel: controller.selectedModel,
+            isModelLoading: controller.isModelLoading,
+            onModelChanged: controller.changeModel,
+          ),
           SizedBox(height: isLandscape ? 8 : 12),
           DetectionStatsDisplay(
             detectionCount: controller.detectionCount,

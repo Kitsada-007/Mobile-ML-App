@@ -38,7 +38,7 @@ class CameraInferenceController extends ChangeNotifier {
   LensFacing _lensFacing = LensFacing.back;
   bool _isFrontCamera = false;
   // OCR state
-  bool _isOcrProcessing = false; // เพิ่มบรรทัดนี้
+
   // Controllers
   final _yoloController = YOLOViewController();
   final TrafficVoiceService _voiceService = TrafficVoiceService();
@@ -124,44 +124,6 @@ class CameraInferenceController extends ChangeNotifier {
       }
     }
   }
-
-  // 1. เพิ่มตัวแปรสำหรับเก็บภาพล่าสุด (วางไว้ด้านบนรวมกับ Camera state)
-  Uint8List? _latestCameraFrame;
-
-  // Future<void> _handleSignNumber(YOLOResult result) async {
-  //   if (_isOcrProcessing) return;
-  //   _isOcrProcessing = true;
-
-  //   try {
-  //     final frame = _latestCameraFrame;
-  //     if (frame == null) return;
-  //     // ภายในฟังก์ชัน _handleSignNumber
-  //     String? detectedNum = await _ocrService.extractNumberFromBox(
-  //       originalImageBytes: frame, // รูปถ่ายจริง
-  //       boundingBox: result.boundingBox, // พิกัดจาก YOLO
-  //     );
-  //     if (detectedNum != null && detectedNum.isNotEmpty) {
-  //       String cleanNum = detectedNum.replaceAll(RegExp(r'[^0-9]'), '');
-
-  //       if (cleanNum.isNotEmpty && _currentCountdown != cleanNum) {
-  //         _currentCountdown = cleanNum;
-  //         notifyListeners();
-
-  //         int? seconds = int.tryParse(cleanNum);
-  //         if (seconds != null) {
-  //           if (seconds == 5) {
-  //             _voiceService.speak("เตรียมตัวออกรถ");
-  //           } else if (seconds <= 3 && seconds > 0) {
-  //             _voiceService.speak(cleanNum);
-  //           }
-  //         }
-  //       }
-  //     }
-  //   } finally {
-  //     await Future.delayed(const Duration(milliseconds: 500));
-  //     _isOcrProcessing = false;
-  //   }
-  // }
 
   void onDetectionResults(List<YOLOResult> results) {
     if (_isDisposed) return;
