@@ -42,7 +42,7 @@ class CameraInferenceController extends ChangeNotifier {
   // Controllers
   final _yoloController = YOLOViewController();
   final TrafficVoiceService _voiceService = TrafficVoiceService();
-  final SingNumberOCR _ocrService = SingNumberOCR();
+
   late final ModelManager _modelManager;
   String _currentCountdown = '';
 
@@ -370,7 +370,7 @@ class CameraInferenceController extends ChangeNotifier {
   @override
   void dispose() {
     _clearTimer?.cancel();
-    _ocrService.dispose();
+
     _voiceService.stop();
     _isDisposed = true;
     super.dispose();

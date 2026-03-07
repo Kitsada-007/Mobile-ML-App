@@ -9,14 +9,14 @@ import 'package:trffic_ilght_app/presentation/pages/video_inference_screen.dart'
 
 import 'package:trffic_ilght_app/presentation/widgets/bottom_navigation_bar.dart';
 
-class CameraPage extends StatefulWidget {
-  const CameraPage({super.key});
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
 
   @override
-  State<CameraPage> createState() => _CameraPageState();
+  State<HomePage> createState() => _HomePageState();
 }
 
-class _CameraPageState extends State<CameraPage> {
+class _HomePageState extends State<HomePage> {
   final ImagePicker picker = ImagePicker();
 
   void _showSnackBar(String msg) {

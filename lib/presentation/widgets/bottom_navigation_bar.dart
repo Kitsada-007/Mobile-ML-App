@@ -24,7 +24,7 @@ class _MyBottomNavigationBarState extends State<MyBottomNavigationBar> {
           selectedIndex = index;
           log(selectedIndex.toString());
           if (selectedIndex == 0) {
-            Get.to(() => CameraPage());
+            Get.to(() => HomePage());
           } else if (selectedIndex == 1) {
             Get.to(() => SettingPage());
           }

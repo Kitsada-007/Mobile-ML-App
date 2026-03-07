@@ -131,7 +131,7 @@ class _LoginState extends State<LoginPage> {
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: () {
-                          Get.to(() => const CameraPage());
+                          Get.to(() => const HomePage());
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.indigo,

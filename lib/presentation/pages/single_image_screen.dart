@@ -1,13 +1,19 @@
-import 'dart:io';
+import 'dart:isolate';
+import 'dart:math';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
+
+// Your imports
 import 'package:trffic_ilght_app/core/models/models.dart';
-// 🌟 นำเข้า OCR Service ที่เราสร้างไว้
 import 'package:trffic_ilght_app/services/sign_Number_OCR.dart';
-import 'package:ultralytics_yolo/yolo.dart';
-import 'package:ultralytics_yolo/utils/map_converter.dart';
 import 'package:ultralytics_yolo/utils/error_handler.dart';
+import 'package:ultralytics_yolo/utils/map_converter.dart';
+import 'package:ultralytics_yolo/yolo.dart';
 import '../../services/model_manager.dart';
 
 class SingleImageScreen extends StatefulWidget {
@@ -18,21 +24,24 @@ class SingleImageScreen extends StatefulWidget {
 }
 
 class _SingleImageScreenState extends State<SingleImageScreen> {
-  final _picker = ImagePicker();
+  final ImagePicker _picker = ImagePicker();
+
   List<Map<String, dynamic>> _detections = [];
   Uint8List? _imageBytes;
   Uint8List? _annotatedImage;
 
-  late YOLO _yolo;
+  Uint8List? _signNumberCropImage;
+  Uint8List? _debugOcrImage;
+  String? _ocrVariantName;
+  String? _extractedNumber;
+
+  late final YOLO _yolo;
+  late final ModelManager _modelManager;
+  final SignNumberOCR _ocrService = SignNumberOCR();
+
   String? _modelPath;
   bool _isModelReady = false;
   bool _isPredicting = false;
-  late final ModelManager _modelManager;
-
-  // 🌟 ตัวแปรสำหรับ OCR (ประกาศแค่ชุดเดียว)
-  final SingNumberOCR _ocrService = SingNumberOCR();
-  String? _extractedNumber;
-  Uint8List? _debugOcrImage; // 🌟 เพิ่มตัวแปรเก็บภาพที่ตัดแล้ว
 
   @override
   void initState() {
@@ -42,98 +51,375 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
   }
 
   Future<void> _initializeYOLO() async {
-    _modelPath = await _modelManager.getModelPath(ModelType.bestFloat16traffic);
-    if (_modelPath == null) return;
-    _yolo = YOLO(modelPath: _modelPath!, task: YOLOTask.detect);
     try {
-      await _yolo.loadModel();
-      if (mounted) setState(() => _isModelReady = true);
-    } catch (e) {
-      if (mounted) {
-        final error = YOLOErrorHandler.handleError(
-          e,
-          'Failed to load model $_modelPath for task ${YOLOTask.detect.name}',
-        );
-        _showSnackBar('Error loading model: ${error.message}');
+      _modelPath = await _modelManager.getModelPath(
+        ModelType.bestFloat16traffic,
+      );
+
+      if (_modelPath == null) {
+        _showSnackBar('ไม่พบไฟล์โมเดล');
+        return;
       }
+
+      _yolo = YOLO(modelPath: _modelPath!, task: YOLOTask.detect);
+      await _yolo.loadModel();
+
+      if (mounted) {
+        setState(() {
+          _isModelReady = true;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final error = YOLOErrorHandler.handleError(
+        e,
+        'Failed to load model $_modelPath for task ${YOLOTask.detect.name}',
+      );
+      _showSnackBar('Error loading model: ${error.message}');
     }
   }
 
   Future<void> _pickAndPredict() async {
     if (!_isModelReady) {
-      return _showSnackBar('Model is loading, please wait...');
+      _showSnackBar('Model is loading, please wait...');
+      return;
     }
-    final file = await _picker.pickImage(source: ImageSource.gallery);
+
+    final XFile? file = await _picker.pickImage(source: ImageSource.gallery);
     if (file == null) return;
 
-    final bytes = await file.readAsBytes();
+    final Uint8List bytes = await file.readAsBytes();
 
     setState(() {
       _isPredicting = true;
       _imageBytes = bytes;
       _annotatedImage = null;
       _detections = [];
-      _extractedNumber = null; // ล้างตัวเลขเก่า
-      _debugOcrImage = null; // ล้างภาพตัดเก่า
+      _signNumberCropImage = null;
+      _debugOcrImage = null;
+      _ocrVariantName = null;
+      _extractedNumber = null;
     });
 
     try {
-      // 1. รัน YOLO ตรวจจับวัตถุ
       final result = await _yolo.predict(bytes);
+      debugPrint('YOLO result => $result');
 
-      List<Map<String, dynamic>> parsedDetections = result['boxes'] is List
+      final List<Map<String, dynamic>> parsedDetections =
+          result['boxes'] is List
           ? MapConverter.convertBoxesList(result['boxes'] as List)
           : [];
 
+      for (final d in parsedDetections) {
+        debugPrint('Detection => $d');
+      }
+
+      // ✅ Use Await here to let the Isolate run without freezing the UI
+      final Uint8List? signCrop = await _cropSignNumberImageAsync(
+        originalImageBytes: bytes,
+        detections: parsedDetections,
+      );
+
       String? foundNumber;
+      Uint8List? debugImage;
+      String? debugVariantName;
 
-      // 2. 🌟 ค้นหาว่ามีป้ายตัวเลขไหม ถ้ามีให้ส่งไปทำ OCR
-      for (var d in parsedDetections) {
-        if (d['class'] == 'sign_number') {
-          double left = (d['left'] ?? 0.0).toDouble();
-          double top = (d['top'] ?? 0.0).toDouble();
-          double width = (d['width'] ?? 0.0).toDouble();
-          double height = (d['height'] ?? 0.0).toDouble();
+      // ✅ Get image dimensions instantly without heavy decoding
+      int imgW = 0;
+      int imgH = 0;
+      final ui.Image fastDecodedImage = await decodeImageFromList(bytes);
+      imgW = fastDecodedImage.width;
+      imgH = fastDecodedImage.height;
 
-          Rect bbox = Rect.fromLTWH(left, top, width, height);
+      for (final d in parsedDetections) {
+        final String className =
+            d['className']?.toString() ?? d['class']?.toString() ?? '';
 
-          // 🌟 รับค่ากลับมาทั้งข้อความและรูปภาพ
-          final ocrResult = await _ocrService.extractNumberFromBox(
-            originalImageBytes: bytes,
-            boundingBox: bbox,
-          );
+        if (className != 'sign_number') continue;
 
+        double x1 = (d['x1'] ?? 0.0).toDouble();
+        double y1 = (d['y1'] ?? 0.0).toDouble();
+        double x2 = (d['x2'] ?? 0.0).toDouble();
+        double y2 = (d['y2'] ?? 0.0).toDouble();
+
+        if (x2 <= 1.0 && y2 <= 1.0) {
+          x1 *= imgW;
+          y1 *= imgH;
+          x2 *= imgW;
+          y2 *= imgH;
+        }
+
+        final double width = x2 - x1;
+        final double height = y2 - y1;
+
+        debugPrint(
+          'OCR target => class=$className x1=$x1 y1=$y1 width=$width height=$height',
+        );
+
+        if (width <= 0 || height <= 0) continue;
+
+        final Rect bbox = Rect.fromLTWH(x1, y1, width, height);
+
+        final OcrResult ocrResult = await _ocrService.extractNumberFromBox(
+          originalImageBytes: bytes,
+          boundingBox: bbox,
+        );
+
+        debugImage = ocrResult.debugImageBytes;
+        debugVariantName = ocrResult.debugVariantName;
+
+        if (ocrResult.text != null && ocrResult.text!.isNotEmpty) {
           foundNumber = ocrResult.text;
-
-          // อัปเดตภาพ Debug ให้แสดงบนหน้าจอ
-          if (mounted) {
-            setState(() {
-              _debugOcrImage = ocrResult.debugImageBytes;
-            });
-          }
-
-          if (foundNumber != null) break; // เจอตัวเลขแล้ว หยุดหา
+          break;
         }
       }
 
-      // 3. อัปเดตหน้าจอ
-      if (mounted) {
-        setState(() {
-          _detections = parsedDetections;
-          _annotatedImage = result['annotatedImage'] as Uint8List?;
-          _extractedNumber = foundNumber;
-        });
-      }
+      if (!mounted) return;
+
+      setState(() {
+        _detections = parsedDetections;
+        _annotatedImage = result['annotatedImage'] as Uint8List?;
+        _signNumberCropImage = signCrop;
+        _debugOcrImage = debugImage;
+        _ocrVariantName = debugVariantName;
+        _extractedNumber = foundNumber;
+      });
     } catch (e) {
       _showSnackBar('Error during prediction: $e');
     } finally {
-      if (mounted) setState(() => _isPredicting = false);
+      if (mounted) {
+        setState(() {
+          _isPredicting = false;
+        });
+      }
     }
   }
 
-  void _showSnackBar(String msg) => mounted
-      ? ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)))
-      : null;
+  // ✅ Wrapped in Isolate.run to prevent UI Jank
+  Future<Uint8List?> _cropSignNumberImageAsync({
+    required Uint8List originalImageBytes,
+    required List<Map<String, dynamic>> detections,
+  }) async {
+    // Pass a map to the isolate to avoid context closure issues
+    final mapData = {'bytes': originalImageBytes, 'detections': detections};
+
+    return await Isolate.run(() {
+      try {
+        final Uint8List bytes = mapData['bytes'] as Uint8List;
+        final List<Map<String, dynamic>> dets =
+            mapData['detections'] as List<Map<String, dynamic>>;
+
+        final decoded = img.decodeImage(bytes);
+        if (decoded == null) {
+          debugPrint('Crop: decodeImage failed');
+          return null;
+        }
+
+        final int imgW = decoded.width;
+        final int imgH = decoded.height;
+
+        for (final d in dets) {
+          final String className =
+              d['className']?.toString() ?? d['class']?.toString() ?? '';
+
+          if (className != 'sign_number') continue;
+
+          double x1 = (d['x1'] ?? 0.0).toDouble();
+          double y1 = (d['y1'] ?? 0.0).toDouble();
+          double x2 = (d['x2'] ?? 0.0).toDouble();
+          double y2 = (d['y2'] ?? 0.0).toDouble();
+
+          if (x2 <= 1.0 && y2 <= 1.0) {
+            x1 *= imgW;
+            y1 *= imgH;
+            x2 *= imgW;
+            y2 *= imgH;
+          }
+
+          final double width = x2 - x1;
+          final double height = y2 - y1;
+
+          if (width <= 0 || height <= 0) {
+            return null;
+          }
+
+          final double paddingW = width * 0.20;
+          final double paddingH = height * 0.20;
+
+          final int cropLeft = max(0, (x1 - paddingW).round());
+          final int cropTop = max(0, (y1 - paddingH).round());
+          final int cropRight = min(imgW, (x2 + paddingW).round());
+          final int cropBottom = min(imgH, (y2 + paddingH).round());
+
+          final int cropWidth = cropRight - cropLeft;
+          final int cropHeight = cropBottom - cropTop;
+
+          if (cropWidth < 5 || cropHeight < 5) {
+            return null;
+          }
+
+          final cropped = img.copyCrop(
+            decoded,
+            x: cropLeft,
+            y: cropTop,
+            width: cropWidth,
+            height: cropHeight,
+          );
+
+          return Uint8List.fromList(img.encodeJpg(cropped, quality: 100));
+        }
+
+        return null;
+      } catch (e) {
+        debugPrint('Crop sign_number isolate error: $e');
+        return null;
+      }
+    });
+  }
+
+  String _thaiLabel(String className) {
+    const Map<String, String> labels = {
+      'dont_go_straight_arrow': 'ห้ามตรงไป',
+      'dont_turn_left': 'ห้ามเลี้ยวซ้าย',
+      'dont_turn_right': 'ห้ามเลี้ยวขวา',
+      'go_straight_arrow': 'ตรงไป',
+      'green_light_circle': 'ไฟเขียว',
+      'off_light': 'ไฟดับ',
+      'red_light_circle': 'ไฟแดง',
+      'sign_number': 'ป้ายตัวเลข',
+      'turn_left': 'เลี้ยวซ้าย',
+      'turn_right': 'เลี้ยวขวา',
+      'yellow_light': 'ไฟเหลือง',
+    };
+
+    return labels[className] ?? className;
+  }
+
+  void _showSnackBar(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  // UI Widgets remain completely unchanged...
+  Widget _buildPreviewCard({
+    required String title,
+    required Uint8List imageBytes,
+    Color borderColor = Colors.indigo,
+    String? subtitle,
+    double height = 120,
+  }) {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 20),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: borderColor, width: 2),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 6,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Text(
+              title,
+              style: TextStyle(fontWeight: FontWeight.bold, color: borderColor),
+              textAlign: TextAlign.center,
+            ),
+            if (subtitle != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                subtitle,
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
+                textAlign: TextAlign.center,
+              ),
+            ],
+            const SizedBox(height: 10),
+            Image.memory(imageBytes, height: height, fit: BoxFit.contain),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildResultBox() {
+    if (_extractedNumber != null) {
+      return Center(
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 20),
+          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+          decoration: BoxDecoration(
+            color: Colors.black87,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: Colors.greenAccent, width: 2),
+          ),
+          child: Column(
+            children: [
+              const Text(
+                'OCR อ่านได้:',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              Text(
+                _extractedNumber!,
+                style: const TextStyle(
+                  color: Colors.greenAccent,
+                  fontSize: 60,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (_ocrVariantName != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Variant: $_ocrVariantName',
+                  style: const TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_debugOcrImage != null && !_isPredicting) {
+      return Center(
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 20),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.red[50],
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.red.shade200),
+          ),
+          child: Column(
+            children: [
+              const Text(
+                '⚠️ AI เห็นป้าย แต่ไม่สามารถแกะตัวเลขออกมาได้',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              if (_ocrVariantName != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Variant ล่าสุด: $_ocrVariantName',
+                  style: const TextStyle(color: Colors.black54, fontSize: 12),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
+  }
 
   @override
   void dispose() {
@@ -151,7 +437,7 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.white,
-        foregroundColor: const Color.fromARGB(255, 0, 0, 0),
+        foregroundColor: Colors.black,
         elevation: 0,
         centerTitle: true,
       ),
@@ -174,10 +460,8 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
                 ),
               ],
             ),
-            child: Column(
-              children: [
-                if (!_isModelReady)
-                  const Row(
+            child: !_isModelReady
+                ? const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       SizedBox(
@@ -187,13 +471,12 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
                       ),
                       SizedBox(width: 10),
                       Text(
-                        "กำลังเตรียม AI โมเดล...",
+                        'กำลังเตรียม AI โมเดล...',
                         style: TextStyle(color: Colors.grey),
                       ),
                     ],
                   )
-                else
-                  SizedBox(
+                : SizedBox(
                     width: double.infinity,
                     height: 50,
                     child: ElevatedButton.icon(
@@ -213,101 +496,33 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
                       ),
                     ),
                   ),
-              ],
-            ),
           ),
-
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 🌟 ส่วนที่ 1: แสดงภาพที่ถูกตัด (Debug Image)
+                  if (_signNumberCropImage != null)
+                    _buildPreviewCard(
+                      title: 'ภาพ crop ของ sign_number',
+                      subtitle: 'ภาพที่ตัดออกมาจากกรอบตรวจจับ',
+                      imageBytes: _signNumberCropImage!,
+                      borderColor: Colors.orange,
+                    ),
+
                   if (_debugOcrImage != null)
-                    Center(
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 20),
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.indigo, width: 2),
-                        ),
-                        child: Column(
-                          children: [
-                            const Text(
-                              "ภาพที่ส่งให้ OCR อ่าน:",
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 10),
-                            Image.memory(
-                              _debugOcrImage!,
-                              height: 100, // ปรับความสูงตามต้องการ
-                              fit: BoxFit.contain,
-                            ),
-                          ],
-                        ),
-                      ),
+                    _buildPreviewCard(
+                      title: 'ภาพที่ส่งให้ OCR อ่าน',
+                      subtitle: _ocrVariantName != null
+                          ? 'Preprocess: $_ocrVariantName'
+                          : 'ภาพหลัง preprocess',
+                      imageBytes: _debugOcrImage!,
+                      borderColor: Colors.indigo,
                     ),
 
-                  // 🌟 ส่วนที่ 2: แสดงผลลัพธ์ตัวเลข
-                  if (_extractedNumber != null)
-                    Center(
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 20),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 40,
-                          vertical: 15,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black87,
-                          borderRadius: BorderRadius.circular(15),
-                          border: Border.all(
-                            color: Colors.greenAccent,
-                            width: 2,
-                          ),
-                        ),
-                        child: Column(
-                          children: [
-                            const Text(
-                              "OCR อ่านได้:",
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                              ),
-                            ),
-                            Text(
-                              _extractedNumber!,
-                              style: const TextStyle(
-                                color: Colors.greenAccent,
-                                fontSize: 60,
-                                fontWeight: FontWeight.bold,
-                                fontFamily: 'Digital',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  else if (_debugOcrImage != null && !_isPredicting)
-                    // กรณีโชว์ภาพตัดแล้ว แต่ OCR คืนค่าเป็น null หรือหาตัวเลขไม่เจอ
-                    Center(
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 20),
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: Colors.red[50],
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Text(
-                          "⚠️ AI เห็นป้าย แต่ไม่สามารถแกะตัวเลขออกมาได้",
-                          style: TextStyle(color: Colors.red),
-                        ),
-                      ),
-                    ),
+                  _buildResultBox(),
 
-                  // 🌟 ส่วนที่ 3: ภาพหลักและรายละเอียด YOLO
                   if (_imageBytes != null)
                     Container(
                       decoration: BoxDecoration(
@@ -352,14 +567,20 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
                       spacing: 10,
                       runSpacing: 10,
                       children: _detections.map((d) {
-                        final className = d['class']?.toString() ?? 'Unknown';
-                        final confidence = d['confidence'] != null
+                        final String className =
+                            d['className']?.toString() ??
+                            d['class']?.toString() ??
+                            'Unknown';
+
+                        final String confidence = d['confidence'] != null
                             ? ((d['confidence'] as double) * 100)
                                   .toStringAsFixed(1)
                             : '0.0';
 
                         return Chip(
-                          label: Text('$className ($confidence%)'),
+                          label: Text(
+                            '${_thaiLabel(className)} ($confidence%)',
+                          ),
                           backgroundColor: Colors.indigo[50],
                           labelStyle: const TextStyle(
                             color: Colors.indigo,
