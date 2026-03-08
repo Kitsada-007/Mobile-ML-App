@@ -5,7 +5,7 @@ import 'package:trffic_ilght_app/core/models/models.dart';
 import 'package:trffic_ilght_app/presentation/controllers/camera_inference_controller.dart';
 
 import 'detection_stats_display.dart';
-import 'model_selector.dart';
+
 import 'threshold_pill.dart';
 
 /// Top overlay widget containing model selector, stats, and threshold pills

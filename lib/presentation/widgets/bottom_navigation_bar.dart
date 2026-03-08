@@ -2,7 +2,6 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get_core/src/get_main.dart';
 import 'package:get/get_navigation/src/extension_navigation.dart';
-import 'package:trffic_ilght_app/presentation/pages/camera_inference_screen.dart';
 import 'package:trffic_ilght_app/presentation/pages/home_page.dart';
 import 'package:trffic_ilght_app/presentation/pages/setting_page.dart';
 
@@ -25,16 +24,13 @@ class _MyBottomNavigationBarState extends State<MyBottomNavigationBar> {
           selectedIndex = index;
           log(selectedIndex.toString());
           if (selectedIndex == 0) {
-            Get.to(() => CameraInferenceScreen());
-          } else if (selectedIndex == 1) {
             Get.to(() => HomePage());
-          } else if (selectedIndex == 2) {
+          } else if (selectedIndex == 1) {
             Get.to(() => SettingPage());
           }
         });
       },
       items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.camera), label: 'Camera'),
         BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
         BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Settings'),
       ],

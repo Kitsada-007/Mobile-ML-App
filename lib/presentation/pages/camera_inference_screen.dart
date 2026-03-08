@@ -1,9 +1,7 @@
 // Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
 import 'package:flutter/material.dart';
-
 import 'package:trffic_ilght_app/presentation/controllers/camera_inference_controller.dart';
-import 'package:trffic_ilght_app/presentation/widgets/bottom_navigation_bar.dart';
 
 import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_inference_content.dart';
 import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_inference_overlay.dart';
@@ -72,10 +70,8 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
         MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
-      drawer: Drawer(child: ListView(children: const [
-            
-          ],
-        )),
+      appBar: AppBar(title: const Text("Camera")),
+
       body: ListenableBuilder(
         listenable: _controller,
         builder: (context, child) {
@@ -86,11 +82,14 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
                 controller: _controller,
                 rebuildKey: _rebuildKey,
               ),
-
               CameraInferenceOverlay(
                 controller: _controller,
                 isLandscape: isLandscape,
               ),
+              // CameraLogoOverlay(
+              //   controller: _controller,
+              //   isLandscape: isLandscape,
+              // ),
               CameraControls(
                 currentZoomLevel: _controller.currentZoomLevel,
                 isFrontCamera: _controller.isFrontCamera,
@@ -112,8 +111,6 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
           );
         },
       ),
-
-      bottomNavigationBar: const MyBottomNavigationBar(),
     );
   }
 

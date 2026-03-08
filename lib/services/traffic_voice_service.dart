@@ -6,6 +6,8 @@ class TrafficVoiceService {
   String? _lastSpokenClass;
   DateTime _lastSpeakTime = DateTime.now();
 
+  bool _isEnabled = true;
+
   TrafficVoiceService() {
     _initTts();
   }
@@ -14,21 +16,31 @@ class TrafficVoiceService {
     await _tts.setLanguage("th-TH");
     await _tts.setSpeechRate(0.6);
     await _tts.setPitch(1.0);
+    await _tts.awaitSpeakCompletion(true);
   }
 
-  /// 🔊 ฟังก์ชันใหม่: รับข้อความ String โดยตรง (สำหรับอ่านเลข 5, 4, 3, 2, 1)
+  void setEnabled(bool value) {
+    _isEnabled = value;
+    if (!value) {
+      _tts.stop();
+    }
+  }
+
+  bool get isEnabled => _isEnabled;
+
   Future<void> speak(String message) async {
+    if (!_isEnabled) return;
     if (message.isEmpty) return;
 
-    // หยุดเสียงที่กำลังพูดอยู่ทันที เพื่อพูดตัวเลขปัจจุบัน (สำคัญมากสำหรับการนับถอยหลัง)
     await _tts.stop();
     await _tts.speak(message);
   }
 
   Future<void> processDetection(String className, double confidence) async {
+    if (!_isEnabled) return;
     if (confidence < 0.65) return;
 
-    String message = _getThaiMessage(className);
+    final String message = _getThaiMessage(className);
     if (message.isEmpty) return;
 
     final now = DateTime.now();
@@ -45,28 +57,38 @@ class TrafficVoiceService {
     switch (className) {
       case 'turn_left':
         return "เลี้ยวซ้ายได้";
+
       case 'turn_right':
         return "เลี้ยวขวาได้";
+
+      case 'green_light_circle':
       case 'go_straight_arrow':
         return "ตรงไปได้";
+
       case 'dont_turn_left':
         return "ห้ามเลี้ยวซ้าย";
+
       case 'dont_turn_right':
         return "ห้ามเลี้ยวขวา";
+
       case 'red_light_circle':
         return "ไฟแดง หยุดรถ";
+
       case 'yellow_light':
         return "ไฟเหลือง เตรียมหยุด";
-      case 'green_light_circle':
-        return "ไฟเขียว ไปได้";
+
       case 'off_light':
         return "ระวัง สัญญาณไฟเสีย";
+
       case 'flashing_light':
         return "ไฟกระพริบ โปรดระวัง";
+
       default:
         return "";
     }
   }
 
-  void stop() => _tts.stop();
+  Future<void> stop() async {
+    await _tts.stop();
+  }
 }
