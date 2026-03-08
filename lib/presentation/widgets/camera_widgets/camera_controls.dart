@@ -28,6 +28,8 @@ class CameraControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final double topPadding =
+        MediaQuery.of(context).padding.top + (isLandscape ? 12 : 16);
     return Stack(
       children: [
         Positioned(
@@ -65,7 +67,20 @@ class CameraControls extends StatelessWidget {
             ],
           ),
         ),
-
+        Positioned(
+          top: topPadding,
+          left: 16,
+          child: CircleAvatar(
+            radius: isLandscape ? 20 : 24,
+            backgroundColor: Colors.black.withOpacity(0.5),
+            child: IconButton(
+              icon: const Icon(Icons.menu, color: Colors.white),
+              onPressed: () {
+                Scaffold.of(context).openDrawer();
+              },
+            ),
+          ),
+        ),
         Positioned(
           bottom: MediaQuery.of(context).padding.top + (isLandscape ? 32 : 16),
           left: isLandscape ? 32 : 16,

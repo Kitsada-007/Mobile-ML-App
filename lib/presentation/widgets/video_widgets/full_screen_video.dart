@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:trffic_ilght_app/presentation/pages/video_inference_screen.dart';
+
 import 'package:video_player/video_player.dart';
 
 class FullScreenVideoPage extends StatefulWidget {

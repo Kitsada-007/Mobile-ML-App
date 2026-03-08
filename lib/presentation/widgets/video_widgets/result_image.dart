@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:trffic_ilght_app/presentation/pages/video_inference_screen.dart';
 
 class ResultImageSection extends StatelessWidget {
   final Uint8List imageBytes;

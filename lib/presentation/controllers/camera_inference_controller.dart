@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import 'package:trffic_ilght_app/core/models/models.dart';
-import 'package:trffic_ilght_app/services/sign_Number_OCR.dart';
+
 import 'package:trffic_ilght_app/services/traffic_voice_service.dart';
 import 'package:ultralytics_yolo/models/yolo_result.dart';
 import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
@@ -103,26 +102,6 @@ class CameraInferenceController extends ChangeNotifier {
         notifyListeners();
       }
     });
-  }
-
-  // ตัวอย่างในฟังก์ชันที่รับค่าจาก OCR
-  void onOcrDigitDetected(String digit) {
-    int? seconds = int.tryParse(digit);
-
-    if (seconds != null) {
-      // 1. อัปเดตตัวเลขบนหน้าจอ
-      _currentCountdown = digit;
-      notifyListeners();
-
-      // 2. แจ้งเตือนเสียงเฉพาะเลขสำคัญ (5, 4, 3, 2, 1)
-      if (seconds <= 5 && seconds > 0) {
-        if (seconds == 5) {
-          _voiceService.speak("เตรียมตัวออกรถ"); // พูดประโยคเตือนก่อน
-        } else {
-          _voiceService.speak(digit); // อ่านเลข "สี่", "สาม", "สอง", "หนึ่ง"
-        }
-      }
-    }
   }
 
   void onDetectionResults(List<YOLOResult> results) {

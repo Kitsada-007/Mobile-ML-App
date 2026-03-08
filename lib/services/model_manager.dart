@@ -1,243 +1,171 @@
-// Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
 import 'dart:io';
-import 'package:archive/archive.dart';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:trffic_ilght_app/core/models/models.dart';
-import 'package:ultralytics_yolo/utils/map_converter.dart';
-import 'package:ultralytics_yolo/config/channel_config.dart';
 
-/// Manages YOLO model loading, downloading, and caching.
+/// Manages YOLO model loading from app assets and local cache.
 ///
-/// This class handles:
-/// - Checking for existing models in the app bundle
-/// - Downloading models from the Ultralytics GitHub releases
-/// - Extracting and caching models locally
-/// - Platform-specific model path management
+/// Flow:
+/// 1. Resolve model file name
+/// 2. Check local cached file in app documents
+/// 3. If not found, copy from assets/models/ to local storage
+/// 4. Return local file path
 class ModelManager {
-  /// Base URL for downloading model files from GitHub releases
-  static const String _modelDownloadBaseUrl =
-      'https://github.com/ultralytics/yolo-flutter-app/releases/download/v0.0.0';
-
-  static final MethodChannel _channel =
-      ChannelConfig.createSingleImageChannel();
-
-  /// Callback for download progress updates (0.0 to 1.0)
+  /// Optional progress callback.
+  /// In this version it will mainly report 0.0 -> 1.0 while copying from assets.
   final void Function(double progress)? onDownloadProgress;
 
-  /// Callback for status message updates
+  /// Optional status callback for UI text such as "Loading model..."
   final void Function(String message)? onStatusUpdate;
 
-  /// Creates a new ModelManager instance
-  ///
-  /// [onDownloadProgress] is called with progress updates during model downloads
-  /// [onStatusUpdate] is called with status messages during model operations
   ModelManager({this.onDownloadProgress, this.onStatusUpdate});
 
-  /// Gets the appropriate model path for the current platform and model type.
-  Future<String?> getModelPath(ModelType modelType) async => Platform.isIOS
-      ? _getIOSModelPath(modelType)
-      : Platform.isAndroid
-      ? _getAndroidModelPath(modelType)
-      : null;
-
-  /// Gets the iOS model path (.mlpackage format).
-  Future<String?> _getIOSModelPath(ModelType modelType) async {
-    _updateStatus('Checking for ${modelType.modelName} model...');
-    try {
-      final bundleCheck = await _checkModelExistsInBundle(modelType.modelName);
-      if (bundleCheck['exists'] == true) return modelType.modelName;
-    } catch (_) {}
-    final dir = await getApplicationDocumentsDirectory();
-    final modelDir = Directory('${dir.path}/${modelType.modelName}.mlpackage');
-    if (await modelDir.exists()) {
-      if (await File('${modelDir.path}/Manifest.json').exists()) {
-        return modelDir.path;
-      }
-      await modelDir.delete(recursive: true);
+  /// Entry point for loading model path based on current platform.
+  Future<String?> getModelPath(ModelType modelType) async {
+    if (Platform.isAndroid) {
+      return _getAndroidModelPath(modelType);
+    } else if (Platform.isIOS) {
+      return _getIOSModelPath(modelType);
     }
-    _updateStatus('Downloading ${modelType.modelName} model...');
-    return _downloadIOSModel(modelType);
-  }
-
-  /// Check if a model exists in the iOS bundle
-  Future<Map<String, dynamic>> _checkModelExistsInBundle(
-    String modelName,
-  ) async {
-    if (!Platform.isIOS) return {'exists': false};
-    try {
-      final result = await _channel.invokeMethod('checkModelExists', {
-        'modelPath': modelName,
-      });
-      return MapConverter.convertToTypedMap(result);
-    } catch (_) {
-      return {'exists': false};
-    }
-  }
-
-  /// Download iOS model (.mlpackage format) or extract from assets
-  Future<String?> _downloadIOSModel(ModelType modelType) async {
-    final dir = await getApplicationDocumentsDirectory();
-    final modelDir = Directory('${dir.path}/${modelType.modelName}.mlpackage');
-    if (await modelDir.exists()) return modelDir.path;
-    try {
-      final zipData = await rootBundle.load(
-        'assets/models/${modelType.modelName}.mlpackage.zip',
-      );
-      return await _extractZip(
-        zipData.buffer.asUint8List(),
-        modelDir,
-        modelType.modelName,
-      );
-    } catch (_) {}
-    return await _downloadAndExtract(modelType, modelDir, '.mlpackage.zip');
-  }
-
-  /// Gets the Android model path (supports .tflite, .pt, .onnx formats)
-  Future<String?> _getAndroidModelPath(ModelType modelType) async {
-    _updateStatus('Checking for ${modelType.modelName} model...');
-
-    // Determine the correct file extension and bundled name
-    String bundledName;
-    if (modelType.modelName.endsWith('.tflite')) {
-      bundledName = modelType.modelName;
-    } else if (modelType.modelName.endsWith('.pt')) {
-      bundledName = modelType.modelName;
-    } else if (modelType.modelName.endsWith('.onnx')) {
-      bundledName = modelType.modelName;
-    } else {
-      bundledName = '${modelType.modelName}.tflite'; // default to .tflite
-    }
-
-    // Check Android native assets first
-    try {
-      final result = await _channel.invokeMethod('checkModelExists', {
-        'modelPath': bundledName,
-      });
-      if (result != null && result['exists'] == true) {
-        return result['location'] == 'assets'
-            ? bundledName
-            : result['path'] as String;
-      }
-    } catch (_) {}
-
-    // Check local storage
-    final dir = await getApplicationDocumentsDirectory();
-    final modelFile = File('${dir.path}/$bundledName');
-    if (await modelFile.exists()) return modelFile.path;
-
-    // Check if model exists in assets and copy to local storage
-    try {
-      final assetData = await rootBundle.load(modelType.modelName);
-      await modelFile.parent.create(recursive: true);
-      await modelFile.writeAsBytes(assetData.buffer.asUint8List());
-      return modelFile.path;
-    } catch (e) {
-      print('Failed to load model from assets: $e');
-    }
-
-    // Download if not found (only for standard Ultralytics models)
-    if (!modelType.modelName.contains('best_float32') &&
-        !modelType.modelName.contains('weights/')) {
-      _updateStatus('Downloading ${modelType.modelName} model...');
-      final bytes = await _downloadFile('$_modelDownloadBaseUrl/$bundledName');
-      if (bytes != null && bytes.isNotEmpty) {
-        await modelFile.writeAsBytes(bytes);
-        return modelFile.path;
-      }
-    }
-
     return null;
   }
 
-  /// Helper method to download file with progress tracking
-  Future<List<int>?> _downloadFile(String url) async {
-    try {
-      final client = http.Client();
-      final request = await client.send(http.Request('GET', Uri.parse(url)));
-      final contentLength = request.contentLength ?? 0;
-      final bytes = <int>[];
-      int downloadedBytes = 0;
+  String _resolveAssetPath(String fileName) {
+    if (fileName.startsWith('assets/')) {
+      return fileName;
+    }
+    return 'assets/models/$fileName';
+  }
 
-      await for (final chunk in request.stream) {
-        bytes.addAll(chunk);
-        downloadedBytes += chunk.length;
-        if (contentLength > 0) {
-          onDownloadProgress?.call(downloadedBytes / contentLength);
-        }
-      }
-      client.close();
-      return bytes;
-    } catch (_) {
+  Future<String?> _getAndroidModelPath(ModelType modelType) async {
+    final String fileName = _resolveAndroidModelFileName(modelType);
+    final String assetPath = _resolveAssetPath(fileName);
+
+    _updateStatus('Loading $fileName ...');
+    onDownloadProgress?.call(0.0);
+
+    final Directory dir = await getApplicationDocumentsDirectory();
+    final String localName = fileName.split('/').last;
+    final File modelFile = File('${dir.path}/models/$localName');
+
+    if (await modelFile.exists()) {
+      _updateStatus('');
+      onDownloadProgress?.call(1.0);
+      return modelFile.path;
+    }
+
+    try {
+      final ByteData assetData = await rootBundle.load(assetPath);
+
+      await modelFile.parent.create(recursive: true);
+      await modelFile.writeAsBytes(assetData.buffer.asUint8List(), flush: true);
+
+      _updateStatus('');
+      onDownloadProgress?.call(1.0);
+      return modelFile.path;
+    } catch (e) {
+      debugPrint('Failed to load Android model asset: $e');
+      _updateStatus('Failed to load model');
+      onDownloadProgress?.call(0.0);
       return null;
     }
   }
 
-  /// Helper method to extract zip file
-  Future<String?> _extractZip(
-    List<int> bytes,
-    Directory targetDir,
-    String modelName,
-  ) async {
-    try {
-      _updateStatus('Extracting model...');
-      final archive = ZipDecoder().decodeBytes(bytes);
-      await targetDir.create(recursive: true);
-      String? prefix;
-      if (archive.files.isNotEmpty) {
-        final first = archive.files.first.name;
-        if (first.contains('/') &&
-            first.split('/').first.endsWith('.mlpackage')) {
-          final topDir = first.split('/').first;
-          if (archive.files.every(
-            (f) => f.name.startsWith('$topDir/') || f.name == topDir,
-          )) {
-            prefix = '$topDir/';
-          }
-        }
-      }
-      for (final file in archive) {
-        var filename = file.name;
-        if (prefix != null) {
-          if (filename.startsWith(prefix)) {
-            filename = filename.substring(prefix.length);
-          } else if (filename == prefix.replaceAll('/', '')) {
-            continue;
-          }
-        }
-        if (filename.isEmpty) continue;
-        if (file.isFile) {
-          final outputFile = File('${targetDir.path}/$filename');
-          await outputFile.parent.create(recursive: true);
-          await outputFile.writeAsBytes(file.content as List<int>);
-        }
-      }
-      return targetDir.path;
-    } catch (_) {
-      if (await targetDir.exists()) {
-        await targetDir.delete(recursive: true);
-      }
-      return null;
-    }
-  }
+  /// iOS: basic support for loading model assets.
+  ///
+  /// If your iOS build actually uses `.mlpackage`, this method expects
+  /// the asset path to exist in `assets/models/`.
+  Future<String?> _getIOSModelPath(ModelType modelType) async {
+    final String modelName = modelType.modelName;
 
-  /// Helper method to download and extract model
-  Future<String?> _downloadAndExtract(
-    ModelType modelType,
-    Directory targetDir,
-    String ext,
-  ) async {
-    final bytes = await _downloadFile(
-      '$_modelDownloadBaseUrl/${modelType.modelName}$ext',
+    _updateStatus('Loading $modelName ...');
+    onDownloadProgress?.call(0.0);
+
+    final Directory dir = await getApplicationDocumentsDirectory();
+
+    // Case 1: direct file model (.mlmodel / .tflite / etc.)
+    final File directFile = File('${dir.path}/models/$modelName');
+    if (await directFile.exists()) {
+      _updateStatus('');
+      onDownloadProgress?.call(1.0);
+      return directFile.path;
+    }
+
+    // Case 2: mlpackage directory already exists
+    final Directory mlPackageDir = Directory(
+      '${dir.path}/models/$modelName.mlpackage',
     );
-    if (bytes == null) return null;
-    return ext.contains('zip')
-        ? await _extractZip(bytes, targetDir, modelType.modelName)
-        : (await File(targetDir.path).writeAsBytes(bytes), targetDir.path).$2;
+    final File manifestFile = File('${mlPackageDir.path}/Manifest.json');
+
+    if (await mlPackageDir.exists() && await manifestFile.exists()) {
+      _updateStatus('');
+      onDownloadProgress?.call(1.0);
+      return mlPackageDir.path;
+    }
+
+    // Try loading from assets as a normal file first
+    try {
+      final ByteData assetData = await rootBundle.load(
+        'assets/models/$modelName',
+      );
+
+      await directFile.parent.create(recursive: true);
+      await directFile.writeAsBytes(
+        assetData.buffer.asUint8List(),
+        flush: true,
+      );
+
+      _updateStatus('');
+      onDownloadProgress?.call(1.0);
+      return directFile.path;
+    } catch (_) {
+      // ignore and try mlpackage path next
+    }
+
+    // Try loading as `.mlpackage` asset bundle file path
+    try {
+      final ByteData assetData = await rootBundle.load(
+        'assets/models/$modelName.mlpackage',
+      );
+
+      final File outputFile = File('${dir.path}/models/$modelName.mlpackage');
+
+      await outputFile.parent.create(recursive: true);
+      await outputFile.writeAsBytes(
+        assetData.buffer.asUint8List(),
+        flush: true,
+      );
+
+      _updateStatus('');
+      onDownloadProgress?.call(1.0);
+      return outputFile.path;
+    } catch (e) {
+      debugPrint('Failed to load iOS model asset: $e');
+      _updateStatus('Failed to load model');
+      onDownloadProgress?.call(0.0);
+      return null;
+    }
   }
 
-  /// Updates the status message
-  void _updateStatus(String message) => onStatusUpdate?.call(message);
+  /// Resolve Android file name.
+  ///
+  /// If modelName already ends with a supported extension, use it directly.
+  /// Otherwise default to `.tflite`.
+  String _resolveAndroidModelFileName(ModelType modelType) {
+    final String name = modelType.modelName;
+
+    if (name.endsWith('.tflite') ||
+        name.endsWith('.pt') ||
+        name.endsWith('.onnx')) {
+      return name;
+    }
+
+    return '$name.tflite';
+  }
+
+  void _updateStatus(String message) {
+    onStatusUpdate?.call(message);
+  }
 }

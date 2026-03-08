@@ -1,9 +1,8 @@
-import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get_core/src/get_main.dart';
 import 'package:get/get_navigation/src/extension_navigation.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:trffic_ilght_app/presentation/pages/camera_inference_screen.dart';
+
 import 'package:trffic_ilght_app/presentation/pages/single_image_screen.dart';
 import 'package:trffic_ilght_app/presentation/pages/video_inference_screen.dart';
 
@@ -120,23 +119,6 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               const SizedBox(height: 14),
-
-              // ── Card: เปิดกล้อง ───────────────────────────────────
-              _buildActionCard(
-                context,
-                icon: Icons.camera_alt_rounded,
-                title: 'เปิดกล้องตรวจจับ',
-                subtitle: 'ตรวจจับแบบ Real-time ผ่านกล้อง',
-                iconColor: const Color(0xFF3D5AFE),
-                iconBg: const Color(0xFFEEF1FF),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const CameraInferenceScreen(),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
 
               // ── Card: Single image ────────────────────────────────
               _buildActionCard(

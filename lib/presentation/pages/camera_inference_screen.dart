@@ -1,13 +1,15 @@
 // Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
 import 'package:flutter/material.dart';
+
 import 'package:trffic_ilght_app/presentation/controllers/camera_inference_controller.dart';
+import 'package:trffic_ilght_app/presentation/widgets/bottom_navigation_bar.dart';
 
 import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_inference_content.dart';
 import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_inference_overlay.dart';
 
 import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_controls.dart';
-import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_logo_overlay.dart';
+
 import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/threshold_slider.dart';
 
 /// A screen that demonstrates real-time YOLO inference using the device camera.
@@ -70,7 +72,10 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
         MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('YOLO Camera Inference')),
+      drawer: Drawer(child: ListView(children: const [
+            
+          ],
+        )),
       body: ListenableBuilder(
         listenable: _controller,
         builder: (context, child) {
@@ -81,14 +86,11 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
                 controller: _controller,
                 rebuildKey: _rebuildKey,
               ),
+
               CameraInferenceOverlay(
                 controller: _controller,
                 isLandscape: isLandscape,
               ),
-              // CameraLogoOverlay(
-              //   controller: _controller,
-              //   isLandscape: isLandscape,
-              // ),
               CameraControls(
                 currentZoomLevel: _controller.currentZoomLevel,
                 isFrontCamera: _controller.isFrontCamera,
@@ -106,23 +108,12 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
                 onValueChanged: _controller.updateSliderValue,
                 isLandscape: isLandscape,
               ),
-
-              if (_controller.currentCountdown.isNotEmpty)
-                Center(
-                  child: Text(
-                    _controller.currentCountdown,
-                    style: TextStyle(
-                      fontSize: 120,
-                      color: Colors.orangeAccent,
-                      fontWeight: FontWeight.bold,
-                      shadows: [Shadow(blurRadius: 10, color: Colors.black)],
-                    ),
-                  ),
-                ),
             ],
           );
         },
       ),
+
+      bottomNavigationBar: const MyBottomNavigationBar(),
     );
   }
 

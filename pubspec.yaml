@@ -96,9 +96,7 @@ flutter:
      - assets/models/best_float32.tflite
    
      - assets/models/weights/
-     - assets/models/weights/best.onnx
-     - assets/models/weights/best.pt
-     - assets/models/weights/last.pt
+  
      - assets/models/weights/best_float16_traffic.tflite
      - assets/models/weights/best_saved_model/
      - assets/models/weights/best_saved_model/best_float16.tflite
