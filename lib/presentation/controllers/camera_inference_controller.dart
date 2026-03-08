@@ -1,9 +1,10 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import 'package:trffic_ilght_app/core/models/models.dart';
-
+import 'package:trffic_ilght_app/services/sign_Number_OCR.dart';
 import 'package:trffic_ilght_app/services/traffic_voice_service.dart';
 import 'package:ultralytics_yolo/models/yolo_result.dart';
 import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
@@ -36,7 +37,6 @@ class CameraInferenceController extends ChangeNotifier {
   double _currentZoomLevel = 1.0;
   LensFacing _lensFacing = LensFacing.back;
   bool _isFrontCamera = false;
-  // OCR state
 
   // Controllers
   final _yoloController = YOLOViewController();
@@ -72,10 +72,6 @@ class CameraInferenceController extends ChangeNotifier {
     _isFrontCamera = _lensFacing == LensFacing.front;
 
     _modelManager = ModelManager(
-      onDownloadProgress: (progress) {
-        _downloadProgress = progress;
-        notifyListeners();
-      },
       onStatusUpdate: (message) {
         _loadingMessage = message;
         notifyListeners();
@@ -93,38 +89,24 @@ class CameraInferenceController extends ChangeNotifier {
     );
   }
 
-  Timer? _clearTimer;
-  void _clearCountdownWithDelay() {
-    _clearTimer?.cancel();
-    _clearTimer = Timer(const Duration(seconds: 2), () {
-      if (_currentCountdown.isNotEmpty) {
-        _currentCountdown = "";
-        notifyListeners();
-      }
-    });
-  }
-
   void onDetectionResults(List<YOLOResult> results) {
     if (_isDisposed) return;
 
     if (results.isNotEmpty) {
+      // เรียงลำดับเอาตัวที่ AI มั่นใจที่สุดมาใช้งาน
       results.sort((a, b) => b.confidence.compareTo(a.confidence));
       final topResult = results.first;
 
-      // 1. จัดการเสียงแจ้งเตือน (3.1 - 3.11 ยกเว้น 3.9 ที่เป็นตัวเลข)
       if (topResult.className != 'sign_number') {
+        // ✅ นำระบบเสียงแจ้งเตือนกลับมาใส่ให้แล้ว
         _voiceService.processDetection(
           topResult.className,
           topResult.confidence,
         );
       } else {
-        // 2. ถ้าเจอ sign_number (3.9) ให้เข้าสู่กระบวนการ OCR
-        // _handleSignNumber(topResult);
+        // TODO: ใส่ลอจิก OCR ตัวเลขตรงนี้ในอนาคต
       }
-    } else {
-      _clearCountdownWithDelay();
     }
-
     _frameCount++;
     final now = DateTime.now();
     final elapsed = now.difference(_lastFpsUpdate).inMilliseconds;
@@ -310,8 +292,6 @@ class CameraInferenceController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _clearTimer?.cancel();
-
     _voiceService.stop();
     _isDisposed = true;
     super.dispose();

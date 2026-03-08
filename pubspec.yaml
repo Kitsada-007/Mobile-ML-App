@@ -60,6 +60,8 @@ dependencies:
   ffmpeg_kit_flutter_new: ^4.1.0
   google_mlkit_text_recognition: ^0.15.1
   flutter_tts: ^4.2.5
+  provider: ^6.1.5+1
+  shared_preferences: ^2.5.4
 
   
 

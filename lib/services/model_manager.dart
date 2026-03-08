@@ -1,171 +1,71 @@
 import 'dart:io';
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:trffic_ilght_app/core/models/models.dart';
+import 'package:ultralytics_yolo/config/channel_config.dart';
 
-/// Manages YOLO model loading from app assets and local cache.
-///
-/// Flow:
-/// 1. Resolve model file name
-/// 2. Check local cached file in app documents
-/// 3. If not found, copy from assets/models/ to local storage
-/// 4. Return local file path
+/// Manages YOLO model loading from local assets for Android only (Offline Mode).
 class ModelManager {
-  /// Optional progress callback.
-  /// In this version it will mainly report 0.0 -> 1.0 while copying from assets.
-  final void Function(double progress)? onDownloadProgress;
+  static final MethodChannel _channel =
+      ChannelConfig.createSingleImageChannel();
 
-  /// Optional status callback for UI text such as "Loading model..."
+  /// Callback for status message updates
   final void Function(String message)? onStatusUpdate;
 
-  ModelManager({this.onDownloadProgress, this.onStatusUpdate});
+  ModelManager({this.onStatusUpdate});
 
-  /// Entry point for loading model path based on current platform.
+  /// ดึง Path ของไฟล์โมเดล (รองรับเฉพาะ Android)
   Future<String?> getModelPath(ModelType modelType) async {
-    if (Platform.isAndroid) {
-      return _getAndroidModelPath(modelType);
-    } else if (Platform.isIOS) {
-      return _getIOSModelPath(modelType);
-    }
-    return null;
-  }
-
-  String _resolveAssetPath(String fileName) {
-    if (fileName.startsWith('assets/')) {
-      return fileName;
-    }
-    return 'assets/models/$fileName';
-  }
-
-  Future<String?> _getAndroidModelPath(ModelType modelType) async {
-    final String fileName = _resolveAndroidModelFileName(modelType);
-    final String assetPath = _resolveAssetPath(fileName);
-
-    _updateStatus('Loading $fileName ...');
-    onDownloadProgress?.call(0.0);
-
-    final Directory dir = await getApplicationDocumentsDirectory();
-    final String localName = fileName.split('/').last;
-    final File modelFile = File('${dir.path}/models/$localName');
-
-    if (await modelFile.exists()) {
-      _updateStatus('');
-      onDownloadProgress?.call(1.0);
-      return modelFile.path;
+    // ดักไว้ก่อนเลยว่าถ้าไม่ใช่ Android ไม่ต้องทำต่อ
+    if (!Platform.isAndroid) {
+      _updateStatus('แอปพลิเคชันนี้รองรับเฉพาะระบบ Android');
+      return null;
     }
 
+    _updateStatus('กำลังตรวจสอบโมเดล ${modelType.modelName}...');
+
+    // จัดการนามสกุลไฟล์ (Default เป็น .tflite)
+    String bundledName = modelType.modelName;
+    if (!bundledName.endsWith('.tflite') &&
+        !bundledName.endsWith('.pt') &&
+        !bundledName.endsWith('.onnx')) {
+      bundledName = '$bundledName.tflite';
+    }
+
+    // 1. ลองเช็คผ่าน Native Channel ก่อน (ปลั๊กอินบางตัวจัดการ path ให้)
     try {
-      final ByteData assetData = await rootBundle.load(assetPath);
+      final result = await _channel.invokeMethod('checkModelExists', {
+        'modelPath': bundledName,
+      });
+      if (result != null && result['exists'] == true) {
+        return result['location'] == 'assets'
+            ? bundledName
+            : result['path'] as String;
+      }
+    } catch (_) {}
+
+    // 2. เช็คใน Local Storage ของแอป (กรณีเคยเปิดแอปแล้วก๊อปปี้ไฟล์ไว้แล้ว)
+    final dir = await getApplicationDocumentsDirectory();
+    final modelFile = File('${dir.path}/$bundledName');
+    if (await modelFile.exists()) return modelFile.path;
+
+    // 3. ก๊อปปี้ไฟล์โมเดลจาก Assets ลง Local Storage เพื่อให้ AI อ่านได้
+    try {
+      _updateStatus('กำลังเตรียมไฟล์โมเดลจากเครื่อง...');
+
+      // ⚠️ ต้องแน่ใจว่าไฟล์โมเดลของคุณอยู่ที่ assets/models/ นะครับ
+      final assetPath = 'assets/models/$bundledName';
+      final assetData = await rootBundle.load(assetPath);
 
       await modelFile.parent.create(recursive: true);
-      await modelFile.writeAsBytes(assetData.buffer.asUint8List(), flush: true);
-
-      _updateStatus('');
-      onDownloadProgress?.call(1.0);
+      await modelFile.writeAsBytes(assetData.buffer.asUint8List());
       return modelFile.path;
     } catch (e) {
-      debugPrint('Failed to load Android model asset: $e');
-      _updateStatus('Failed to load model');
-      onDownloadProgress?.call(0.0);
+      print('เกิดข้อผิดพลาดในการโหลดโมเดล Android จาก assets: $e');
       return null;
     }
   }
 
-  /// iOS: basic support for loading model assets.
-  ///
-  /// If your iOS build actually uses `.mlpackage`, this method expects
-  /// the asset path to exist in `assets/models/`.
-  Future<String?> _getIOSModelPath(ModelType modelType) async {
-    final String modelName = modelType.modelName;
-
-    _updateStatus('Loading $modelName ...');
-    onDownloadProgress?.call(0.0);
-
-    final Directory dir = await getApplicationDocumentsDirectory();
-
-    // Case 1: direct file model (.mlmodel / .tflite / etc.)
-    final File directFile = File('${dir.path}/models/$modelName');
-    if (await directFile.exists()) {
-      _updateStatus('');
-      onDownloadProgress?.call(1.0);
-      return directFile.path;
-    }
-
-    // Case 2: mlpackage directory already exists
-    final Directory mlPackageDir = Directory(
-      '${dir.path}/models/$modelName.mlpackage',
-    );
-    final File manifestFile = File('${mlPackageDir.path}/Manifest.json');
-
-    if (await mlPackageDir.exists() && await manifestFile.exists()) {
-      _updateStatus('');
-      onDownloadProgress?.call(1.0);
-      return mlPackageDir.path;
-    }
-
-    // Try loading from assets as a normal file first
-    try {
-      final ByteData assetData = await rootBundle.load(
-        'assets/models/$modelName',
-      );
-
-      await directFile.parent.create(recursive: true);
-      await directFile.writeAsBytes(
-        assetData.buffer.asUint8List(),
-        flush: true,
-      );
-
-      _updateStatus('');
-      onDownloadProgress?.call(1.0);
-      return directFile.path;
-    } catch (_) {
-      // ignore and try mlpackage path next
-    }
-
-    // Try loading as `.mlpackage` asset bundle file path
-    try {
-      final ByteData assetData = await rootBundle.load(
-        'assets/models/$modelName.mlpackage',
-      );
-
-      final File outputFile = File('${dir.path}/models/$modelName.mlpackage');
-
-      await outputFile.parent.create(recursive: true);
-      await outputFile.writeAsBytes(
-        assetData.buffer.asUint8List(),
-        flush: true,
-      );
-
-      _updateStatus('');
-      onDownloadProgress?.call(1.0);
-      return outputFile.path;
-    } catch (e) {
-      debugPrint('Failed to load iOS model asset: $e');
-      _updateStatus('Failed to load model');
-      onDownloadProgress?.call(0.0);
-      return null;
-    }
-  }
-
-  /// Resolve Android file name.
-  ///
-  /// If modelName already ends with a supported extension, use it directly.
-  /// Otherwise default to `.tflite`.
-  String _resolveAndroidModelFileName(ModelType modelType) {
-    final String name = modelType.modelName;
-
-    if (name.endsWith('.tflite') ||
-        name.endsWith('.pt') ||
-        name.endsWith('.onnx')) {
-      return name;
-    }
-
-    return '$name.tflite';
-  }
-
-  void _updateStatus(String message) {
-    onStatusUpdate?.call(message);
-  }
+  /// Updates the status message
+  void _updateStatus(String message) => onStatusUpdate?.call(message);
 }

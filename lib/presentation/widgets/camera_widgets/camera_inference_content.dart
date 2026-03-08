@@ -5,8 +5,6 @@ import 'package:trffic_ilght_app/presentation/controllers/camera_inference_contr
 import 'package:ultralytics_yolo/yolo_streaming_config.dart';
 import 'package:ultralytics_yolo/yolo_view.dart';
 
-import 'model_loading_overlay.dart';
-
 /// Main content widget that handles the camera view and loading states
 class CameraInferenceContent extends StatelessWidget {
   const CameraInferenceContent({
@@ -35,14 +33,12 @@ class CameraInferenceContent extends StatelessWidget {
         onZoomChanged: controller.onZoomChanged,
         lensFacing: controller.lensFacing,
       );
-    } else if (controller.isModelLoading) {
-      return ModelLoadingOverlay(
-        loadingMessage: controller.loadingMessage,
-        downloadProgress: controller.downloadProgress,
-      );
     } else {
       return const Center(
-        child: Text('No model loaded', style: TextStyle(color: Colors.white)),
+        child: Text(
+          'No model path available',
+          style: TextStyle(color: Colors.white),
+        ),
       );
     }
   }

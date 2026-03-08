@@ -1,22 +1,31 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:get/get.dart'; // 👈 1. ตรวจสอบว่ามี import get ไว้
+import 'package:provider/provider.dart';
+import 'package:trffic_ilght_app/presentation/controllers/settings_controller.dart';
 import 'package:trffic_ilght_app/presentation/pages/home_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MyApp());
+  runApp(
+    MultiProvider(
+      providers: [ChangeNotifierProvider(create: (_) => SettingsProvider())],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
+    final settings = context.watch<SettingsProvider>();
+
+    // 👇 2. เปลี่ยนตรงนี้เป็น GetMaterialApp
     return GetMaterialApp(
-      title: 'ML-Mobile',
-      theme: ThemeData(colorScheme: .fromSeed(seedColor: Colors.deepPurple)),
-      home: HomePage(),
+      title: 'Traffic Light App',
+      theme: settings.isLightMode ? ThemeData.light() : ThemeData.dark(),
+      home: const HomePage(),
     );
   }
 }

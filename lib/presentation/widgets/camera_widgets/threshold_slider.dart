@@ -40,10 +40,10 @@ class ThresholdSlider extends StatelessWidget {
         color: Colors.black.withValues(alpha: 0.8),
         child: SliderTheme(
           data: SliderTheme.of(context).copyWith(
-            activeTrackColor: Colors.yellow,
+            activeTrackColor: Colors.blue,
             inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
-            thumbColor: Colors.yellow,
-            overlayColor: Colors.yellow.withValues(alpha: 0.2),
+            thumbColor: Colors.blue,
+            overlayColor: Colors.blue.withValues(alpha: 0.2),
           ),
           child: Slider(
             value: _getSliderValue(),

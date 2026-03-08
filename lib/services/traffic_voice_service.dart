@@ -1,4 +1,5 @@
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class TrafficVoiceService {
   final FlutterTts _tts = FlutterTts();
@@ -38,17 +39,21 @@ class TrafficVoiceService {
 
   Future<void> processDetection(String className, double confidence) async {
     if (!_isEnabled) return;
-    if (confidence < 0.65) return;
-
+    if (confidence < 0.40) return;
+    // 🟢 ตรวจสอบว่าผู้ใช้ปิดเสียงในหน้า Settings หรือยัง
+    final prefs = await SharedPreferences.getInstance();
+    final isVoiceEnabled = prefs.getBool('isVoiceEnabled') ?? true;
+    if (!isVoiceEnabled) return; // ถ้าปิดไว้ ให้หยุดทำงานทันที
     final String message = _getThaiMessage(className);
     if (message.isEmpty) return;
 
     final now = DateTime.now();
 
-    if (className != _lastSpokenClass ||
-        now.difference(_lastSpeakTime).inSeconds > 3) {
+    // เช็คแค่ว่าพูดครั้งล่าสุดผ่านไป 3 วินาทีหรือยัง
+    // (ตัดเงื่อนไข className != _lastSpokenClass ทิ้ง)
+    if (now.difference(_lastSpeakTime).inSeconds >= 3) {
       await speak(message);
-      _lastSpokenClass = className;
+      _lastSpokenClass = className; // เก็บไว้เผื่อใช้ทำอย่างอื่น
       _lastSpeakTime = now;
     }
   }

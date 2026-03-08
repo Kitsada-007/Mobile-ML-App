@@ -86,10 +86,7 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
                 controller: _controller,
                 isLandscape: isLandscape,
               ),
-              // CameraLogoOverlay(
-              //   controller: _controller,
-              //   isLandscape: isLandscape,
-              // ),
+
               CameraControls(
                 currentZoomLevel: _controller.currentZoomLevel,
                 isFrontCamera: _controller.isFrontCamera,

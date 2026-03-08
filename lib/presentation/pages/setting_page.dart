@@ -1,96 +1,67 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart'; // 👈 อย่าลืม import provider
+import 'package:trffic_ilght_app/presentation/controllers/settings_controller.dart';
 import 'package:trffic_ilght_app/presentation/widgets/bottom_navigation_bar.dart';
 import 'package:trffic_ilght_app/presentation/widgets/setting_card.dart';
 import 'package:trffic_ilght_app/presentation/widgets/switch_item.dart';
+// import SettingsProvider ของคุณ
 
-class SettingPage extends StatefulWidget {
+class SettingPage extends StatelessWidget {
+  // เปลี่ยนเป็น StatelessWidget ได้เลย
   const SettingPage({super.key});
 
   @override
-  State<SettingPage> createState() => _SettingState();
-}
-
-class _SettingState extends State<SettingPage> {
-  // ตัวแปรสำหรับเก็บค่าสถานะของ Switch
-  bool _isLightMode = true;
-  bool _isNotificationOn = true;
-
-  @override
   Widget build(BuildContext context) {
+    // 🟢 ดึงข้อมูลจาก Provider
+    final settings = context.watch<SettingsProvider>();
+
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.white,
         elevation: 0,
         automaticallyImplyLeading: false,
         title: const Text(
           'Settings',
-          style: TextStyle(
-            color: Color(0xFF1A1D2E),
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.3,
-          ),
-        ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: const Color(0xFFEEEFF3)),
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
         ),
       ),
-      bottomNavigationBar: MyBottomNavigationBar(),
-
+      bottomNavigationBar: const MyBottomNavigationBar(),
       body: SafeArea(
         child: SingleChildScrollView(
           child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 24.0,
-              vertical: 20.0,
-            ),
+            padding: const EdgeInsets.all(24.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 20),
-                // --- หัวข้อหน้า (Header) ---
-                const Text(
-                  'ตั้งค่า',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
-                  ),
-                ),
-                const SizedBox(height: 8),
                 const Text(
                   'ปรับแต่งการแจ้งเตือนและฟีเจอร์',
                   style: TextStyle(fontSize: 14, color: Colors.grey),
                 ),
                 const SizedBox(height: 30),
 
-                // --- การ์ดที่ 1: ธีมสี (Theme Card) ---
-                SettingCard(
-                  title: 'ธีมสี',
-                  subtitle: 'เปลี่ยนโหมดสว่าง/มืด',
-                  headerIcon: Icons.wb_sunny_outlined,
-                  headerIconColor: Colors.blue,
-                  headerIconBg: Colors.blue.withOpacity(0.1),
-                  child: SwitchItem(
-                    icon: Icons.wb_sunny_outlined,
-                    iconColor: Colors.blue,
-                    iconBg: Colors.blue.withOpacity(0.1),
-                    title: 'โหมดสว่าง',
-                    subtitle: 'แสงสว่างปกติ',
-                    value: _isLightMode,
-                    onChanged: (val) {
-                      setState(() {
-                        _isLightMode = val;
-                      });
-                    },
-                  ),
-                ),
+                // --- ธีมสี ---
+                // SettingCard(
+                //   title: 'ธีมสี',
+                //   subtitle: 'เปลี่ยนโหมดสว่าง/มืด',
+                //   headerIcon: Icons.wb_sunny_outlined,
+                //   headerIconColor: Colors.blue,
+                //   headerIconBg: Colors.blue.withOpacity(0.1),
+                //   child: SwitchItem(
+                //     icon: Icons.wb_sunny_outlined,
+                //     iconColor: Colors.blue,
+                //     iconBg: Colors.blue.withOpacity(0.1),
+                //     title: 'โหมดสว่าง',
+                //     subtitle: 'แสงสว่างปกติ',
+                //     // 🟢 ผูกค่า Value กับ Provider
+                //     value: settings.isLightMode,
+                //     onChanged: (val) {
+                //       // 🟢 สั่งเปลี่ยนธีม
+                //       context.read<SettingsProvider>().toggleTheme(val);
+                //     },
+                //   ),
+                // ),
+                // const SizedBox(height: 20),
 
-                const SizedBox(height: 20),
-
-                // --- การ์ดที่ 2: การแจ้งเตือน (Notification Card) ---
+                // --- การแจ้งเตือน ---
                 SettingCard(
                   title: 'การแจ้งเตือน',
                   subtitle: 'จัดการการแจ้งเตือนของคุณ',
@@ -98,16 +69,17 @@ class _SettingState extends State<SettingPage> {
                   headerIconColor: Colors.blue,
                   headerIconBg: Colors.blue.withOpacity(0.1),
                   child: SwitchItem(
-                    icon: Icons.error_outline,
-                    iconColor: Colors.red, // ไอคอนสีแดงตามรูป
+                    icon: Icons
+                        .volume_up_outlined, // แนะนำเปลี่ยนไอคอนเป็นรูปลำโพง
+                    iconColor: Colors.red,
                     iconBg: Colors.red.withOpacity(0.1),
                     title: 'เตือนสัญญาณไฟ',
-                    subtitle: 'แจ้งเตือนสัญญาณไฟจราจร',
-                    value: _isNotificationOn,
+                    subtitle: 'แจ้งเตือนด้วยเสียง',
+                    // 🟢 ผูกค่า Value กับ Provider
+                    value: settings.isVoiceEnabled,
                     onChanged: (val) {
-                      setState(() {
-                        _isNotificationOn = val;
-                      });
+                      // 🟢 สั่งเปิด/ปิดเสียง
+                      context.read<SettingsProvider>().toggleVoice(val);
                     },
                   ),
                 ),

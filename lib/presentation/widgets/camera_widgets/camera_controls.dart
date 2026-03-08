@@ -28,12 +28,13 @@ class CameraControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final double topPadding =
-        MediaQuery.of(context).padding.top + (isLandscape ? 12 : 16);
+    // ใช้ padding.bottom แทน top เพื่อให้ปุ่มสลับกล้องไม่ทับซ้อนกับขอบจอด้านล่าง
+    final double safeBottomPadding = MediaQuery.of(context).padding.bottom;
+
     return Stack(
       children: [
         Positioned(
-          bottom: isLandscape ? 16 : 32,
+          bottom: safeBottomPadding + (isLandscape ? 16 : 32),
           right: isLandscape ? 8 : 16,
           child: Column(
             children: [
@@ -49,19 +50,43 @@ class CameraControls extends StatelessWidget {
                   ),
                 ),
               SizedBox(height: isLandscape ? 8 : 12),
+
+              // ปุ่ม Layers (numItems)
               ControlButton(
                 content: Icons.layers,
-                onPressed: () => onSliderToggled(SliderType.numItems),
+                onPressed: () {
+                  if (activeSlider == SliderType.numItems) {
+                    onSliderToggled(SliderType.none);
+                  } else {
+                    onSliderToggled(SliderType.numItems);
+                  }
+                },
               ),
               SizedBox(height: isLandscape ? 8 : 12),
+
+              // ปุ่ม Adjust (confidence)
               ControlButton(
                 content: Icons.adjust,
-                onPressed: () => onSliderToggled(SliderType.confidence),
+                onPressed: () {
+                  if (activeSlider == SliderType.confidence) {
+                    onSliderToggled(SliderType.none);
+                  } else {
+                    onSliderToggled(SliderType.confidence);
+                  }
+                },
               ),
               SizedBox(height: isLandscape ? 8 : 12),
+
+              // ปุ่ม IOU
               ControlButton(
                 content: 'assets/iou.png',
-                onPressed: () => onSliderToggled(SliderType.iou),
+                onPressed: () {
+                  if (activeSlider == SliderType.iou) {
+                    onSliderToggled(SliderType.none);
+                  } else {
+                    onSliderToggled(SliderType.iou);
+                  }
+                },
               ),
               SizedBox(height: isLandscape ? 16 : 40),
             ],
@@ -69,7 +94,7 @@ class CameraControls extends StatelessWidget {
         ),
 
         Positioned(
-          bottom: MediaQuery.of(context).padding.top + (isLandscape ? 32 : 16),
+          bottom: safeBottomPadding + (isLandscape ? 32 : 16),
           left: isLandscape ? 32 : 16,
           child: CircleAvatar(
             radius: isLandscape ? 20 : 24,
