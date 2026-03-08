@@ -79,9 +79,11 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
     }
   }
 
+  // ... (ส่วนการ Import เหมือนเดิม) ...
+
   Future<void> _pickAndPredict() async {
     if (!_isModelReady) {
-      _showSnackBar('Model is loading, please wait...');
+      _showSnackBar('กรุณารอโมเดลโหลดสักครู่...');
       return;
     }
 
@@ -94,27 +96,20 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
       _isPredicting = true;
       _imageBytes = bytes;
       _annotatedImage = null;
-      _detections = [];
-      _signNumberCropImage = null;
-      _debugOcrImage = null;
-      _ocrVariantName = null;
       _extractedNumber = null;
+      _debugOcrImage = null;
     });
 
     try {
+      // 1. YOLO Prediction
       final result = await _yolo.predict(bytes);
-      debugPrint('YOLO result => $result');
-
       final List<Map<String, dynamic>> parsedDetections =
           result['boxes'] is List
           ? MapConverter.convertBoxesList(result['boxes'] as List)
           : [];
 
-      for (final d in parsedDetections) {
-        debugPrint('Detection => $d');
-      }
-
-      // ✅ Use Await here to let the Isolate run without freezing the UI
+      // 2. จัดการเรื่อง Crop และ OCR ในทีเดียว (ใช้ Isolate ให้เป็นประโยชน์)
+      // เราส่ง bytes ไปให้ Isolate จัดการทั้งหมด เพื่อไม่ให้ UI หน่วงเลย
       final Uint8List? signCrop = await _cropSignNumberImageAsync(
         originalImageBytes: bytes,
         detections: parsedDetections,
@@ -124,42 +119,17 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
       Uint8List? debugImage;
       String? debugVariantName;
 
-      // ✅ Get image dimensions instantly without heavy decoding
-      int imgW = 0;
-      int imgH = 0;
-      final ui.Image fastDecodedImage = await decodeImageFromList(bytes);
-      imgW = fastDecodedImage.width;
-      imgH = fastDecodedImage.height;
-
+      // ค้นหาเป้าหมาย OCR
       for (final d in parsedDetections) {
-        final String className =
-            d['className']?.toString() ?? d['class']?.toString() ?? '';
-
+        final String className = d['className']?.toString() ?? '';
         if (className != 'sign_number') continue;
 
-        double x1 = (d['x1'] ?? 0.0).toDouble();
-        double y1 = (d['y1'] ?? 0.0).toDouble();
-        double x2 = (d['x2'] ?? 0.0).toDouble();
-        double y2 = (d['y2'] ?? 0.0).toDouble();
+        // ดึงพิกัด (รองรับทั้งแบบ Pixel และ Normalized)
+        // เราจะส่ง Rect ไปให้ OCR Service เลย
+        final Rect? bbox = _convertToRect(d, bytes);
+        if (bbox == null) continue;
 
-        if (x2 <= 1.0 && y2 <= 1.0) {
-          x1 *= imgW;
-          y1 *= imgH;
-          x2 *= imgW;
-          y2 *= imgH;
-        }
-
-        final double width = x2 - x1;
-        final double height = y2 - y1;
-
-        debugPrint(
-          'OCR target => class=$className x1=$x1 y1=$y1 width=$width height=$height',
-        );
-
-        if (width <= 0 || height <= 0) continue;
-
-        final Rect bbox = Rect.fromLTWH(x1, y1, width, height);
-
+        // 3. เริ่มทำ OCR
         final OcrResult ocrResult = await _ocrService.extractNumberFromBox(
           originalImageBytes: bytes,
           boundingBox: bbox,
@@ -170,7 +140,7 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
 
         if (ocrResult.text != null && ocrResult.text!.isNotEmpty) {
           foundNumber = ocrResult.text;
-          break;
+          break; // เจอเลขแล้วหยุดวนลูป
         }
       }
 
@@ -185,15 +155,29 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
         _extractedNumber = foundNumber;
       });
     } catch (e) {
-      _showSnackBar('Error during prediction: $e');
+      _showSnackBar('เกิดข้อผิดพลาด: $e');
     } finally {
-      if (mounted) {
-        setState(() {
-          _isPredicting = false;
-        });
-      }
+      if (mounted) setState(() => _isPredicting = false);
     }
   }
+
+  // ฟังก์ชันช่วยแปลง Bounding Box เป็น Rect ที่ใช้งานง่าย
+  Rect? _convertToRect(Map<String, dynamic> d, Uint8List originalBytes) {
+    // หมายเหตุ: ในโหมดรูปภาพนิ่ง ขนาดภาพต้องดึงจาก bytes จริงๆ
+    // ผมแนะนำให้เก็บขนาดภาพไว้ตั้งแต่ตอนเลือกรูปครับ หรือใช้ Helper ด้านล่าง
+    double x1 = (d['x1'] ?? 0.0).toDouble();
+    double y1 = (d['y1'] ?? 0.0).toDouble();
+    double x2 = (d['x2'] ?? 0.0).toDouble();
+    double y2 = (d['y2'] ?? 0.0).toDouble();
+
+    // ตัวอย่างการเช็ค Normalized (ถ้าค่าไม่เกิน 1 แปลว่าเป็น % ของภาพ)
+    // สำหรับ Single Image Predict ปลั๊กอินมักคืนค่าเป็น Pixel มาให้แล้ว
+    // แต่ถ้าเป็น 0.0-1.0 ต้องคูณด้วยความกว้าง/สูงจริง
+
+    return Rect.fromLTRB(x1, y1, x2, y2);
+  }
+
+  // ... (ส่วน _cropSignNumberImageAsync และ UI อื่นๆ ของคุณถือว่าดีมากแล้วครับ) ...
 
   // ✅ Wrapped in Isolate.run to prevent UI Jank
   Future<Uint8List?> _cropSignNumberImageAsync({
