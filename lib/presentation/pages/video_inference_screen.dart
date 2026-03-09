@@ -66,21 +66,26 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final bool hasVideoResult =
         _videoController != null && _videoController!.value.isInitialized;
     final bool hasImageResult = _annotatedImage != null || _imageBytes != null;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text(
-          'Video Inference',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-        centerTitle: true,
+        backgroundColor: Colors.transparent,
         elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
+        centerTitle: true,
+        title: Text(
+          'Video Inference',
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        foregroundColor:
+            theme.appBarTheme.foregroundColor ?? colorScheme.onBackground,
       ),
       body: SafeArea(
         child: Column(
@@ -90,9 +95,15 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                 children: [
                   if (!_isModelReady)
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 12),
-                      child: LinearProgressIndicator(minHeight: 3),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: LinearProgressIndicator(
+                        minHeight: 3,
+                        color: colorScheme.primary,
+                        backgroundColor: colorScheme.onBackground.withOpacity(
+                          0.08,
+                        ),
+                      ),
                     ),
 
                   // ===== VIDEO / RESULT SECTION ด้านบน =====
@@ -130,13 +141,13 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
             // ===== PICK VIDEO / ACTION BAR ด้านล่าง =====
             Container(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
                 boxShadow: [
                   BoxShadow(
-                    color: Color(0x14000000),
+                    color: theme.shadowColor.withOpacity(0.12),
                     blurRadius: 10,
-                    offset: Offset(0, -2),
+                    offset: const Offset(0, -2),
                   ),
                 ],
               ),
