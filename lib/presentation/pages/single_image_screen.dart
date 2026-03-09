@@ -108,6 +108,23 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
           ? MapConverter.convertBoxesList(result['boxes'] as List)
           : [];
 
+      // 🔍 DEBUG: ดูว่า Detection ได้อะไรมา
+      debugPrint('=== YOLO DETECTION RESULTS ===');
+      debugPrint('จำนวน detections: ${parsedDetections.length}');
+      for (int i = 0; i < parsedDetections.length; i++) {
+        final d = parsedDetections[i];
+        debugPrint('Detection $i:');
+        debugPrint(
+          '  className: ${d['className']} | type: ${d['className'].runtimeType}',
+        );
+        debugPrint('  class: ${d['class']} | type: ${d['class'].runtimeType}');
+        debugPrint('  confidence: ${d['confidence']}');
+        debugPrint(
+          '  coordinates: x1=${d['x1']}, y1=${d['y1']}, x2=${d['x2']}, y2=${d['y2']}',
+        );
+      }
+      debugPrint('=============================');
+
       // 2. จัดการเรื่อง Crop และ OCR ในทีเดียว (ใช้ Isolate ให้เป็นประโยชน์)
       // เราส่ง bytes ไปให้ Isolate จัดการทั้งหมด เพื่อไม่ให้ UI หน่วงเลย
       final Uint8List? signCrop = await _cropSignNumberImageAsync(
@@ -121,13 +138,36 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
 
       // ค้นหาเป้าหมาย OCR
       for (final d in parsedDetections) {
-        final String className = d['className']?.toString() ?? '';
-        if (className != 'sign_number') continue;
+        // 🔧 แก้: ใช้ tolowercase + trim เพื่อ match 'sign_number' แม่นยำ
+        String className = (d['className'] ?? d['class'] ?? '')
+            .toString()
+            .toLowerCase()
+            .trim();
+
+        debugPrint('🔍 Checking className: "$className"');
+
+        // ลองหา sign_number ก่อน หรือลองทั้งหมด (ป้ายที่อาจจะมีตัวเลข)
+        final bool isCandidateForOcr =
+            className == 'sign_number' ||
+            className.contains('sign') ||
+            className.contains('number') ||
+            className.contains('speed') ||
+            className.contains('warning');
+
+        if (!isCandidateForOcr) {
+          debugPrint('  ⊘ Skip (ไม่มีโอกาสมีตัวเลข)');
+          continue;
+        }
+
+        debugPrint('  ✅ This could have numbers, trying OCR...');
 
         // ดึงพิกัด (รองรับทั้งแบบ Pixel และ Normalized)
         // เราจะส่ง Rect ไปให้ OCR Service เลย
         final Rect? bbox = _convertToRect(d, bytes);
-        if (bbox == null) continue;
+        if (bbox == null) {
+          debugPrint('  ⚠️ Failed to convert bbox');
+          continue;
+        }
 
         // 3. เริ่มทำ OCR
         final OcrResult ocrResult = await _ocrService.extractNumberFromBox(
@@ -135,12 +175,16 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
           boundingBox: bbox,
         );
 
+        debugPrint(
+          '  📊 OCR Result: "${ocrResult.text}" | Variant: ${ocrResult.debugVariantName}',
+        );
+
         debugImage = ocrResult.debugImageBytes;
         debugVariantName = ocrResult.debugVariantName;
 
         if (ocrResult.text != null && ocrResult.text!.isNotEmpty) {
           foundNumber = ocrResult.text;
-          break; // เจอเลขแล้วหยุดวนลูป
+          debugPrint('  🎉 Found number: $foundNumber');
         }
       }
 
@@ -203,8 +247,10 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
         final int imgH = decoded.height;
 
         for (final d in dets) {
-          final String className =
-              d['className']?.toString() ?? d['class']?.toString() ?? '';
+          final String className = (d['className'] ?? d['class'] ?? '')
+              .toString()
+              .toLowerCase()
+              .trim();
 
           if (className != 'sign_number') continue;
 

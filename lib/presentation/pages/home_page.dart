@@ -3,11 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:get/get_core/src/get_main.dart';
 import 'package:get/get_navigation/src/extension_navigation.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:trffic_ilght_app/presentation/pages/camera_inference_screen.dart';
+import 'package:trffic_ilght_app/presentation/pages/camera_inference_page.dart';
 import 'package:trffic_ilght_app/presentation/pages/single_image_screen.dart';
 import 'package:trffic_ilght_app/presentation/pages/video_inference_screen.dart';
 
 import 'package:trffic_ilght_app/presentation/widgets/bottom_navigation_bar.dart';
+import 'package:trffic_ilght_app/text_orc_test.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -135,7 +136,7 @@ class _HomePageState extends State<HomePage> {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => const CameraInferenceScreen(),
+                    builder: (_) => const CameraInferencePage(),
                   ),
                 ),
               ),
@@ -165,6 +166,15 @@ class _HomePageState extends State<HomePage> {
                 iconColor: const Color(0xFFFF6D00),
                 iconBg: const Color(0xFFFFF3E8),
                 onTap: () => Get.to(() => VideoInferenceScreen()),
+              ),
+              _buildActionCard(
+                context,
+                icon: Icons.play_circle_rounded,
+                title: 'Test Ocr  ',
+                subtitle: 'วิเคราะห์ไฟล์วิดีโอ .mp4',
+                iconColor: const Color(0xFFFF6D00),
+                iconBg: const Color(0xFFFFF3E8),
+                onTap: () => Get.to(() => TextRecognitionPage()),
               ),
             ],
           ),

@@ -40,10 +40,10 @@ class TrafficVoiceService {
   Future<void> processDetection(String className, double confidence) async {
     if (!_isEnabled) return;
     if (confidence < 0.40) return;
-    // 🟢 ตรวจสอบว่าผู้ใช้ปิดเสียงในหน้า Settings หรือยัง
+
     final prefs = await SharedPreferences.getInstance();
     final isVoiceEnabled = prefs.getBool('isVoiceEnabled') ?? true;
-    if (!isVoiceEnabled) return; // ถ้าปิดไว้ ให้หยุดทำงานทันที
+    if (!isVoiceEnabled) return;
     final String message = _getThaiMessage(className);
     if (message.isEmpty) return;
 

@@ -111,7 +111,7 @@ class SignNumberOCR {
         );
 
         debugPrint(
-          'OCR [$variantName] RAW => "$raw" | CLEAN => "$clean" | SCORE => $score',
+          '✅ OCR [$variantName] RAW => "$raw" | CLEAN => "$clean" | SCORE => $score | VALUE => $parsedValue',
         );
 
         if (fallbackText == null && clean.isNotEmpty) {
@@ -119,6 +119,7 @@ class SignNumberOCR {
           fallbackValue = parsedValue;
           fallbackImage = bytes;
           fallbackVariant = variantName;
+          debugPrint('  └─ Set as fallback: $fallbackText');
         }
 
         if (score > bestScore) {
@@ -127,7 +128,23 @@ class SignNumberOCR {
           bestValue = parsedValue;
           bestImage = bytes;
           bestVariant = variantName;
+          debugPrint('  └─ New best! Score: $score');
         }
+      }
+
+      debugPrint(
+        '🎯 Final OCR Result: text=$bestText, value=$bestValue, variant=$bestVariant, score=$bestScore',
+      );
+
+      // ✅ ถ้า best score < 50 ให้ใช้ fallback หรือไม่ส่งผล
+      if (bestScore < 50) {
+        debugPrint(
+          '⚠️ Best score too low ($bestScore < 50), using fallback instead',
+        );
+        bestText = fallbackText;
+        bestValue = fallbackValue;
+        bestImage = fallbackImage;
+        bestVariant = fallbackVariant;
       }
 
       bestText ??= fallbackText;
@@ -271,13 +288,25 @@ Future<Map<String, Uint8List>?> _processImageInIsolate(
     double width = (data['width'] as num).toDouble();
     double height = (data['height'] as num).toDouble();
 
+    debugPrint(
+      '🔧 OCR Crop Input: left=$left, top=$top, width=$width, height=$height',
+    );
+
     final img.Image? image = img.decodeImage(originalImageBytes);
-    if (image == null) return null;
+    if (image == null) {
+      debugPrint('❌ Failed to decode image');
+      return null;
+    }
 
     final int imgW = image.width;
     final int imgH = image.height;
 
-    if (width <= 0 || height <= 0) return null;
+    debugPrint('📐 Image size: ${imgW}x${imgH}');
+
+    if (width <= 0 || height <= 0) {
+      debugPrint('❌ Invalid width/height: $width x $height');
+      return null;
+    }
 
     // รองรับ normalized bounding box
     if (left <= 1.0 && top <= 1.0 && width <= 1.0 && height <= 1.0) {
@@ -285,11 +314,14 @@ Future<Map<String, Uint8List>?> _processImageInIsolate(
       top *= imgH;
       width *= imgW;
       height *= imgH;
+      debugPrint(
+        '📐 Converted from normalized to pixel: left=$left, top=$top, width=$width, height=$height',
+      );
     }
 
-    // padding แคบลง ให้เน้นเลข
-    final double paddingW = width * 0.03;
-    final double paddingH = height * 0.06;
+    // padding เพิ่มขึ้น (จาก 3% เป็น 10%) เพื่อไม่ให้ตัดเลขขอบ
+    final double paddingW = width * 0.10;
+    final double paddingH = height * 0.10;
 
     final int cropLeft = max(0, (left - paddingW).round());
     final int cropTop = max(0, (top - paddingH).round());
@@ -299,7 +331,14 @@ Future<Map<String, Uint8List>?> _processImageInIsolate(
     final int cropWidth = cropRight - cropLeft;
     final int cropHeight = cropBottom - cropTop;
 
-    if (cropWidth < 6 || cropHeight < 6) return null;
+    debugPrint(
+      '🖼️ Crop region: left=$cropLeft, top=$cropTop, width=$cropWidth, height=$cropHeight',
+    );
+
+    if (cropWidth < 6 || cropHeight < 6) {
+      debugPrint('❌ Crop too small: ${cropWidth}x${cropHeight}');
+      return null;
+    }
 
     img.Image baseCrop = img.copyCrop(
       image,
@@ -316,41 +355,31 @@ Future<Map<String, Uint8List>?> _processImageInIsolate(
       interpolation: img.Interpolation.cubic,
     );
 
+    debugPrint('🔍 Upscaled to: ${baseCrop.width}x${baseCrop.height}');
+
     final Map<String, img.Image> variants = {};
 
-    // บางภาพ ML Kit อ่านจากภาพเดิมได้ดีกว่า threshold
+    // ✅ v0: ภาพต้นฉบับ upscaled - ดีที่สุด ใช้นี่เลย
     variants['v0_original_upscaled'] = baseCrop.clone();
 
-    img.Image v1 = img.grayscale(baseCrop.clone());
-    variants['v1_grayscale'] = v1;
+    // ✅ v1: ลบ noise ด้วย morphological operation (erosion-dilation)
+    img.Image v1 = _denoiseImage(baseCrop.clone());
+    variants['v1_denoised'] = v1;
 
-    img.Image v2 = img.adjustColor(v1.clone(), contrast: 1.6);
-    variants['v2_gray_contrast'] = v2;
-
-    img.Image v3 = _applyPixelThreshold(v2.clone(), 100);
-    variants['v3_threshold_100'] = v3;
-
-    img.Image v4 = _applyPixelThreshold(v2.clone(), 130);
-    variants['v4_threshold_130'] = v4;
-
-    img.Image v5 = _sharpenImage(v2.clone());
-    variants['v5_sharpen'] = v5;
-
-    img.Image v6 = _applyPixelThreshold(v5.clone(), 120);
-    variants['v6_sharpen_threshold_120'] = v6;
-
-    img.Image v7 = _applyPixelThreshold(img.invert(v2.clone()), 120);
-    variants['v7_invert_threshold_120'] = v7;
-
-    final img.Image centerCrop = _cropCenter(baseCrop.clone(), 0.90, 0.90);
-    img.Image v8 = img.grayscale(centerCrop);
-    v8 = img.adjustColor(v8, contrast: 1.8);
-    variants['v8_center_gray_contrast'] = v8;
+    // ✅ v2: Sharp + Threshold (เหมือน v6 แต่เก่า ให้ลองทั้ง 2 version)
+    img.Image v2 = img.grayscale(baseCrop.clone());
+    v2 = img.adjustColor(v2, contrast: 1.5);
+    img.Image v2_sharpened = _sharpenImage(v2.clone());
+    v2_sharpened = _applyPixelThreshold(v2_sharpened.clone(), 120);
+    variants['v2_sharp_threshold'] = v2_sharpened;
 
     final Map<String, Uint8List> resultBytes = {};
     for (final entry in variants.entries) {
       resultBytes[entry.key] = Uint8List.fromList(img.encodePng(entry.value));
     }
+
+    // 🔍 DEBUG: บันทึกรูป crop ทั้งหมดไว้เพื่อ debug
+    await _saveDebugImages(resultBytes, baseCrop);
 
     return resultBytes;
   } catch (e, st) {
@@ -366,7 +395,14 @@ img.Image _applyPixelThreshold(img.Image src, int threshold) {
   for (int y = 0; y < result.height; y++) {
     for (int x = 0; x < result.width; x++) {
       final pixel = result.getPixel(x, y);
-      final int gray = pixel.r.toInt();
+
+      // คำนวณ grayscale value ที่ถูกต้อง (ไม่ใช่แค่ red channel)
+      final int gray =
+          ((pixel.r.toInt() * 299 +
+                      pixel.g.toInt() * 587 +
+                      pixel.b.toInt() * 114) /
+                  1000)
+              .round();
 
       if (gray > threshold) {
         result.setPixelRgb(x, y, 255, 255, 255);
@@ -383,6 +419,71 @@ img.Image _sharpenImage(img.Image src) {
   return img.convolution(src, filter: <num>[0, -1, 0, -1, 5, -1, 0, -1, 0]);
 }
 
+img.Image _denoiseImage(img.Image src) {
+  // ✅ erosion + dilation = morphological opening (ลบ noise ขาวเล็ก)
+  // แล้ว dilation + erosion = closing (เติมช่องว่างเล็กดำ)
+
+  // ✅ ทำ erosion 1 ครั้ง (ลบ noise)
+  img.Image eroded = _morphErode(src.clone(), 2);
+
+  // ✅ ทำ dilation 1 ครั้ง (คืนขนาด)
+  img.Image denoised = _morphDilate(eroded, 2);
+
+  return denoised;
+}
+
+img.Image _morphErode(img.Image src, int size) {
+  final img.Image result = src.clone();
+
+  for (int y = size; y < result.height - size; y++) {
+    for (int x = size; x < result.width - size; x++) {
+      // หาค่า min ในวงของ size x size
+      int minGray = 255;
+      for (int dy = -size; dy <= size; dy++) {
+        for (int dx = -size; dx <= size; dx++) {
+          final pixel = result.getPixel(x + dx, y + dy);
+          final int gray =
+              ((pixel.r.toInt() * 299 +
+                          pixel.g.toInt() * 587 +
+                          pixel.b.toInt() * 114) /
+                      1000)
+                  .round();
+          minGray = (gray < minGray) ? gray : minGray;
+        }
+      }
+      result.setPixelRgb(x, y, minGray, minGray, minGray);
+    }
+  }
+
+  return result;
+}
+
+img.Image _morphDilate(img.Image src, int size) {
+  final img.Image result = src.clone();
+
+  for (int y = size; y < result.height - size; y++) {
+    for (int x = size; x < result.width - size; x++) {
+      // หาค่า max ในวงของ size x size
+      int maxGray = 0;
+      for (int dy = -size; dy <= size; dy++) {
+        for (int dx = -size; dx <= size; dx++) {
+          final pixel = result.getPixel(x + dx, y + dy);
+          final int gray =
+              ((pixel.r.toInt() * 299 +
+                          pixel.g.toInt() * 587 +
+                          pixel.b.toInt() * 114) /
+                      1000)
+                  .round();
+          maxGray = (gray > maxGray) ? gray : maxGray;
+        }
+      }
+      result.setPixelRgb(x, y, maxGray, maxGray, maxGray);
+    }
+  }
+
+  return result;
+}
+
 img.Image _cropCenter(img.Image src, double widthFactor, double heightFactor) {
   final int newWidth = max(1, (src.width * widthFactor).round());
   final int newHeight = max(1, (src.height * heightFactor).round());
@@ -397,4 +498,40 @@ img.Image _cropCenter(img.Image src, double widthFactor, double heightFactor) {
     width: min(newWidth, src.width - x),
     height: min(newHeight, src.height - y),
   );
+}
+
+// 🔍 DEBUG: บันทึกรูป crop ไว้เพื่อดู
+Future<void> _saveDebugImages(
+  Map<String, Uint8List> variants,
+  img.Image baseCrop,
+) async {
+  try {
+    final tempDir = await getTemporaryDirectory();
+    final debugDir = Directory('${tempDir.path}/ocr_debug');
+    if (!await debugDir.exists()) {
+      await debugDir.create(recursive: true);
+    }
+
+    // บันทึกรูป base crop
+    final baseFile = File('${debugDir.path}/00_base_crop.png');
+    await baseFile.writeAsBytes(Uint8List.fromList(img.encodePng(baseCrop)));
+    debugPrint('💾 Saved base crop to: ${baseFile.path}');
+
+    // บันทึกแต่ละ variant
+    int idx = 1;
+    for (final entry in variants.entries) {
+      final variantName = entry.key;
+      final bytes = entry.value;
+      final file = File(
+        '${debugDir.path}/${idx.toString().padLeft(2, '0')}_$variantName.png',
+      );
+      await file.writeAsBytes(bytes);
+      debugPrint('💾 Saved $variantName to: ${file.path}');
+      idx++;
+    }
+
+    debugPrint('✅ Debug images saved to: ${debugDir.path}');
+  } catch (e) {
+    debugPrint('❌ Failed to save debug images: $e');
+  }
 }

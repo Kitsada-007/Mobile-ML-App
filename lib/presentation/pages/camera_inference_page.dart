@@ -18,14 +18,14 @@ import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/threshold_s
 /// - Adjustable thresholds (confidence, IoU, max detections)
 /// - Camera controls (flip, zoom)
 /// - Performance metrics (FPS)
-class CameraInferenceScreen extends StatefulWidget {
-  const CameraInferenceScreen({super.key});
+class CameraInferencePage extends StatefulWidget {
+  const CameraInferencePage({super.key});
 
   @override
-  State<CameraInferenceScreen> createState() => _CameraInferenceScreenState();
+  State<CameraInferencePage> createState() => _CameraInferencePageState();
 }
 
-class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
+class _CameraInferencePageState extends State<CameraInferencePage> {
   late final CameraInferenceController _controller;
   int _rebuildKey = 0;
 
@@ -70,7 +70,21 @@ class _CameraInferenceScreenState extends State<CameraInferenceScreen> {
         MediaQuery.of(context).orientation == Orientation.landscape;
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Camera")),
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.transparent, // ให้สีกลืนไปกับพื้นหลัง
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            Navigator.pop(context);
+          },
+        ),
+        title: const Text(
+          'Camera',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+        ),
+        centerTitle: false,
+      ),
 
       body: ListenableBuilder(
         listenable: _controller,
