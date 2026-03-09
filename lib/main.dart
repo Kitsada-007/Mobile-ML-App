@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart'; // 👈 1. ตรวจสอบว่ามี import get ไว้
+import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:trffic_ilght_app/presentation/controllers/settings_controller.dart';
 import 'package:trffic_ilght_app/presentation/pages/home_page.dart';

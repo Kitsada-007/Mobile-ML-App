@@ -31,24 +31,26 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         automaticallyImplyLeading: false,
-        title: const Text(
+        title: Text(
           'Detection',
-          style: TextStyle(
-            color: Color(0xFF1A1D2E),
-            fontSize: 20,
+          style: theme.textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.w700,
             letterSpacing: -0.3,
           ),
         ),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: const Color(0xFFEEEFF3)),
+          child: Container(height: 1, color: theme.dividerColor),
         ),
       ),
       bottomNavigationBar: const MyBottomNavigationBar(),
@@ -63,15 +65,20 @@ class _HomePageState extends State<HomePage> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF3D5AFE), Color(0xFF536DFE)],
+                  gradient: LinearGradient(
+                    colors: [
+                      colorScheme.primary,
+                      isDark
+                          ? colorScheme.primaryContainer
+                          : colorScheme.secondary,
+                    ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF3D5AFE).withOpacity(0.25),
+                      color: colorScheme.primary.withOpacity(0.25),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     ),
@@ -83,21 +90,19 @@ class _HomePageState extends State<HomePage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
+                          Text(
                             'Traffic Light AI',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: colorScheme.onPrimary.withOpacity(0.85),
                               fontWeight: FontWeight.w500,
                               letterSpacing: 0.5,
                             ),
                           ),
                           const SizedBox(height: 6),
-                          const Text(
+                          Text(
                             'ระบบตรวจจับ\nสัญญาณไฟจราจร',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              color: colorScheme.onPrimary,
                               fontWeight: FontWeight.w800,
                               height: 1.3,
                             ),
@@ -111,11 +116,9 @@ class _HomePageState extends State<HomePage> {
 
               const SizedBox(height: 28),
 
-              const Text(
+              Text(
                 'เลือกโหมดการตรวจจับ',
-                style: TextStyle(
-                  color: Color(0xFF1A1D2E),
-                  fontSize: 15,
+                style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -180,8 +183,10 @@ class _HomePageState extends State<HomePage> {
     required Color iconBg,
     required VoidCallback onTap,
   }) {
+    final theme = Theme.of(context);
+
     return Material(
-      color: Colors.white,
+      color: theme.cardColor,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
@@ -190,7 +195,7 @@ class _HomePageState extends State<HomePage> {
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFEEEFF3)),
+            border: Border.all(color: theme.dividerColor),
           ),
           child: Row(
             children: [
@@ -212,20 +217,12 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
-                        color: Color(0xFF1A1D2E),
-                        fontSize: 15,
+                      style: theme.textTheme.bodyLarge?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     const SizedBox(height: 3),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: Color(0xFF9CA3AF),
-                        fontSize: 12,
-                      ),
-                    ),
+                    Text(subtitle, style: theme.textTheme.bodyMedium),
                   ],
                 ),
               ),
