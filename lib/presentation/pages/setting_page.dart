@@ -62,13 +62,10 @@ class SettingPage extends StatelessWidget {
   }
 }
 
-// ==========================================
-// 🟢 วิดเจ็ตสำหรับสร้างแต่ละแถวให้เหมือนในรูป
-// ==========================================
 class SettingMenuItem extends StatelessWidget {
   final IconData icon;
   final String title;
-  final Widget? trailing; // สำหรับใส่ Switch หรืออื่นๆ ด้านขวาสุด
+  final Widget? trailing;
   final VoidCallback? onTap;
   final bool isHighlighted;
 
@@ -83,31 +80,24 @@ class SettingMenuItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // เช็คว่าปัจจุบันเป็นโหมดมืดหรือสว่าง เพื่อเลือกสีพื้นหลัง Highlight ได้ถูกต้อง
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        margin: const EdgeInsets.only(
-          bottom: 4.0,
-        ), // เว้นระยะห่างระหว่างแต่ละแถวเล็กน้อย
+        margin: const EdgeInsets.only(bottom: 4.0),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          // ถ้า isHighlighted เป็น true จะใส่สีพื้นหลังตามโหมด (แบบแถบ Notification)
+
           color: isHighlighted
               ? (isDark ? const Color(0xFF2C2F42) : const Color(0xFFF0F2F5))
               : Colors.transparent,
         ),
         child: Row(
           children: [
-            Icon(
-              icon,
-              size: 22,
-              // ไม่บังคับสี ปล่อยให้เปลี่ยนตาม Theme ของแอป
-            ),
+            Icon(icon, size: 22),
             const SizedBox(width: 16),
             Expanded(
               child: Text(

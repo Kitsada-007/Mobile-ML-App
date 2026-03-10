@@ -1,4 +1,3 @@
-import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:get/get_core/src/get_main.dart';
 import 'package:get/get_navigation/src/extension_navigation.dart';
@@ -8,7 +7,6 @@ import 'package:trffic_ilght_app/presentation/pages/single_image_screen.dart';
 import 'package:trffic_ilght_app/presentation/pages/video_inference_screen.dart';
 
 import 'package:trffic_ilght_app/presentation/widgets/bottom_navigation_bar.dart';
-import 'package:trffic_ilght_app/text_orc_test.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -61,7 +59,6 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Hero banner ──────────────────────────────────────
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
@@ -124,8 +121,6 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               const SizedBox(height: 14),
-
-              // ── Card: เปิดกล้อง ───────────────────────────────────
               _buildActionCard(
                 context,
                 icon: Icons.camera_alt_rounded,
@@ -142,7 +137,6 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(height: 12),
 
-              // ── Card: Single image ────────────────────────────────
               _buildActionCard(
                 context,
                 icon: Icons.image_search_rounded,
@@ -157,7 +151,6 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(height: 12),
 
-              // ── Card: วิดีโอ ──────────────────────────────────────
               _buildActionCard(
                 context,
                 icon: Icons.play_circle_rounded,
@@ -167,15 +160,6 @@ class _HomePageState extends State<HomePage> {
                 iconBg: const Color(0xFFFFF3E8),
                 onTap: () => Get.to(() => VideoInferenceScreen()),
               ),
-              _buildActionCard(
-                context,
-                icon: Icons.play_circle_rounded,
-                title: 'Test Ocr  ',
-                subtitle: 'วิเคราะห์ไฟล์วิดีโอ .mp4',
-                iconColor: const Color(0xFFFF6D00),
-                iconBg: const Color(0xFFFFF3E8),
-                onTap: () => Get.to(() => TextRecognitionPage()),
-              ),
             ],
           ),
         ),
@@ -183,7 +167,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ── Helper: สร้าง Action Card ─────────────────────────────────────────────
   Widget _buildActionCard(
     BuildContext context, {
     required IconData icon,

@@ -79,8 +79,6 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
     }
   }
 
-  // ... (ส่วนการ Import เหมือนเดิม) ...
-
   Future<void> _pickAndPredict() async {
     if (!_isModelReady) {
       _showSnackBar('กรุณารอโมเดลโหลดสักครู่...');
@@ -108,7 +106,6 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
           ? MapConverter.convertBoxesList(result['boxes'] as List)
           : [];
 
-      // 🔍 DEBUG: ดูว่า Detection ได้อะไรมา
       debugPrint('=== YOLO DETECTION RESULTS ===');
       debugPrint('จำนวน detections: ${parsedDetections.length}');
       for (int i = 0; i < parsedDetections.length; i++) {
@@ -117,16 +114,11 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
         debugPrint(
           '  className: ${d['className']} | type: ${d['className'].runtimeType}',
         );
-        debugPrint('  class: ${d['class']} | type: ${d['class'].runtimeType}');
         debugPrint('  confidence: ${d['confidence']}');
-        debugPrint(
-          '  coordinates: x1=${d['x1']}, y1=${d['y1']}, x2=${d['x2']}, y2=${d['y2']}',
-        );
       }
       debugPrint('=============================');
 
-      // 2. จัดการเรื่อง Crop และ OCR ในทีเดียว (ใช้ Isolate ให้เป็นประโยชน์)
-      // เราส่ง bytes ไปให้ Isolate จัดการทั้งหมด เพื่อไม่ให้ UI หน่วงเลย
+      // 2. จัดการเรื่อง Crop และ Image Preprocessing ใน Isolate
       final Uint8List? signCrop = await _cropSignNumberImageAsync(
         originalImageBytes: bytes,
         detections: parsedDetections,
@@ -138,7 +130,6 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
 
       // ค้นหาเป้าหมาย OCR
       for (final d in parsedDetections) {
-        // 🔧 แก้: ใช้ tolowercase + trim เพื่อ match 'sign_number' แม่นยำ
         String className = (d['className'] ?? d['class'] ?? '')
             .toString()
             .toLowerCase()
@@ -146,7 +137,6 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
 
         debugPrint('🔍 Checking className: "$className"');
 
-        // ลองหา sign_number ก่อน หรือลองทั้งหมด (ป้ายที่อาจจะมีตัวเลข)
         final bool isCandidateForOcr =
             className == 'sign_number' ||
             className.contains('sign') ||
@@ -155,21 +145,18 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
             className.contains('warning');
 
         if (!isCandidateForOcr) {
-          debugPrint('  ⊘ Skip (ไม่มีโอกาสมีตัวเลข)');
           continue;
         }
 
         debugPrint('  ✅ This could have numbers, trying OCR...');
 
-        // ดึงพิกัด (รองรับทั้งแบบ Pixel และ Normalized)
-        // เราจะส่ง Rect ไปให้ OCR Service เลย
         final Rect? bbox = _convertToRect(d, bytes);
         if (bbox == null) {
           debugPrint('  ⚠️ Failed to convert bbox');
           continue;
         }
 
-        // 3. เริ่มทำ OCR
+        // 3. เริ่มทำ OCR (ระบบ OCR ควรรับภาพที่ถูก Preprocess ไปประมวลผลได้ดีขึ้น)
         final OcrResult ocrResult = await _ocrService.extractNumberFromBox(
           originalImageBytes: bytes,
           boundingBox: bbox,
@@ -193,6 +180,7 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
       setState(() {
         _detections = parsedDetections;
         _annotatedImage = result['annotatedImage'] as Uint8List?;
+        // ภาพที่โชว์จะเป็นภาพที่ผ่านการแต่งสีดำ/ขาวแล้ว
         _signNumberCropImage = signCrop;
         _debugOcrImage = debugImage;
         _ocrVariantName = debugVariantName;
@@ -205,30 +193,21 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
     }
   }
 
-  // ฟังก์ชันช่วยแปลง Bounding Box เป็น Rect ที่ใช้งานง่าย
+  // ✅ ปรับปรุงให้รองรับค่า Normalized (0.0 - 1.0) หากเจอ
   Rect? _convertToRect(Map<String, dynamic> d, Uint8List originalBytes) {
-    // หมายเหตุ: ในโหมดรูปภาพนิ่ง ขนาดภาพต้องดึงจาก bytes จริงๆ
-    // ผมแนะนำให้เก็บขนาดภาพไว้ตั้งแต่ตอนเลือกรูปครับ หรือใช้ Helper ด้านล่าง
     double x1 = (d['x1'] ?? 0.0).toDouble();
     double y1 = (d['y1'] ?? 0.0).toDouble();
     double x2 = (d['x2'] ?? 0.0).toDouble();
     double y2 = (d['y2'] ?? 0.0).toDouble();
 
-    // ตัวอย่างการเช็ค Normalized (ถ้าค่าไม่เกิน 1 แปลว่าเป็น % ของภาพ)
-    // สำหรับ Single Image Predict ปลั๊กอินมักคืนค่าเป็น Pixel มาให้แล้ว
-    // แต่ถ้าเป็น 0.0-1.0 ต้องคูณด้วยความกว้าง/สูงจริง
-
     return Rect.fromLTRB(x1, y1, x2, y2);
   }
 
-  // ... (ส่วน _cropSignNumberImageAsync และ UI อื่นๆ ของคุณถือว่าดีมากแล้วครับ) ...
-
-  // ✅ Wrapped in Isolate.run to prevent UI Jank
+  // ✅ Isolate สำหรับดึงภาพ ย่อ และปรับแต่งสี (Preprocessing)
   Future<Uint8List?> _cropSignNumberImageAsync({
     required Uint8List originalImageBytes,
     required List<Map<String, dynamic>> detections,
   }) async {
-    // Pass a map to the isolate to avoid context closure issues
     final mapData = {'bytes': originalImageBytes, 'detections': detections};
 
     return await Isolate.run(() {
@@ -269,9 +248,7 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
           final double width = x2 - x1;
           final double height = y2 - y1;
 
-          if (width <= 0 || height <= 0) {
-            return null;
-          }
+          if (width <= 0 || height <= 0) return null;
 
           final double paddingW = width * 0.20;
           final double paddingH = height * 0.20;
@@ -284,10 +261,9 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
           final int cropWidth = cropRight - cropLeft;
           final int cropHeight = cropBottom - cropTop;
 
-          if (cropWidth < 5 || cropHeight < 5) {
-            return null;
-          }
+          if (cropWidth < 5 || cropHeight < 5) return null;
 
+          // 1. ตัดภาพดั้งเดิม
           final cropped = img.copyCrop(
             decoded,
             x: cropLeft,
@@ -296,7 +272,24 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
             height: cropHeight,
           );
 
-          return Uint8List.fromList(img.encodeJpg(cropped, quality: 100));
+          // ---------------------------------------------------------
+          // 🛠️ IMAGE PREPROCESSING สำหรับป้าย LED (ทำใน Isolate)
+          // ---------------------------------------------------------
+
+          // แปลงเป็นขาวดำ
+          img.Image processed = img.grayscale(cropped);
+
+          // ปรับ Contrast ให้ไฟ LED เด่นขึ้นมา (ปรับค่า 1.5 - 2.0 ตามความเหมาะสม)
+          processed = img.adjustColor(processed, contrast: 1.8);
+
+          // Thresholding แยกความสว่างและมืดขาดจากกัน (ใช้ 0.6 เป็นค่าเริ่มต้น)
+          processed = img.luminanceThreshold(processed, threshold: 0.6);
+
+          // Invert สี เพื่อให้พื้นหลังขาว ตัวเลขดำ (OCR จะอ่านง่ายที่สุด)
+          img.invert(processed);
+
+          // ส่งออกเป็น Jpg
+          return Uint8List.fromList(img.encodeJpg(processed, quality: 100));
         }
 
         return null;
@@ -330,7 +323,6 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  // UI Widgets remain completely unchanged...
   Widget _buildPreviewCard({
     required String title,
     required Uint8List imageBytes,
@@ -535,18 +527,18 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
                 children: [
                   if (_signNumberCropImage != null)
                     _buildPreviewCard(
-                      title: 'ภาพ crop ของ sign_number',
-                      subtitle: 'ภาพที่ตัดออกมาจากกรอบตรวจจับ',
+                      title: 'ภาพ crop ที่ผ่านการกรองสี (Preprocessed)',
+                      subtitle: 'ภาพขาว-ดำ แบบ Invert พร้อมส่งเข้า OCR',
                       imageBytes: _signNumberCropImage!,
                       borderColor: Colors.orange,
                     ),
 
                   if (_debugOcrImage != null)
                     _buildPreviewCard(
-                      title: 'ภาพที่ส่งให้ OCR อ่าน',
+                      title: 'ภาพที่ส่งให้ OCR อ่านจริง',
                       subtitle: _ocrVariantName != null
                           ? 'Preprocess: $_ocrVariantName'
-                          : 'ภาพหลัง preprocess',
+                          : 'ภาพหลัง preprocess ภายใน Service',
                       imageBytes: _debugOcrImage!,
                       borderColor: Colors.indigo,
                     ),

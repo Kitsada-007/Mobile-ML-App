@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:typed_data';
+import 'dart:developer';
 
 import 'package:flutter/material.dart';
 
 import 'package:trffic_ilght_app/core/models/models.dart';
-import 'package:trffic_ilght_app/services/sign_Number_OCR.dart';
+
 import 'package:trffic_ilght_app/services/traffic_voice_service.dart';
 import 'package:ultralytics_yolo/models/yolo_result.dart';
 import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
@@ -43,14 +43,13 @@ class CameraInferenceController extends ChangeNotifier {
   final TrafficVoiceService _voiceService = TrafficVoiceService();
 
   late final ModelManager _modelManager;
-  String _currentCountdown = '';
 
   // Performance optimization
   bool _isDisposed = false;
   Future<void>? _loadingFuture;
 
   // Getters
-  String get currentCountdown => _currentCountdown;
+
   int get detectionCount => _detectionCount;
   double get currentFps => _currentFps;
   double get confidenceThreshold => _confidenceThreshold;
@@ -79,7 +78,6 @@ class CameraInferenceController extends ChangeNotifier {
     );
   }
 
-  /// Initialize the controller
   Future<void> initialize() async {
     await _loadModelForPlatform();
     _yoloController.setThresholds(
@@ -91,9 +89,8 @@ class CameraInferenceController extends ChangeNotifier {
 
   void onDetectionResults(List<YOLOResult> results) {
     if (_isDisposed) return;
-
+    log(results.toString());
     if (results.isNotEmpty) {
-      // เรียงลำดับเอาตัวที่ AI มั่นใจที่สุดมาใช้งาน
       results.sort((a, b) => b.confidence.compareTo(a.confidence));
       final topResult = results.first;
 
@@ -104,7 +101,7 @@ class CameraInferenceController extends ChangeNotifier {
           topResult.confidence,
         );
       } else {
-        // TODO: ใส่ลอจิก OCR ตัวเลขตรงนี้ในอนาคต
+        // TODO: OCR
       }
     }
     _frameCount++;
@@ -123,7 +120,6 @@ class CameraInferenceController extends ChangeNotifier {
     }
   }
 
-  /// Handle performance metrics
   void onPerformanceMetrics(double fps) {
     if (_isDisposed) return;
 
@@ -225,15 +221,6 @@ class CameraInferenceController extends ChangeNotifier {
     }
   }
 
-  void changeModel(ModelType model) {
-    if (_isDisposed) return;
-
-    if (!_isModelLoading && model != _selectedModel) {
-      _selectedModel = model;
-      _loadModelForPlatform();
-    }
-  }
-
   Future<void> _loadModelForPlatform() async {
     if (_isDisposed) return;
 
@@ -253,8 +240,6 @@ class CameraInferenceController extends ChangeNotifier {
   Future<void> _performModelLoading() async {
     if (_isDisposed) return;
 
-    _isModelLoading = true;
-    _loadingMessage = 'Loading ${_selectedModel.modelName} model...';
     _downloadProgress = 0.0;
     _detectionCount = 0;
     _currentFps = 0.0;
@@ -266,7 +251,7 @@ class CameraInferenceController extends ChangeNotifier {
       if (_isDisposed) return;
 
       _modelPath = modelPath;
-      _isModelLoading = false;
+
       _loadingMessage = '';
       _downloadProgress = 0.0;
       notifyListeners();
@@ -282,8 +267,6 @@ class CameraInferenceController extends ChangeNotifier {
         'Failed to load model ${_selectedModel.modelName} for task ${_selectedModel.task.name}',
       );
 
-      _isModelLoading = false;
-      _loadingMessage = 'Failed to load model: ${error.message}';
       _downloadProgress = 0.0;
       notifyListeners();
       rethrow;

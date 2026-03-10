@@ -53,7 +53,7 @@ class TrafficVoiceService {
     // (ตัดเงื่อนไข className != _lastSpokenClass ทิ้ง)
     if (now.difference(_lastSpeakTime).inSeconds >= 3) {
       await speak(message);
-      _lastSpokenClass = className; // เก็บไว้เผื่อใช้ทำอย่างอื่น
+      _lastSpokenClass = className;
       _lastSpeakTime = now;
     }
   }

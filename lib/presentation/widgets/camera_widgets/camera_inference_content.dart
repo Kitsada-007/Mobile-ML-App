@@ -18,7 +18,7 @@ class CameraInferenceContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (controller.modelPath != null && !controller.isModelLoading) {
+    if (controller.modelPath != null) {
       return YOLOView(
         key: ValueKey(
           'yolo_view_${controller.modelPath}_${controller.selectedModel.task.name}_$rebuildKey',

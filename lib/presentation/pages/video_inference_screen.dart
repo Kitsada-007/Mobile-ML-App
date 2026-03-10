@@ -106,7 +106,6 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                       ),
                     ),
 
-                  // ===== VIDEO / RESULT SECTION ด้านบน =====
                   if (hasVideoResult)
                     ResultVideoSection(
                       controller: _videoController!,
@@ -138,7 +137,6 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
               ),
             ),
 
-            // ===== PICK VIDEO / ACTION BAR ด้านล่าง =====
             Container(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
               decoration: BoxDecoration(
@@ -216,7 +214,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
           double.tryParse(info.getDuration()!) ?? 0.0;
       if (durationInSeconds > 60.0) {
         _showSnackBar(
-          "วิดีโอยาวเกินไป (${durationInSeconds.toStringAsFixed(1)} วิ) กรุณาเลือกวิดีโอไม่เกิน 15 วินาที",
+          "วิดีโอยาวเกินไป (${durationInSeconds.toStringAsFixed(1)} วิ) กรุณาเลือกวิดีโอไม่เกิน 60 วินาที",
         );
         return false;
       }
@@ -228,14 +226,10 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
   Future<void> _pickVideo() async {
     final file = await _picker.pickVideo(source: ImageSource.gallery);
     if (file == null) return;
-
     final File selectedFile = File(file.path);
     final bool isValid = await _validateVideo(selectedFile);
-
     if (!isValid) return;
-
     _videoController?.dispose();
-
     setState(() {
       _videoFile = selectedFile;
       _videoController = null;
@@ -265,108 +259,34 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
     final String finalVideoPath = '${directory.path}/result_video.mp4';
 
     try {
-      // 1. เคลียร์โฟลเดอร์แบบ Asynchronous (ไม่ทำให้ UI ค้าง)
-      for (final path in [inputFolder, outputFolder]) {
-        final dir = Directory(path);
-        if (await dir.exists()) {
-          await dir.delete(recursive: true);
-        }
-        await dir.create(recursive: true);
-      }
+      await _extractAndProcessFrames(
+        inputFolder: inputFolder,
+        outputFolder: outputFolder,
+      );
 
-      const int targetFps = 15;
-
-      setState(() => _progressText = "กำลังสกัดเฟรมจากวิดีโอ (15 FPS)...");
-      final String extractCmd =
-          '-threads 0 -i "${_videoFile!.path}" -t 15 -vf "fps=$targetFps,scale=640:-1:flags=fast_bilinear" -q:v 15 -y "$inputFolder/frame_%05d.jpg"';
-      await FFmpegKit.execute(extractCmd);
-
-      final dirIn = Directory(inputFolder);
-      final List<FileSystemEntity> frameFiles = dirIn.listSync()
-        ..sort((a, b) => a.path.compareTo(b.path));
-
-      final int totalFrames = frameFiles.length;
-      int currentFrame = 0;
-
-      // 2. วนลูปวิเคราะห์ทีละเฟรม
-      for (final fileEntity in frameFiles) {
-        if (fileEntity is! File) continue;
-
-        currentFrame++;
-
-        if (mounted) {
-          setState(() {
-            _progressValue = currentFrame / totalFrames;
-            _progressText = "กำลังตรวจจับ $currentFrame / $totalFrames เฟรม";
-          });
-        }
-
-        final String fileName = fileEntity.uri.pathSegments.last;
-        final File outFile = File('$outputFolder/$fileName');
-
-        // ✅ 3. ป้องกัน Error รายเฟรม ถ้าเฟรมไหนพัง ให้วิดีโอยังไปต่อได้
-        try {
-          final bytes = await fileEntity.readAsBytes();
-          final result = await _yolo.predict(bytes);
-          final annotatedBytes = result['annotatedImage'] as Uint8List?;
-
-          if (annotatedBytes != null) {
-            await outFile.writeAsBytes(annotatedBytes);
-          } else {
-            // ถ้า YOLO คืนค่า null (เช่น ไม่เจออะไร) ก็ใช้ภาพต้นฉบับเลย วิดีโอจะได้ไม่กระตุก
-            await fileEntity.copy(outFile.path);
-          }
-        } catch (frameError) {
-          debugPrint('Error predicting frame $fileName: $frameError');
-          // ถ้า AI พังที่รูปนี้ ก็ใช้รูปต้นฉบับเสียบแทนไปเลย
-          await fileEntity.copy(outFile.path);
-        } finally {
-          // ลบเฟรม input ทิ้งเสมอเพื่อประหยัดพื้นที่
-          if (await fileEntity.exists()) {
-            await fileEntity.delete();
-          }
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _progressValue = 0.0;
-          _progressText = "กำลังรวมวิดีโอกลับคืน...";
-        });
-      }
-
-      // 4. นำรูปภาพที่วิเคราะห์เสร็จมารวมเป็นวิดีโอ
-      final String stitchCmd =
-          '-threads 0 -framerate $targetFps -i "$outputFolder/frame_%05d.jpg" -i "${_videoFile!.path}" -t 15 -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a copy -map 0:v:0 -map 1:a:0? -y "$finalVideoPath"';
-
-      final stitchSession = await FFmpegKit.execute(stitchCmd);
-      final returnCode = await stitchSession.getReturnCode();
-
-      if (!ReturnCode.isSuccess(returnCode)) {
-        _showSnackBar('Failed to create final video.');
-        return;
-      }
+      await _stitchFramesToVideo(
+        outputFolder: outputFolder,
+        finalVideoPath: finalVideoPath,
+      );
 
       _showSnackBar('Video processing completed successfully!');
 
-      // 5. โหลดวิดีโอขึ้นมาเล่น
       _videoController = VideoPlayerController.file(File(finalVideoPath));
       await _videoController!.initialize();
       await _videoController!.setLooping(true);
       await _videoController!.play();
 
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+      }
     } catch (e) {
       debugPrint("Error: $e");
       _showSnackBar('Error: $e');
     } finally {
-      // ✅ 6. CLEANUP ขยะหลังจากทำงานเสร็จ (สำคัญมาก!)
       try {
         final outDir = Directory(outputFolder);
         if (await outDir.exists()) {
-          await outDir.delete(
-            recursive: true,
-          ); // ลบเฟรม Output นับร้อยๆ รูปทิ้ง
+          await outDir.delete(recursive: true);
         }
       } catch (cleanupError) {
         debugPrint('Failed to clean up output folder: $cleanupError');
@@ -375,6 +295,108 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
       if (mounted) {
         setState(() => _processing = false);
       }
+    }
+  }
+
+  Future<void> _extractAndProcessFrames({
+    required String inputFolder,
+    required String outputFolder,
+  }) async {
+    for (final path in [inputFolder, outputFolder]) {
+      final dir = Directory(path);
+      if (await dir.exists()) {
+        await dir.delete(recursive: true);
+      }
+      await dir.create(recursive: true);
+    }
+    const int targetFps = 15;
+    if (mounted) {
+      setState(() {
+        _progressText = "กำลังสกัดเฟรมจากวิดีโอ (15 FPS)...";
+      });
+    }
+    final String extractCmd =
+        '-threads 0 '
+        '-i "${_videoFile!.path}" '
+        '-t 15 '
+        '-vf "fps=$targetFps,scale=640:-1:flags=fast_bilinear" '
+        '-q:v 15 '
+        '-y "$inputFolder/frame_%05d.jpg"';
+    await FFmpegKit.execute(extractCmd);
+    final dirIn = Directory(inputFolder);
+    final List<FileSystemEntity> frameFiles = dirIn.listSync()
+      ..sort((a, b) => a.path.compareTo(b.path));
+
+    final int totalFrames = frameFiles.length;
+    int currentFrame = 0;
+    for (final fileEntity in frameFiles) {
+      if (fileEntity is! File) {
+        continue;
+      }
+      currentFrame++;
+      if (mounted) {
+        setState(() {
+          _progressValue = currentFrame / totalFrames;
+          _progressText = "กำลังตรวจจับ $currentFrame / $totalFrames เฟรม";
+        });
+      }
+
+      final String fileName = fileEntity.uri.pathSegments.last;
+      final File outFile = File('$outputFolder/$fileName');
+
+      try {
+        final bytes = await fileEntity.readAsBytes();
+        final result = await _yolo.predict(bytes);
+        final annotatedBytes = result['annotatedImage'] as Uint8List?;
+
+        if (annotatedBytes != null) {
+          await outFile.writeAsBytes(annotatedBytes);
+        } else {
+          await fileEntity.copy(outFile.path);
+        }
+      } catch (frameError) {
+        debugPrint('Error predicting frame $fileName: $frameError');
+        await fileEntity.copy(outFile.path);
+      } finally {
+        if (await fileEntity.exists()) {
+          await fileEntity.delete();
+        }
+      }
+    }
+  }
+
+  Future<void> _stitchFramesToVideo({
+    required String outputFolder,
+    required String finalVideoPath,
+  }) async {
+    const int targetFps = 15;
+
+    if (mounted) {
+      setState(() {
+        _progressValue = 0.0;
+        _progressText = "กำลังรวมวิดีโอกลับคืน...";
+      });
+    }
+
+    final String stitchCmd =
+        '-threads 0 '
+        '-framerate $targetFps '
+        '-i "$outputFolder/frame_%05d.jpg" '
+        '-i "${_videoFile!.path}" '
+        '-t 15 '
+        '-c:v libx264 '
+        '-preset ultrafast '
+        '-pix_fmt yuv420p '
+        '-c:a copy '
+        '-map 0:v:0 '
+        '-map 1:a:0? '
+        '-y "$finalVideoPath"';
+
+    final stitchSession = await FFmpegKit.execute(stitchCmd);
+    final returnCode = await stitchSession.getReturnCode();
+
+    if (!ReturnCode.isSuccess(returnCode)) {
+      throw Exception('Failed to create final video.');
     }
   }
 
