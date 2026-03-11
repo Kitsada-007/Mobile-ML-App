@@ -48,9 +48,6 @@ class TrafficVoiceService {
     if (message.isEmpty) return;
 
     final now = DateTime.now();
-
-    // เช็คแค่ว่าพูดครั้งล่าสุดผ่านไป 3 วินาทีหรือยัง
-    // (ตัดเงื่อนไข className != _lastSpokenClass ทิ้ง)
     if (now.difference(_lastSpeakTime).inSeconds >= 3) {
       await speak(message);
       _lastSpokenClass = className;

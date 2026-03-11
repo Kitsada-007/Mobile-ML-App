@@ -100,13 +100,14 @@ flutter:
      - assets/models/weights/
   
      - assets/models/weights/best_float16_traffic.tflite
-     - assets/models/weights/best_saved_model/
-     - assets/models/weights/best_saved_model/best_float16.tflite
+     - assets/models/weights/best_float16_number.tflite
+     - assets/models/weights/best_saved_model/  
      - assets/models/weights/best_saved_model/best_float32.tflite
      - assets/models/labels.txt
      - assets/logo.png
      - assets/applogo.png
      - assets/iou.png
+
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

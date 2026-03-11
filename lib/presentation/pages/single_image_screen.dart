@@ -1,19 +1,16 @@
 import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
-
-// Your imports
 import 'package:trffic_ilght_app/core/models/models.dart';
-import 'package:trffic_ilght_app/services/sign_Number_OCR.dart';
 import 'package:ultralytics_yolo/utils/error_handler.dart';
 import 'package:ultralytics_yolo/utils/map_converter.dart';
 import 'package:ultralytics_yolo/yolo.dart';
+
 import '../../services/model_manager.dart';
 
 class SingleImageScreen extends StatefulWidget {
@@ -31,56 +28,70 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
   Uint8List? _annotatedImage;
 
   Uint8List? _signNumberCropImage;
-  Uint8List? _debugOcrImage;
-  String? _ocrVariantName;
-  String? _extractedNumber;
+  String? _digitPredictText;
 
-  late final YOLO _yolo;
+  late final YOLO _yolo; // model หลัก detect traffic light / sign
+  late final YOLO _digitYolo; // model สำหรับ detect digit 0-9
   late final ModelManager _modelManager;
-  final SignNumberOCR _ocrService = SignNumberOCR();
 
   String? _modelPath;
+  String? _digitModelPath;
+
   bool _isModelReady = false;
+  bool _isDigitModelReady = false;
   bool _isPredicting = false;
 
   @override
   void initState() {
     super.initState();
     _modelManager = ModelManager();
-    _initializeYOLO();
+    _initializeModels();
   }
 
-  Future<void> _initializeYOLO() async {
+  Future<void> _initializeModels() async {
     try {
       _modelPath = await _modelManager.getModelPath(
         ModelType.bestFloat16traffic,
       );
 
+      // ✅ เปลี่ยนตรงนี้ให้ตรงกับ enum โมเดลเลขของคุณจริง ๆ
+      _digitModelPath = await _modelManager.getModelPath(
+        ModelType.bestFloat16number,
+      );
+
       if (_modelPath == null) {
-        _showSnackBar('ไม่พบไฟล์โมเดล');
+        _showSnackBar('ไม่พบไฟล์โมเดลหลัก');
+        return;
+      }
+
+      if (_digitModelPath == null) {
+        _showSnackBar('ไม่พบไฟล์โมเดลเลข');
         return;
       }
 
       _yolo = YOLO(modelPath: _modelPath!, task: YOLOTask.detect);
-      await _yolo.loadModel();
+      _digitYolo = YOLO(modelPath: _digitModelPath!, task: YOLOTask.detect);
 
-      if (mounted) {
-        setState(() {
-          _isModelReady = true;
-        });
-      }
+      await _yolo.loadModel();
+      await _digitYolo.loadModel();
+
+      if (!mounted) return;
+      setState(() {
+        _isModelReady = true;
+        _isDigitModelReady = true;
+      });
     } catch (e) {
       if (!mounted) return;
       final error = YOLOErrorHandler.handleError(
         e,
-        'Failed to load model $_modelPath for task ${YOLOTask.detect.name}',
+        'Failed to load models: main=$_modelPath digit=$_digitModelPath',
       );
       _showSnackBar('Error loading model: ${error.message}');
     }
   }
 
   Future<void> _pickAndPredict() async {
-    if (!_isModelReady) {
+    if (!_isModelReady || !_isDigitModelReady) {
       _showSnackBar('กรุณารอโมเดลโหลดสักครู่...');
       return;
     }
@@ -94,85 +105,47 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
       _isPredicting = true;
       _imageBytes = bytes;
       _annotatedImage = null;
-      _extractedNumber = null;
-      _debugOcrImage = null;
+      _detections = [];
+      _signNumberCropImage = null;
+      _digitPredictText = null;
     });
 
     try {
-      // 1. YOLO Prediction
+      // =========================================================
+      // 1) predict ภาพหลัก
+      // =========================================================
       final result = await _yolo.predict(bytes);
       final List<Map<String, dynamic>> parsedDetections =
           result['boxes'] is List
           ? MapConverter.convertBoxesList(result['boxes'] as List)
           : [];
 
-      debugPrint('=== YOLO DETECTION RESULTS ===');
+      debugPrint('=== YOLO MAIN DETECTION RESULTS ===');
       debugPrint('จำนวน detections: ${parsedDetections.length}');
       for (int i = 0; i < parsedDetections.length; i++) {
         final d = parsedDetections[i];
-        debugPrint('Detection $i:');
         debugPrint(
-          '  className: ${d['className']} | type: ${d['className'].runtimeType}',
+          'Detection $i => class=${d['className']} conf=${d['confidence']} '
+          'box=(${d['x1']}, ${d['y1']}, ${d['x2']}, ${d['y2']})',
         );
-        debugPrint('  confidence: ${d['confidence']}');
       }
-      debugPrint('=============================');
+      debugPrint('==================================');
 
-      // 2. จัดการเรื่อง Crop และ Image Preprocessing ใน Isolate
+      // =========================================================
+      // 2) crop sign_number
+      // =========================================================
       final Uint8List? signCrop = await _cropSignNumberImageAsync(
         originalImageBytes: bytes,
         detections: parsedDetections,
       );
 
       String? foundNumber;
-      Uint8List? debugImage;
-      String? debugVariantName;
 
-      // ค้นหาเป้าหมาย OCR
-      for (final d in parsedDetections) {
-        String className = (d['className'] ?? d['class'] ?? '')
-            .toString()
-            .toLowerCase()
-            .trim();
-
-        debugPrint('🔍 Checking className: "$className"');
-
-        final bool isCandidateForOcr =
-            className == 'sign_number' ||
-            className.contains('sign') ||
-            className.contains('number') ||
-            className.contains('speed') ||
-            className.contains('warning');
-
-        if (!isCandidateForOcr) {
-          continue;
-        }
-
-        debugPrint('  ✅ This could have numbers, trying OCR...');
-
-        final Rect? bbox = _convertToRect(d, bytes);
-        if (bbox == null) {
-          debugPrint('  ⚠️ Failed to convert bbox');
-          continue;
-        }
-
-        // 3. เริ่มทำ OCR (ระบบ OCR ควรรับภาพที่ถูก Preprocess ไปประมวลผลได้ดีขึ้น)
-        final OcrResult ocrResult = await _ocrService.extractNumberFromBox(
-          originalImageBytes: bytes,
-          boundingBox: bbox,
-        );
-
-        debugPrint(
-          '  📊 OCR Result: "${ocrResult.text}" | Variant: ${ocrResult.debugVariantName}',
-        );
-
-        debugImage = ocrResult.debugImageBytes;
-        debugVariantName = ocrResult.debugVariantName;
-
-        if (ocrResult.text != null && ocrResult.text!.isNotEmpty) {
-          foundNumber = ocrResult.text;
-          debugPrint('  🎉 Found number: $foundNumber');
-        }
+      // =========================================================
+      // 3) ถ้ามี crop -> ใช้ YOLO ตัวที่ 2 อ่านเลข
+      // =========================================================
+      if (signCrop != null) {
+        foundNumber = await _predictDigitsFromCrop(signCrop);
       }
 
       if (!mounted) return;
@@ -180,30 +153,93 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
       setState(() {
         _detections = parsedDetections;
         _annotatedImage = result['annotatedImage'] as Uint8List?;
-        // ภาพที่โชว์จะเป็นภาพที่ผ่านการแต่งสีดำ/ขาวแล้ว
         _signNumberCropImage = signCrop;
-        _debugOcrImage = debugImage;
-        _ocrVariantName = debugVariantName;
-        _extractedNumber = foundNumber;
+        _digitPredictText = foundNumber;
       });
     } catch (e) {
       _showSnackBar('เกิดข้อผิดพลาด: $e');
     } finally {
-      if (mounted) setState(() => _isPredicting = false);
+      if (mounted) {
+        setState(() => _isPredicting = false);
+      }
     }
   }
 
-  // ✅ ปรับปรุงให้รองรับค่า Normalized (0.0 - 1.0) หากเจอ
-  Rect? _convertToRect(Map<String, dynamic> d, Uint8List originalBytes) {
-    double x1 = (d['x1'] ?? 0.0).toDouble();
-    double y1 = (d['y1'] ?? 0.0).toDouble();
-    double x2 = (d['x2'] ?? 0.0).toDouble();
-    double y2 = (d['y2'] ?? 0.0).toDouble();
+  // =========================================================
+  // ใช้ YOLO ตัวที่ 2 อ่านเลขจาก crop
+  // model นี้ควร detect คลาส 0-9
+  // =========================================================
+  Future<String?> _predictDigitsFromCrop(Uint8List cropBytes) async {
+    try {
+      final result = await _digitYolo.predict(cropBytes);
 
+      final List<Map<String, dynamic>> digitDetections = result['boxes'] is List
+          ? MapConverter.convertBoxesList(result['boxes'] as List)
+          : [];
+
+      debugPrint('=== DIGIT YOLO RESULTS ===');
+      for (int i = 0; i < digitDetections.length; i++) {
+        final d = digitDetections[i];
+        debugPrint(
+          'Digit $i => class=${d['className']} conf=${d['confidence']} '
+          'box=(${d['x1']}, ${d['y1']}, ${d['x2']}, ${d['y2']})',
+        );
+      }
+      debugPrint('==========================');
+
+      final filtered = digitDetections.where((d) {
+        final cls = (d['className'] ?? d['class'] ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
+
+        return RegExp(r'^\d$').hasMatch(cls);
+      }).toList();
+
+      if (filtered.isEmpty) {
+        debugPrint('Digit model: ไม่เจอเลข');
+        return null;
+      }
+
+      filtered.sort((a, b) {
+        final ax = (a['x1'] ?? 0).toDouble();
+        final bx = (b['x1'] ?? 0).toDouble();
+        return ax.compareTo(bx);
+      });
+
+      String text = filtered
+          .map((d) => (d['className'] ?? '').toString())
+          .join();
+
+      if (text.length > 2) {
+        text = text.substring(0, 2);
+      }
+
+      final value = int.tryParse(text);
+      if (value == null || value < 0 || value > 99) {
+        return null;
+      }
+
+      return text;
+    } catch (e) {
+      debugPrint('Digit YOLO predict error: $e');
+      return null;
+    }
+  }
+
+  Rect? _convertToRect(Map<String, dynamic> d) {
+    final double x1 = (d['x1'] ?? 0.0).toDouble();
+    final double y1 = (d['y1'] ?? 0.0).toDouble();
+    final double x2 = (d['x2'] ?? 0.0).toDouble();
+    final double y2 = (d['y2'] ?? 0.0).toDouble();
+
+    if (x2 <= x1 || y2 <= y1) return null;
     return Rect.fromLTRB(x1, y1, x2, y2);
   }
 
-  // ✅ Isolate สำหรับดึงภาพ ย่อ และปรับแต่งสี (Preprocessing)
+  // =========================================================
+  // crop sign_number แล้ว preprocess เบื้องต้น
+  // =========================================================
   Future<Uint8List?> _cropSignNumberImageAsync({
     required Uint8List originalImageBytes,
     required List<Map<String, dynamic>> detections,
@@ -225,6 +261,10 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
         final int imgW = decoded.width;
         final int imgH = decoded.height;
 
+        // หา sign_number ที่ confidence สูงสุด
+        Map<String, dynamic>? bestSign;
+        double bestConf = -1;
+
         for (final d in dets) {
           final String className = (d['className'] ?? d['class'] ?? '')
               .toString()
@@ -233,66 +273,77 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
 
           if (className != 'sign_number') continue;
 
-          double x1 = (d['x1'] ?? 0.0).toDouble();
-          double y1 = (d['y1'] ?? 0.0).toDouble();
-          double x2 = (d['x2'] ?? 0.0).toDouble();
-          double y2 = (d['y2'] ?? 0.0).toDouble();
-
-          if (x2 <= 1.0 && y2 <= 1.0) {
-            x1 *= imgW;
-            y1 *= imgH;
-            x2 *= imgW;
-            y2 *= imgH;
+          final conf = (d['confidence'] ?? 0.0).toDouble();
+          if (conf > bestConf) {
+            bestConf = conf;
+            bestSign = d;
           }
-
-          final double width = x2 - x1;
-          final double height = y2 - y1;
-
-          if (width <= 0 || height <= 0) return null;
-
-          final double paddingW = width * 0.20;
-          final double paddingH = height * 0.20;
-
-          final int cropLeft = max(0, (x1 - paddingW).round());
-          final int cropTop = max(0, (y1 - paddingH).round());
-          final int cropRight = min(imgW, (x2 + paddingW).round());
-          final int cropBottom = min(imgH, (y2 + paddingH).round());
-
-          final int cropWidth = cropRight - cropLeft;
-          final int cropHeight = cropBottom - cropTop;
-
-          if (cropWidth < 5 || cropHeight < 5) return null;
-
-          // 1. ตัดภาพดั้งเดิม
-          final cropped = img.copyCrop(
-            decoded,
-            x: cropLeft,
-            y: cropTop,
-            width: cropWidth,
-            height: cropHeight,
-          );
-
-          // ---------------------------------------------------------
-          // 🛠️ IMAGE PREPROCESSING สำหรับป้าย LED (ทำใน Isolate)
-          // ---------------------------------------------------------
-
-          // แปลงเป็นขาวดำ
-          img.Image processed = img.grayscale(cropped);
-
-          // ปรับ Contrast ให้ไฟ LED เด่นขึ้นมา (ปรับค่า 1.5 - 2.0 ตามความเหมาะสม)
-          processed = img.adjustColor(processed, contrast: 1.8);
-
-          // Thresholding แยกความสว่างและมืดขาดจากกัน (ใช้ 0.6 เป็นค่าเริ่มต้น)
-          processed = img.luminanceThreshold(processed, threshold: 0.6);
-
-          // Invert สี เพื่อให้พื้นหลังขาว ตัวเลขดำ (OCR จะอ่านง่ายที่สุด)
-          img.invert(processed);
-
-          // ส่งออกเป็น Jpg
-          return Uint8List.fromList(img.encodeJpg(processed, quality: 100));
         }
 
-        return null;
+        if (bestSign == null) {
+          debugPrint('Crop: ไม่เจอ sign_number');
+          return null;
+        }
+
+        double x1 = (bestSign['x1'] ?? 0.0).toDouble();
+        double y1 = (bestSign['y1'] ?? 0.0).toDouble();
+        double x2 = (bestSign['x2'] ?? 0.0).toDouble();
+        double y2 = (bestSign['y2'] ?? 0.0).toDouble();
+
+        // รองรับ normalized box
+        if (x2 <= 1.0 && y2 <= 1.0) {
+          x1 *= imgW;
+          y1 *= imgH;
+          x2 *= imgW;
+          y2 *= imgH;
+        }
+
+        final double width = x2 - x1;
+        final double height = y2 - y1;
+
+        if (width <= 0 || height <= 0) {
+          debugPrint('Crop: bbox ไม่ถูกต้อง');
+          return null;
+        }
+
+        // เผื่อขอบเยอะขึ้นสำหรับเลข
+        final double paddingW = width * 0.35;
+        final double paddingH = height * 0.35;
+
+        final int cropLeft = max(0, (x1 - paddingW).round());
+        final int cropTop = max(0, (y1 - paddingH).round());
+        final int cropRight = min(imgW, (x2 + paddingW).round());
+        final int cropBottom = min(imgH, (y2 + paddingH).round());
+
+        final int cropWidth = cropRight - cropLeft;
+        final int cropHeight = cropBottom - cropTop;
+
+        if (cropWidth < 8 || cropHeight < 8) {
+          debugPrint('Crop: crop เล็กเกินไป $cropWidth x $cropHeight');
+          return null;
+        }
+
+        img.Image cropped = img.copyCrop(
+          decoded,
+          x: cropLeft,
+          y: cropTop,
+          width: cropWidth,
+          height: cropHeight,
+        );
+
+        // upscale เพื่อให้โมเดลเลขเห็นง่ายขึ้น
+        cropped = img.copyResize(
+          cropped,
+          width: max(cropped.width * 4, 128),
+          height: max(cropped.height * 4, 128),
+          interpolation: img.Interpolation.cubic,
+        );
+
+        // preprocess นิดหน่อย
+        cropped = img.grayscale(cropped);
+        cropped = img.adjustColor(cropped, contrast: 1.8);
+
+        return Uint8List.fromList(img.encodeJpg(cropped, quality: 100));
       } catch (e) {
         debugPrint('Crop sign_number isolate error: $e');
         return null;
@@ -370,7 +421,7 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
   }
 
   Widget _buildResultBox() {
-    if (_extractedNumber != null) {
+    if (_digitPredictText != null) {
       return Center(
         child: Container(
           margin: const EdgeInsets.only(bottom: 20),
@@ -383,31 +434,24 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
           child: Column(
             children: [
               const Text(
-                'OCR อ่านได้:',
+                'YOLO อ่านเลขได้:',
                 style: TextStyle(color: Colors.white70, fontSize: 14),
               ),
               Text(
-                _extractedNumber!,
+                _digitPredictText!,
                 style: const TextStyle(
                   color: Colors.greenAccent,
                   fontSize: 60,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              if (_ocrVariantName != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  'Variant: $_ocrVariantName',
-                  style: const TextStyle(color: Colors.white70, fontSize: 13),
-                ),
-              ],
             ],
           ),
         ),
       );
     }
 
-    if (_debugOcrImage != null && !_isPredicting) {
+    if (_signNumberCropImage != null && !_isPredicting) {
       return Center(
         child: Container(
           margin: const EdgeInsets.only(bottom: 20),
@@ -417,24 +461,10 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: Colors.red.shade200),
           ),
-          child: Column(
-            children: [
-              const Text(
-                '⚠️ AI เห็นป้าย แต่ไม่สามารถแกะตัวเลขออกมาได้',
-                style: TextStyle(
-                  color: Colors.red,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              if (_ocrVariantName != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  'Variant ล่าสุด: $_ocrVariantName',
-                  style: const TextStyle(color: Colors.black54, fontSize: 12),
-                ),
-              ],
-            ],
+          child: const Text(
+            '⚠️ เจอป้ายตัวเลขแล้ว แต่โมเดลเลขยังอ่านไม่ออก',
+            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
           ),
         ),
       );
@@ -445,17 +475,18 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
 
   @override
   void dispose() {
-    _ocrService.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final bool allReady = _isModelReady && _isDigitModelReady;
+
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
         title: const Text(
-          'ทดสอบ OCR รูปภาพ',
+          'ทดสอบ YOLO รูปภาพ',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.white,
@@ -482,7 +513,7 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
                 ),
               ],
             ),
-            child: !_isModelReady
+            child: !allReady
                 ? const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -527,20 +558,11 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
                 children: [
                   if (_signNumberCropImage != null)
                     _buildPreviewCard(
-                      title: 'ภาพ crop ที่ผ่านการกรองสี (Preprocessed)',
-                      subtitle: 'ภาพขาว-ดำ แบบ Invert พร้อมส่งเข้า OCR',
+                      title: 'ภาพ crop ป้ายตัวเลข',
+                      subtitle: 'ภาพที่ส่งให้ YOLO โมเดลเลขอ่านต่อ',
                       imageBytes: _signNumberCropImage!,
                       borderColor: Colors.orange,
-                    ),
-
-                  if (_debugOcrImage != null)
-                    _buildPreviewCard(
-                      title: 'ภาพที่ส่งให้ OCR อ่านจริง',
-                      subtitle: _ocrVariantName != null
-                          ? 'Preprocess: $_ocrVariantName'
-                          : 'ภาพหลัง preprocess ภายใน Service',
-                      imageBytes: _debugOcrImage!,
-                      borderColor: Colors.indigo,
+                      height: 140,
                     ),
 
                   _buildResultBox(),

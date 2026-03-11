@@ -240,6 +240,8 @@ class CameraInferenceController extends ChangeNotifier {
   Future<void> _performModelLoading() async {
     if (_isDisposed) return;
 
+    _isModelLoading = true;
+    _loadingMessage = 'Loading ${_selectedModel.modelName} model...';
     _downloadProgress = 0.0;
     _detectionCount = 0;
     _currentFps = 0.0;
@@ -251,7 +253,7 @@ class CameraInferenceController extends ChangeNotifier {
       if (_isDisposed) return;
 
       _modelPath = modelPath;
-
+      _isModelLoading = false;
       _loadingMessage = '';
       _downloadProgress = 0.0;
       notifyListeners();
@@ -267,6 +269,8 @@ class CameraInferenceController extends ChangeNotifier {
         'Failed to load model ${_selectedModel.modelName} for task ${_selectedModel.task.name}',
       );
 
+      _isModelLoading = false;
+      _loadingMessage = 'Failed to load model: ${error.message}';
       _downloadProgress = 0.0;
       notifyListeners();
       rethrow;
