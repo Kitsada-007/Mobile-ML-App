@@ -30,8 +30,8 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
   Uint8List? _signNumberCropImage;
   String? _digitPredictText;
 
-  late final YOLO _yolo; // model หลัก detect traffic light / sign
-  late final YOLO _digitYolo; // model สำหรับ detect digit 0-9
+  late YOLO _yolo; // model หลัก detect traffic light / sign
+  late YOLO _digitYolo; // model สำหรับ detect digit 0-9
   late final ModelManager _modelManager;
 
   String? _modelPath;
@@ -45,6 +45,7 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
   void initState() {
     super.initState();
     _modelManager = ModelManager();
+    // ✅ เรียกใช้ฟังก์ชันโหลดโดยไม่สร้าง YOLO ทันที ป้องกันแอปเด้ง
     _initializeModels();
   }
 
@@ -54,7 +55,6 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
         ModelType.bestFloat16traffic,
       );
 
-      // ✅ เปลี่ยนตรงนี้ให้ตรงกับ enum โมเดลเลขของคุณจริง ๆ
       _digitModelPath = await _modelManager.getModelPath(
         ModelType.bestFloat16number,
       );
@@ -69,6 +69,7 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
         return;
       }
 
+      // ✅ ย้ายการสร้าง YOLO มาไว้ตรงนี้ (หลังจากมั่นใจว่า Path ไม่ใช่ null)
       _yolo = YOLO(modelPath: _modelPath!, task: YOLOTask.detect);
       _digitYolo = YOLO(modelPath: _digitModelPath!, task: YOLOTask.detect);
 
@@ -167,7 +168,6 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
 
   // =========================================================
   // ใช้ YOLO ตัวที่ 2 อ่านเลขจาก crop
-  // model นี้ควร detect คลาส 0-9
   // =========================================================
   Future<String?> _predictDigitsFromCrop(Uint8List cropBytes) async {
     try {
@@ -177,40 +177,30 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
           ? MapConverter.convertBoxesList(result['boxes'] as List)
           : [];
 
-      debugPrint('=== DIGIT YOLO RESULTS ===');
-      for (int i = 0; i < digitDetections.length; i++) {
-        final d = digitDetections[i];
-        debugPrint(
-          'Digit $i => class=${d['className']} conf=${d['confidence']} '
-          'box=(${d['x1']}, ${d['y1']}, ${d['x2']}, ${d['y2']})',
-        );
-      }
-      debugPrint('==========================');
-
+      // 🎯 กรองเอาเฉพาะตัวเลข 0-9
       final filtered = digitDetections.where((d) {
         final cls = (d['className'] ?? d['class'] ?? '')
             .toString()
             .trim()
             .toLowerCase();
-
         return RegExp(r'^\d$').hasMatch(cls);
       }).toList();
 
-      if (filtered.isEmpty) {
-        debugPrint('Digit model: ไม่เจอเลข');
-        return null;
-      }
+      if (filtered.isEmpty) return null;
 
+      // 🎯 เรียงจากซ้ายไปขวา
       filtered.sort((a, b) {
         final ax = (a['x1'] ?? 0).toDouble();
         final bx = (b['x1'] ?? 0).toDouble();
         return ax.compareTo(bx);
       });
 
+      // นำมาต่อกัน
       String text = filtered
           .map((d) => (d['className'] ?? '').toString())
           .join();
 
+      // 🎯 ตัดให้เหลือแค่ 2 หลัก (สำหรับป้ายจำกัดความเร็ว)
       if (text.length > 2) {
         text = text.substring(0, 2);
       }
@@ -227,18 +217,8 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
     }
   }
 
-  Rect? _convertToRect(Map<String, dynamic> d) {
-    final double x1 = (d['x1'] ?? 0.0).toDouble();
-    final double y1 = (d['y1'] ?? 0.0).toDouble();
-    final double x2 = (d['x2'] ?? 0.0).toDouble();
-    final double y2 = (d['y2'] ?? 0.0).toDouble();
-
-    if (x2 <= x1 || y2 <= y1) return null;
-    return Rect.fromLTRB(x1, y1, x2, y2);
-  }
-
   // =========================================================
-  // crop sign_number แล้ว preprocess เบื้องต้น
+  // crop sign_number แล้วแปลงขาวดำ / ปรับแสง ใน Background Isolate
   // =========================================================
   Future<Uint8List?> _cropSignNumberImageAsync({
     required Uint8List originalImageBytes,
@@ -253,15 +233,11 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
             mapData['detections'] as List<Map<String, dynamic>>;
 
         final decoded = img.decodeImage(bytes);
-        if (decoded == null) {
-          debugPrint('Crop: decodeImage failed');
-          return null;
-        }
+        if (decoded == null) return null;
 
         final int imgW = decoded.width;
         final int imgH = decoded.height;
 
-        // หา sign_number ที่ confidence สูงสุด
         Map<String, dynamic>? bestSign;
         double bestConf = -1;
 
@@ -280,17 +256,13 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
           }
         }
 
-        if (bestSign == null) {
-          debugPrint('Crop: ไม่เจอ sign_number');
-          return null;
-        }
+        if (bestSign == null) return null;
 
         double x1 = (bestSign['x1'] ?? 0.0).toDouble();
         double y1 = (bestSign['y1'] ?? 0.0).toDouble();
         double x2 = (bestSign['x2'] ?? 0.0).toDouble();
         double y2 = (bestSign['y2'] ?? 0.0).toDouble();
 
-        // รองรับ normalized box
         if (x2 <= 1.0 && y2 <= 1.0) {
           x1 *= imgW;
           y1 *= imgH;
@@ -301,14 +273,11 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
         final double width = x2 - x1;
         final double height = y2 - y1;
 
-        if (width <= 0 || height <= 0) {
-          debugPrint('Crop: bbox ไม่ถูกต้อง');
-          return null;
-        }
+        if (width <= 0 || height <= 0) return null;
 
-        // เผื่อขอบเยอะขึ้นสำหรับเลข
-        final double paddingW = width * 0.35;
-        final double paddingH = height * 0.35;
+        // 🎯 เผื่อขอบ (Padding) 15%
+        final double paddingW = width * 0.15;
+        final double paddingH = height * 0.15;
 
         final int cropLeft = max(0, (x1 - paddingW).round());
         final int cropTop = max(0, (y1 - paddingH).round());
@@ -318,10 +287,7 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
         final int cropWidth = cropRight - cropLeft;
         final int cropHeight = cropBottom - cropTop;
 
-        if (cropWidth < 8 || cropHeight < 8) {
-          debugPrint('Crop: crop เล็กเกินไป $cropWidth x $cropHeight');
-          return null;
-        }
+        if (cropWidth < 8 || cropHeight < 8) return null;
 
         img.Image cropped = img.copyCrop(
           decoded,
@@ -331,17 +297,19 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
           height: cropHeight,
         );
 
-        // upscale เพื่อให้โมเดลเลขเห็นง่ายขึ้น
+        // 🎯 ขยายให้โมเดลอ่านง่ายขึ้น
         cropped = img.copyResize(
           cropped,
-          width: max(cropped.width * 4, 128),
-          height: max(cropped.height * 4, 128),
+          width: max(cropped.width * 2, 128),
+          height: max(cropped.height * 2, 128),
           interpolation: img.Interpolation.cubic,
         );
 
-        // preprocess นิดหน่อย
+        // 🎯 แปลงเป็นขาวดำ (Grayscale)
         cropped = img.grayscale(cropped);
-        cropped = img.adjustColor(cropped, contrast: 1.8);
+
+        // 🎯 ปรับ Contrast ให้ตัดกับพื้นหลัง
+        cropped = img.adjustColor(cropped, contrast: 1.5);
 
         return Uint8List.fromList(img.encodeJpg(cropped, quality: 100));
       } catch (e) {
@@ -365,7 +333,6 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
       'turn_right': 'เลี้ยวขวา',
       'yellow_light': 'ไฟเหลือง',
     };
-
     return labels[className] ?? className;
   }
 
@@ -556,18 +523,17 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (_signNumberCropImage != null)
-                    _buildPreviewCard(
-                      title: 'ภาพ crop ป้ายตัวเลข',
-                      subtitle: 'ภาพที่ส่งให้ YOLO โมเดลเลขอ่านต่อ',
-                      imageBytes: _signNumberCropImage!,
-                      borderColor: Colors.orange,
-                      height: 140,
+                  // 1. ภาพต้นฉบับ (แสดงตลอดเมื่อเลือกรูป)
+                  if (_imageBytes != null) ...[
+                    const Text(
+                      '📸 ภาพต้นฉบับ (ก่อนประมวลผล)',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blueGrey,
+                      ),
                     ),
-
-                  _buildResultBox(),
-
-                  if (_imageBytes != null)
+                    const SizedBox(height: 10),
                     Container(
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(15),
@@ -579,10 +545,7 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
-                          Image.memory(
-                            _annotatedImage ?? _imageBytes!,
-                            fit: BoxFit.contain,
-                          ),
+                          Image.memory(_imageBytes!, fit: BoxFit.contain),
                           if (_isPredicting)
                             Container(
                               color: Colors.black45,
@@ -594,10 +557,51 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
                         ],
                       ),
                     ),
+                    const SizedBox(height: 24),
+                  ],
 
-                  const SizedBox(height: 24),
+                  // 2. ภาพที่ตีเส้นขอบเขตแล้ว (แสดงหลังประมวลผลเสร็จ)
+                  if (_annotatedImage != null && !_isPredicting) ...[
+                    const Text(
+                      '🎯 ภาพหลังการตรวจจับป้ายจราจร (YOLO)',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.indigo,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(color: Colors.indigo, width: 2),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Image.memory(
+                        _annotatedImage!,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
 
-                  if (_detections.isNotEmpty) ...[
+                  // 3. ภาพขาวดำที่ครอบส่วนป้าย
+                  if (_signNumberCropImage != null && !_isPredicting)
+                    _buildPreviewCard(
+                      title: '✂️ ภาพตัดเฉพาะป้ายตัวเลข',
+                      subtitle: 'ภาพที่ส่งให้ YOLO โมเดลเลขอ่านต่อ (ขาวดำ)',
+                      imageBytes: _signNumberCropImage!,
+                      borderColor: Colors.orange,
+                      height: 140,
+                    ),
+
+                  // 4. ผลลัพธ์ตัวเลข
+                  _buildResultBox(),
+
+                  const SizedBox(height: 10),
+
+                  // 5. ป้ายกำกับสิ่งที่เจอทั้งหมด
+                  if (_detections.isNotEmpty && !_isPredicting) ...[
                     const Text(
                       'รายละเอียดที่ตรวจพบ:',
                       style: TextStyle(

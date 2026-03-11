@@ -92,18 +92,10 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-     - assets/models/
+     - assets/models/best_float16_traffic.tflite
+     - assets/models/best_float16_number.tflite
      - assets/images/
      - assets/config/
-     - assets/models/best_float32.tflite
-   
-     - assets/models/weights/
-  
-     - assets/models/weights/best_float16_traffic.tflite
-     - assets/models/weights/best_float16_number.tflite
-     - assets/models/weights/best_saved_model/  
-     - assets/models/weights/best_saved_model/best_float32.tflite
-     - assets/models/labels.txt
      - assets/logo.png
      - assets/applogo.png
      - assets/iou.png

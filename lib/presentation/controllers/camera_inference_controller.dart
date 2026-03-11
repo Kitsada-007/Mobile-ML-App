@@ -1,54 +1,53 @@
 import 'dart:async';
 import 'dart:developer';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-
 import 'package:trffic_ilght_app/core/models/models.dart';
-
 import 'package:trffic_ilght_app/services/traffic_voice_service.dart';
+import 'package:trffic_ilght_app/services/sign_number_pipeline_service.dart';
 import 'package:ultralytics_yolo/models/yolo_result.dart';
 import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
 import 'package:ultralytics_yolo/utils/error_handler.dart';
+import 'package:ultralytics_yolo/yolo.dart';
 import 'package:ultralytics_yolo/yolo_view.dart';
 
 import '../../services/model_manager.dart';
 
 class CameraInferenceController extends ChangeNotifier {
-  // Detection state
   int _detectionCount = 0;
   double _currentFps = 0.0;
   int _frameCount = 0;
   DateTime _lastFpsUpdate = DateTime.now();
 
-  // Threshold state
   double _confidenceThreshold = 0.5;
   double _iouThreshold = 0.45;
   int _numItemsThreshold = 30;
   SliderType _activeSlider = SliderType.none;
 
-  // Model state
   ModelType _selectedModel = ModelType.bestFloat16traffic;
   bool _isModelLoading = false;
   String? _modelPath;
   String _loadingMessage = '';
   double _downloadProgress = 0.0;
 
-  // Camera state
   double _currentZoomLevel = 1.0;
   LensFacing _lensFacing = LensFacing.back;
   bool _isFrontCamera = false;
 
-  // Controllers
   final _yoloController = YOLOViewController();
   final TrafficVoiceService _voiceService = TrafficVoiceService();
-
   late final ModelManager _modelManager;
 
-  // Performance optimization
+  YOLO? _digitYolo;
+  SignNumberPipelineService? _signNumberPipelineService;
+  String? _detectedNumber;
+  Uint8List? _latestFrameBytes;
+  bool _isDetectingNumber = false;
+  DateTime? _lastNumberDetectTime;
+
   bool _isDisposed = false;
   Future<void>? _loadingFuture;
-
-  // Getters
 
   int get detectionCount => _detectionCount;
   double get currentFps => _currentFps;
@@ -64,8 +63,8 @@ class CameraInferenceController extends ChangeNotifier {
   double get currentZoomLevel => _currentZoomLevel;
   bool get isFrontCamera => _isFrontCamera;
   LensFacing get lensFacing => _lensFacing;
-
   YOLOViewController get yoloController => _yoloController;
+  String? get detectedNumber => _detectedNumber;
 
   CameraInferenceController() {
     _isFrontCamera = _lensFacing == LensFacing.front;
@@ -80,6 +79,8 @@ class CameraInferenceController extends ChangeNotifier {
 
   Future<void> initialize() async {
     await _loadModelForPlatform();
+    await _loadDigitModel();
+
     _yoloController.setThresholds(
       confidenceThreshold: _confidenceThreshold,
       iouThreshold: _iouThreshold,
@@ -87,23 +88,88 @@ class CameraInferenceController extends ChangeNotifier {
     );
   }
 
-  void onDetectionResults(List<YOLOResult> results) {
+  Future<void> _loadDigitModel() async {
+    try {
+      final digitModelPath = await _modelManager.getModelPath(
+        ModelType.bestFloat16number,
+      );
+
+      if (digitModelPath == null) {
+        throw Exception('Digit model path is null');
+      }
+
+      _digitYolo = YOLO(modelPath: digitModelPath, task: YOLOTask.detect);
+
+      await _digitYolo!.loadModel();
+
+      _signNumberPipelineService = SignNumberPipelineService(
+        digitYolo: _digitYolo!,
+      );
+    } catch (e) {
+      final error = YOLOErrorHandler.handleError(
+        e,
+        'Failed to load bestFloat16number model',
+      );
+      _loadingMessage = 'Digit model load failed: ${error.message}';
+      notifyListeners();
+    }
+  }
+
+  void updateLatestFrame(Uint8List frameBytes) {
     if (_isDisposed) return;
+    _latestFrameBytes = frameBytes;
+  }
+
+  bool _canRunNumberDetection() {
+    if (_lastNumberDetectTime == null) return true;
+    return DateTime.now().difference(_lastNumberDetectTime!).inMilliseconds >
+        700;
+  }
+
+  Future<void> onDetectionResults(List<YOLOResult> results) async {
+    if (_isDisposed) return;
+
     log(results.toString());
+
     if (results.isNotEmpty) {
       results.sort((a, b) => b.confidence.compareTo(a.confidence));
       final topResult = results.first;
 
       if (topResult.className != 'sign_number') {
-        // ✅ นำระบบเสียงแจ้งเตือนกลับมาใส่ให้แล้ว
         _voiceService.processDetection(
           topResult.className,
           topResult.confidence,
         );
       } else {
-        // TODO: OCR
+        if (_latestFrameBytes != null &&
+            _signNumberPipelineService != null &&
+            !_isDetectingNumber &&
+            _canRunNumberDetection()) {
+          log("number Service");
+          _isDetectingNumber = true;
+          _lastNumberDetectTime = DateTime.now();
+
+          try {
+            final number = await _signNumberPipelineService!
+                .detectNumberFromSign(
+                  frameBytes: _latestFrameBytes!,
+                  detectionResults: results,
+                );
+            log(number.toString());
+            if (_detectedNumber != number) {
+              _detectedNumber = number;
+              notifyListeners();
+            }
+          } catch (e) {
+            log('Sign number pipeline error: $e');
+          } finally {
+            _isDetectingNumber = false;
+          }
+        }
       }
+      print("Detected number: $_detectedNumber");
     }
+
     _frameCount++;
     final now = DateTime.now();
     final elapsed = now.difference(_lastFpsUpdate).inMilliseconds;
@@ -112,6 +178,7 @@ class CameraInferenceController extends ChangeNotifier {
       _currentFps = _frameCount * 1000 / elapsed;
       _frameCount = 0;
       _lastFpsUpdate = now;
+      notifyListeners();
     }
 
     if (_detectionCount != results.length) {
@@ -141,10 +208,8 @@ class CameraInferenceController extends ChangeNotifier {
   void toggleSlider(SliderType type) {
     if (_isDisposed) return;
 
-    if (_activeSlider != type) {
-      _activeSlider = _activeSlider == type ? SliderType.none : type;
-      notifyListeners();
-    }
+    _activeSlider = _activeSlider == type ? SliderType.none : type;
+    notifyListeners();
   }
 
   void updateSliderValue(double value) {
@@ -160,6 +225,7 @@ class CameraInferenceController extends ChangeNotifier {
           changed = true;
         }
         break;
+
       case SliderType.confidence:
         if ((_confidenceThreshold - value).abs() > 0.01) {
           _confidenceThreshold = value;
@@ -167,6 +233,7 @@ class CameraInferenceController extends ChangeNotifier {
           changed = true;
         }
         break;
+
       case SliderType.iou:
         if ((_iouThreshold - value).abs() > 0.01) {
           _iouThreshold = value;
@@ -174,7 +241,8 @@ class CameraInferenceController extends ChangeNotifier {
           changed = true;
         }
         break;
-      default:
+
+      case SliderType.none:
         break;
     }
 
@@ -198,12 +266,15 @@ class CameraInferenceController extends ChangeNotifier {
 
     _isFrontCamera = !_isFrontCamera;
     _lensFacing = _isFrontCamera ? LensFacing.front : LensFacing.back;
-    if (_isFrontCamera) _currentZoomLevel = 1.0;
+
+    if (_isFrontCamera) {
+      _currentZoomLevel = 1.0;
+    }
+
     _yoloController.switchCamera();
     notifyListeners();
   }
 
-  // camara front และ back
   void setLensFacing(LensFacing facing) {
     if (_isDisposed) return;
 
@@ -245,6 +316,7 @@ class CameraInferenceController extends ChangeNotifier {
     _downloadProgress = 0.0;
     _detectionCount = 0;
     _currentFps = 0.0;
+    _detectedNumber = null;
     notifyListeners();
 
     try {

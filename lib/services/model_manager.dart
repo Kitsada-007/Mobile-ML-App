@@ -49,12 +49,11 @@ class ModelManager {
     final modelFile = File('${dir.path}/$bundledName');
     if (await modelFile.exists()) return modelFile.path;
 
-    // 3. ก๊อปปี้ไฟล์โมเดลจาก Assets ลง Local Storage เพื่อให้ AI อ่านได้
     try {
       _updateStatus('กำลังเตรียมไฟล์โมเดลจากเครื่อง...');
 
-      // ⚠️ ต้องแน่ใจว่าไฟล์โมเดลของคุณอยู่ที่ assets/models/ นะครับ
-      final assetPath = 'assets/models/$bundledName';
+      // ✅ ลบคำว่า 'assets/models/' ออกไปเลย ให้ใช้ค่าที่ส่งมาตรงๆ
+      final assetPath = bundledName;
       final assetData = await rootBundle.load(assetPath);
 
       await modelFile.parent.create(recursive: true);

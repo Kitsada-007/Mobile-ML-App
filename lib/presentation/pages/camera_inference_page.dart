@@ -118,6 +118,28 @@ class _CameraInferencePageState extends State<CameraInferencePage> {
                 onValueChanged: _controller.updateSliderValue,
                 isLandscape: isLandscape,
               ),
+
+              Positioned(
+                top: 80,
+                left: 20,
+                child: AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, _) {
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      color: Colors.black54,
+                      child: Text(
+                        _controller.detectedNumber ?? "--",
+                        style: const TextStyle(
+                          fontSize: 32,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
             ],
           );
         },
