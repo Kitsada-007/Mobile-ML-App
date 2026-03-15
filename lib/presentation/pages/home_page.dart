@@ -137,20 +137,19 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(height: 12),
 
-              _buildActionCard(
-                context,
-                icon: Icons.image_search_rounded,
-                title: 'ทดสอบรูปภาพเดี่ยว',
-                subtitle: 'อัปโหลดและวิเคราะห์ภาพจากคลัง',
-                iconColor: const Color(0xFF00C853),
-                iconBg: const Color(0xFFE8FFF0),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SingleImageScreen()),
-                ),
-              ),
-              const SizedBox(height: 12),
-
+              // _buildActionCard(
+              //   context,
+              //   icon: Icons.image_search_rounded,
+              //   title: 'ทดสอบรูปภาพเดี่ยว',
+              //   subtitle: 'อัปโหลดและวิเคราะห์ภาพจากคลัง',
+              //   iconColor: const Color(0xFF00C853),
+              //   iconBg: const Color(0xFFE8FFF0),
+              //   onTap: () => Navigator.push(
+              //     context,
+              //     MaterialPageRoute(builder: (_) => const SingleImageScreen()),
+              //   ),
+              // ),
+              // const SizedBox(height: 12),
               _buildActionCard(
                 context,
                 icon: Icons.play_circle_rounded,

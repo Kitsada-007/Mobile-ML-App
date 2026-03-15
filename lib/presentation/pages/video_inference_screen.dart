@@ -1,5 +1,3 @@
-// Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -133,6 +131,14 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                       progressText: _progressText,
                     ),
                   ],
+                  Text(
+                    "อัปโหลดวิดีโอได้ไม่เกิน 50 MB\nและความยาวไม่เกิน 15 วินาที",
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurface.withOpacity(0.7),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -212,9 +218,9 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
     if (info != null && info.getDuration() != null) {
       final double durationInSeconds =
           double.tryParse(info.getDuration()!) ?? 0.0;
-      if (durationInSeconds > 60.0) {
+      if (durationInSeconds > 15.0) {
         _showSnackBar(
-          "วิดีโอยาวเกินไป (${durationInSeconds.toStringAsFixed(1)} วิ) กรุณาเลือกวิดีโอไม่เกิน 60 วินาที",
+          "วิดีโอยาวเกินไป (${durationInSeconds.toStringAsFixed(1)} วิ) กรุณาเลือกวิดีโอไม่เกิน 15 วินาที",
         );
         return false;
       }
