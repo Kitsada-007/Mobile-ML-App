@@ -3,7 +3,7 @@ import 'package:get/get_core/src/get_main.dart';
 import 'package:get/get_navigation/src/extension_navigation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:trffic_ilght_app/presentation/pages/camera_inference_page.dart';
-import 'package:trffic_ilght_app/presentation/pages/single_image_screen.dart';
+
 import 'package:trffic_ilght_app/presentation/pages/video_inference_screen.dart';
 
 import 'package:trffic_ilght_app/presentation/widgets/bottom_navigation_bar.dart';

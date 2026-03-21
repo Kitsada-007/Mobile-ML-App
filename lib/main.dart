@@ -21,7 +21,6 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
 
-    // 👇 2. เปลี่ยนตรงนี้เป็น GetMaterialApp
     return GetMaterialApp(
       title: 'Traffic Light App',
       theme: settings.isLightMode ? ThemeData.light() : ThemeData.dark(),

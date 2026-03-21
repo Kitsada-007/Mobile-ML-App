@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:trffic_ilght_app/core/models/models.dart';
 import 'package:trffic_ilght_app/services/traffic_voice_service.dart';
 import 'package:trffic_ilght_app/services/sign_number_pipeline_service.dart';
-import 'package:ultralytics_yolo/models/yolo_result.dart';
+
 import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
 import 'package:ultralytics_yolo/utils/error_handler.dart';
 import 'package:ultralytics_yolo/yolo.dart';
@@ -20,9 +20,10 @@ class CameraInferenceController extends ChangeNotifier {
   int _frameCount = 0;
   DateTime _lastFpsUpdate = DateTime.now();
 
-  double _confidenceThreshold = 0.5;
+  double _confidenceThreshold =
+      0.5; // defult confidenceThreshold 0.5 and iouThreshold 0.45
   double _iouThreshold = 0.45;
-  int _numItemsThreshold = 30;
+  int _numItemsThreshold = 11;
   SliderType _activeSlider = SliderType.none;
 
   ModelType _selectedModel = ModelType.bestFloat16traffic;
@@ -49,6 +50,12 @@ class CameraInferenceController extends ChangeNotifier {
   bool _isDisposed = false;
   Future<void>? _loadingFuture;
 
+  // ==========================================
+  // อัปเดตตัวแปรเป็นแบบ List เพื่อรองรับหลาย Class พร้อมกัน
+  // ==========================================
+  List<String> _detectedFormalNames = [];
+  List<String> _detectedAlertMessages = [];
+
   int get detectionCount => _detectionCount;
   double get currentFps => _currentFps;
   double get confidenceThreshold => _confidenceThreshold;
@@ -64,7 +71,12 @@ class CameraInferenceController extends ChangeNotifier {
   bool get isFrontCamera => _isFrontCamera;
   LensFacing get lensFacing => _lensFacing;
   YOLOViewController get yoloController => _yoloController;
+
   String? get detectedNumber => _detectedNumber;
+
+  // Getter สำหรับ List ภาษาไทย
+  List<String> get detectedFormalNames => _detectedFormalNames;
+  List<String> get detectedAlertMessages => _detectedAlertMessages;
 
   CameraInferenceController() {
     _isFrontCamera = _lensFacing == LensFacing.front;
@@ -126,50 +138,82 @@ class CameraInferenceController extends ChangeNotifier {
         700;
   }
 
+  // ==========================================
+  // อัปเดต onDetectionResults เพื่อดึงทุก Class และแปลภาษาไทย
+  // ==========================================
   Future<void> onDetectionResults(List<YOLOResult> results) async {
     if (_isDisposed) return;
 
-    log(results.toString());
-
     if (results.isNotEmpty) {
+      // เรียงลำดับจากความมั่นใจมากไปน้อย
       results.sort((a, b) => b.confidence.compareTo(a.confidence));
-      final topResult = results.first;
 
-      if (topResult.className != 'sign_number') {
-        _voiceService.processDetection(
-          topResult.className,
-          topResult.confidence,
+      List<String> tempFormalNames = [];
+      List<String> tempAlerts = [];
+      bool shouldNotify = false;
+
+      for (var result in results) {
+        // ข้าม Class ที่ความมั่นใจน้อยกว่าค่าที่ตั้งไว้ (เช่น น้อยกว่า 40%)
+        if (result.confidence < 0.40) continue;
+
+        // แปลงชื่อเป็นภาษาไทยผ่าน VoiceService
+        final thaiFormalName = _voiceService.getFormalThaiName(
+          result.className,
         );
-      } else {
-        if (_latestFrameBytes != null &&
-            _signNumberPipelineService != null &&
-            !_isDetectingNumber &&
-            _canRunNumberDetection()) {
-          log("number Service");
-          _isDetectingNumber = true;
-          _lastNumberDetectTime = DateTime.now();
+        final thaiAlertMsg = _voiceService.getThaiMessage(result.className);
 
-          try {
-            final number = await _signNumberPipelineService!
-                .detectNumberFromSign(
-                  frameBytes: _latestFrameBytes!,
-                  detectionResults: results,
-                );
-            log(number.toString());
-            if (_detectedNumber != number) {
-              _detectedNumber = number;
-              notifyListeners();
+        // เก็บลง List เฉพาะชื่อที่ไม่ซ้ำกันในเฟรมเดียว
+        if (!tempFormalNames.contains(thaiFormalName)) {
+          tempFormalNames.add(thaiFormalName);
+          tempAlerts.add(thaiAlertMsg);
+        }
+
+        if (result.className != 'sign_number') {
+          // เรียกใช้งานเสียงพูดเตือน
+          _voiceService.processDetection(result.className, result.confidence);
+        } else {
+          // ถ้าเป็นป้ายตัวเลข ให้ทำงานตรวจจับตัวเลขต่อ
+          if (_latestFrameBytes != null &&
+              _signNumberPipelineService != null &&
+              !_isDetectingNumber &&
+              _canRunNumberDetection()) {
+            _isDetectingNumber = true;
+            _lastNumberDetectTime = DateTime.now();
+
+            try {
+              final number = await _signNumberPipelineService!
+                  .detectNumberFromSign(
+                    frameBytes: _latestFrameBytes!,
+                    detectionResults: results,
+                  );
+
+              if (_detectedNumber != number) {
+                _detectedNumber = number;
+                shouldNotify = true; // ตั้งแฟล็กเพื่อให้อัปเดต UI ตอนจบ
+              }
+            } catch (e) {
+              log('Sign number pipeline error: $e');
+            } finally {
+              _isDetectingNumber = false;
             }
-          } catch (e) {
-            log('Sign number pipeline error: $e');
-          } finally {
-            _isDetectingNumber = false;
           }
         }
       }
-      print("Detected number: $_detectedNumber");
+
+      // อัปเดต List หลักและแจ้ง UI
+      _detectedFormalNames = tempFormalNames;
+      _detectedAlertMessages = tempAlerts;
+      notifyListeners();
+    } else {
+      // ถ้าไม่มีผลตรวจจับเลย ให้ล้างหน้าจอ
+      if (_detectedFormalNames.isNotEmpty) {
+        _detectedFormalNames = [];
+        _detectedAlertMessages = [];
+        notifyListeners();
+      }
     }
 
+    // คำนวณ FPS ต่อตามปกติ
     _frameCount++;
     final now = DateTime.now();
     final elapsed = now.difference(_lastFpsUpdate).inMilliseconds;

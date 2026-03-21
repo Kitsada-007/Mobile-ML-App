@@ -34,6 +34,8 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
   final ImagePicker _picker = ImagePicker();
 
   List<Map<String, dynamic>> _detections = [];
+  // เพิ่ม Set สำหรับเก็บชื่อ Class ที่ตรวจพบแบบไม่ซ้ำกัน
+  Set<String> _detectedClasses = {};
   Uint8List? _imageBytes;
   Uint8List? _annotatedImage;
 
@@ -104,13 +106,64 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                       ),
                     ),
 
-                  if (hasVideoResult)
+                  if (hasVideoResult) ...[
                     ResultVideoSection(
                       controller: _videoController!,
                       onOpenFullScreen: _openFullScreen,
                       onTogglePlayPause: _togglePlayPause,
-                    )
-                  else if (hasImageResult)
+                    ),
+
+                    // แสดงผลรายชื่อ Class ที่พบหลังจากประมวลผลเสร็จ
+                    if (_detectedClasses.isNotEmpty)
+                      Container(
+                        margin: const EdgeInsets.only(top: 16),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceVariant.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: colorScheme.primary.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.analytics_outlined,
+                                  color: colorScheme.primary,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  "วัตถุที่ตรวจพบในวิดีโอ:",
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: colorScheme.primary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: _detectedClasses.map((className) {
+                                return Chip(
+                                  label: Text(className),
+                                  backgroundColor: colorScheme.primaryContainer,
+                                  labelStyle: TextStyle(
+                                    color: colorScheme.onPrimaryContainer,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  side: BorderSide.none,
+                                );
+                              }).toList(),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ] else if (hasImageResult)
                     ResultImageSection(
                       imageBytes: _annotatedImage ?? _imageBytes!,
                     )
@@ -131,6 +184,8 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                       progressText: _progressText,
                     ),
                   ],
+
+                  const SizedBox(height: 16),
                   Text(
                     "อัปโหลดวิดีโอได้ไม่เกิน 50 MB\nและความยาวไม่เกิน 15 วินาที",
                     textAlign: TextAlign.center,
@@ -169,6 +224,36 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
         ),
       ),
     );
+  }
+
+  // ฟังก์ชันสำหรับแปลชื่อ Class จาก Model เป็นภาษาไทยทางการ
+  String _getFormalThaiName(String className) {
+    switch (className) {
+      case 'dont_go_straight_arrow':
+        return "ป้ายห้ามตรงไป";
+      case 'dont_turn_left':
+        return "ป้ายห้ามเลี้ยวซ้าย";
+      case 'dont_turn_right':
+        return "ป้ายห้ามเลี้ยวขวา";
+      case 'go_straight_arrow':
+        return "ป้ายบังคับให้ตรงไป";
+      case 'green_light_circle':
+        return "สัญญาณไฟจราจรสีเขียว";
+      case 'off_light':
+        return "สัญญาณไฟจราจรขัดข้อง";
+      case 'red_light_circle':
+        return "สัญญาณไฟจราจรสีแดง";
+      case 'sign_number':
+        return "สัญญาณไฟตัวเลข";
+      case 'turn_left':
+        return "สัญญาณไฟเลี้ยวซ้าย";
+      case 'turn_right':
+        return "สัญญาณไฟเลี้ยวขวา";
+      case 'yellow_light':
+        return "สัญญาณไฟจราจรสีเหลือง";
+      default:
+        return className; // ถ้าไม่มีในลิสต์ ให้แสดงชื่อดั้งเดิมไปก่อน
+    }
   }
 
   void _openFullScreen() {
@@ -240,6 +325,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
       _videoFile = selectedFile;
       _videoController = null;
       _annotatedImage = null;
+      _detectedClasses.clear(); // เคลียร์ผลลัพธ์เดิมเมื่อเลือกวิดีโอใหม่
     });
   }
 
@@ -254,6 +340,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
       _progressValue = 0.0;
       _progressText = "กำลังเตรียมโฟลเดอร์ชั่วคราว...";
       _detections = [];
+      _detectedClasses.clear(); // เคลียร์ผลลัพธ์เดิมก่อนเริ่มประมวลผล
       _annotatedImage = null;
       _videoController?.dispose();
       _videoController = null;
@@ -283,7 +370,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
       await _videoController!.play();
 
       if (mounted) {
-        setState(() {});
+        setState(() {}); // อัปเดต UI ให้แสดงวิดีโอและรายชื่อ Class ที่พบ
       }
     } catch (e) {
       debugPrint("Error: $e");
@@ -354,6 +441,26 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
         final bytes = await fileEntity.readAsBytes();
         final result = await _yolo.predict(bytes);
         final annotatedBytes = result['annotatedImage'] as Uint8List?;
+
+        // -------------------------------------------------------------
+        // ดึงข้อมูล Class ออกมาจาก result และบันทึกเก็บไว้ใน Set
+        // -------------------------------------------------------------
+        if (result.containsKey('detections') && result['detections'] != null) {
+          final List<dynamic> currentDetections = result['detections'];
+          for (var element in currentDetections) {
+            if (element is Map) {
+              // แพ็กเกจ yolo อาจใช้ชื่อ key ว่า className, label หรือ class
+              final rawClassName =
+                  element['className'] ?? element['label'] ?? element['class'];
+              if (rawClassName != null) {
+                // >>> นำชื่อเดิมมาผ่านฟังก์ชันแปลเป็นภาษาไทยก่อนเพิ่มลงใน Set <<<
+                final thaiName = _getFormalThaiName(rawClassName.toString());
+                _detectedClasses.add(thaiName);
+              }
+            }
+          }
+        }
+        // -------------------------------------------------------------
 
         if (annotatedBytes != null) {
           await outFile.writeAsBytes(annotatedBytes);

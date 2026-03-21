@@ -5,9 +5,7 @@ import 'package:trffic_ilght_app/presentation/controllers/camera_inference_contr
 
 import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_inference_content.dart';
 import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_inference_overlay.dart';
-
 import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_controls.dart';
-
 import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/threshold_slider.dart';
 
 /// A screen that demonstrates real-time YOLO inference using the device camera.
@@ -119,23 +117,77 @@ class _CameraInferencePageState extends State<CameraInferencePage> {
                 isLandscape: isLandscape,
               ),
 
+              // ==========================================
+              // ส่วน UI ใหม่: มินิมอล เรียบง่าย โชว์ด้านบน
+              // ==========================================
               Positioned(
-                top: 80,
+                top: 100, // ขยับลงมาจากแถบด้านบน (AppBar) นิดหน่อย
                 left: 20,
+                right: 0,
                 child: AnimatedBuilder(
                   animation: _controller,
                   builder: (context, _) {
-                    return Container(
-                      padding: const EdgeInsets.all(12),
-                      color: Colors.black54,
-                      child: Text(
-                        _controller.detectedNumber ?? "--",
-                        style: const TextStyle(
-                          fontSize: 32,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                    final formalNames = _controller.detectedFormalNames;
+                    final alertMessages = _controller.detectedAlertMessages;
+
+                    // ถ้าไม่เจออะไรเลย ให้หน้าจอโล่งๆ ไปเลย (ซ่อนข้อความ)
+                    if (formalNames.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+
+                    // ถ้าเจอวัตถุ แสดงเป็นข้อความเรียบๆ ตรงกลาง
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: List.generate(formalNames.length, (index) {
+                        final className = formalNames[index];
+                        String displayAlert = alertMessages[index];
+
+                        // จัดการแสดงผลตัวเลข
+                        if (className == "ป้ายตัวเลข" &&
+                            _controller.detectedNumber != null) {
+                          displayAlert =
+                              "ความเร็ว ${_controller.detectedNumber}";
+                        }
+
+                        // ถ้าไม่มีคำแจ้งเตือน ให้ใช้ชื่อทางการแทน
+                        final textToShow = displayAlert.isNotEmpty
+                            ? displayAlert
+                            : className;
+
+                        return AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 200),
+                          child: Container(
+                            key: ValueKey(
+                              textToShow,
+                            ), // ช่วยให้แอนิเมชันเวลาเปลี่ยนคำดูนุ่มนวล
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(
+                                0.6,
+                              ), // พื้นหลังดำโปร่งแสงนิดๆ ให้อ่านตัวหนังสือออก
+                              borderRadius: BorderRadius.circular(
+                                30,
+                              ), // ทรงแคปซูลโค้งมน เรียบหรู
+                            ),
+                            child: Text(
+                              textToShow,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: _getAlertColor(
+                                  className,
+                                ), // ดึงสีมาใช้เหมือนเดิม (แดง, เหลือง, เขียว)
+                                fontSize: 24, // ตัวอักษรใหญ่ชัดเจน
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
                     );
                   },
                 ),
@@ -160,4 +212,20 @@ class _CameraInferencePageState extends State<CameraInferencePage> {
       ],
     ),
   );
+
+  // ฟังก์ชันช่วยกำหนดสีของกล่องแจ้งเตือน
+  Color _getAlertColor(String className) {
+    if (className.contains('แดง') || className.contains('ห้าม')) {
+      return Colors.redAccent; // สีแดงสำหรับไฟแดงหรือป้ายห้าม
+    } else if (className.contains('เหลือง') || className.contains('กะพริบ')) {
+      return Colors.orangeAccent; // สีส้ม/เหลือง สำหรับเตือน
+    } else if (className.contains('เขียว') ||
+        className.contains('เลี้ยว') ||
+        className.contains('ตรง')) {
+      return Colors.greenAccent; // สีเขียวสำหรับไปได้
+    } else if (className == "กำลังสแกน...") {
+      return Colors.white54; // สีเทา
+    }
+    return Colors.blueAccent; // สีฟ้าสำหรับป้ายตัวเลขทั่วไป
+  }
 }

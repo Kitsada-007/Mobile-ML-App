@@ -44,7 +44,7 @@ class TrafficVoiceService {
     final prefs = await SharedPreferences.getInstance();
     final isVoiceEnabled = prefs.getBool('isVoiceEnabled') ?? true;
     if (!isVoiceEnabled) return;
-    final String message = _getThaiMessage(className);
+    final String message = getThaiMessage(className);
     if (message.isEmpty) return;
 
     final now = DateTime.now();
@@ -55,36 +55,61 @@ class TrafficVoiceService {
     }
   }
 
-  String _getThaiMessage(String className) {
+  // สำหรับแสดงชื่อป้ายทางการบนหน้าจอ
+  String getFormalThaiName(String className) {
     switch (className) {
-      case 'turn_left':
-        return "เลี้ยวซ้ายได้";
-
-      case 'turn_right':
-        return "เลี้ยวขวาได้";
-
-      case 'green_light_circle':
+      case 'dont_go_straight_arrow':
+        return "ป้ายห้ามตรงไป";
+      case 'dont_turn_left':
+        return "ป้ายห้ามเลี้ยวซ้าย";
+      case 'dont_turn_right':
+        return "ป้ายห้ามเลี้ยวขวา";
       case 'go_straight_arrow':
-        return "ตรงไปได้";
+        return "ป้ายบังคับให้ตรงไป";
+      case 'green_light_circle':
+        return "สัญญาณไฟจราจรสีเขียว";
+      case 'off_light':
+        return "สัญญาณไฟจราจรขัดข้อง";
+      case 'red_light_circle':
+        return "สัญญาณไฟจราจรสีแดง";
+      case 'sign_number':
+        return "ป้ายตัวเลข";
+      case 'turn_left':
+        return "สัญญาณไฟเลี้ยวซ้าย";
+      case 'turn_right':
+        return "สัญญาณไฟเลี้ยวขวา";
+      case 'yellow_light':
+        return "สัญญาณไฟจราจรสีเหลือง";
+      default:
+        return className;
+    }
+  }
 
+  // สำหรับเสียงพูดเตือนและข้อความแจ้งเตือน
+  String getThaiMessage(String className) {
+    switch (className) {
+      case 'dont_go_straight_arrow':
+        return "ห้ามตรงไป";
       case 'dont_turn_left':
         return "ห้ามเลี้ยวซ้าย";
-
       case 'dont_turn_right':
         return "ห้ามเลี้ยวขวา";
-
-      case 'red_light_circle':
-        return "ไฟแดง หยุดรถ";
-
-      case 'yellow_light':
-        return "ไฟเหลือง เตรียมหยุด";
-
+      case 'go_straight_arrow':
+        return "ตรงไปได้";
+      case 'green_light_circle':
+        return "ไฟเขียว ไปได้";
       case 'off_light':
         return "ระวัง สัญญาณไฟเสีย";
-
-      case 'flashing_light':
-        return "ไฟกระพริบ โปรดระวัง";
-
+      case 'red_light_circle':
+        return "ไฟแดง หยุดรถ";
+      case 'sign_number':
+        return "พบป้ายตัวเลข";
+      case 'turn_left':
+        return "เลี้ยวซ้ายได้";
+      case 'turn_right':
+        return "เลี้ยวขวาได้";
+      case 'yellow_light':
+        return "ไฟเหลือง เตรียมหยุด";
       default:
         return "";
     }

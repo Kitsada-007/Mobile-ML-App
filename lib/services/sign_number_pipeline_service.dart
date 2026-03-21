@@ -5,7 +5,6 @@ import 'package:image/image.dart' as img;
 import 'package:ultralytics_yolo/models/yolo_result.dart';
 import 'package:ultralytics_yolo/yolo.dart';
 
-// 1. Data Class สำหรับส่งข้อมูลไปทำใน Background Isolate
 class CropData {
   final Uint8List imageBytes;
   final double left;
@@ -16,7 +15,6 @@ class CropData {
   CropData(this.imageBytes, this.left, this.top, this.right, this.bottom);
 }
 
-// 2. ฟังก์ชันนี้จะทำงานอยู่เบื้องหลัง (ไม่ทำให้ UI กระตุก)
 Uint8List? _isolateCropAndProcess(CropData data) {
   try {
     final original = img.decodeImage(data.imageBytes);

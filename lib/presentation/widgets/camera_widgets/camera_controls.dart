@@ -38,73 +38,73 @@ class CameraControls extends StatelessWidget {
           right: isLandscape ? 8 : 16,
           child: Column(
             children: [
-              if (!isFrontCamera)
-                ControlButton(
-                  content: '${currentZoomLevel.toStringAsFixed(1)}x',
-                  onPressed: () => onZoomChanged(
-                    currentZoomLevel < 0.75
-                        ? 1.0
-                        : currentZoomLevel < 2.0
-                        ? 3.0
-                        : 0.5,
-                  ),
-                ),
-              SizedBox(height: isLandscape ? 8 : 12),
+              // if (!isFrontCamera)
+              //   ControlButton(
+              //     content: '${currentZoomLevel.toStringAsFixed(1)}x',
+              //     onPressed: () => onZoomChanged(
+              //       currentZoomLevel < 0.75
+              //           ? 1.0
+              //           : currentZoomLevel < 2.0
+              //           ? 3.0
+              //           : 0.5,
+              //     ),
+              //   ),
+              // SizedBox(height: isLandscape ? 8 : 12),
 
               // ปุ่ม Layers (numItems)
-              ControlButton(
-                content: Icons.layers,
-                onPressed: () {
-                  if (activeSlider == SliderType.numItems) {
-                    onSliderToggled(SliderType.none);
-                  } else {
-                    onSliderToggled(SliderType.numItems);
-                  }
-                },
-              ),
-              SizedBox(height: isLandscape ? 8 : 12),
+              // ControlButton(
+              //   content: Icons.layers,
+              //   onPressed: () {
+              //     if (activeSlider == SliderType.numItems) {
+              //       onSliderToggled(SliderType.none);
+              //     } else {
+              //       onSliderToggled(SliderType.numItems);
+              //     }
+              //   },
+              // ),
+              // SizedBox(height: isLandscape ? 8 : 12),
 
               // ปุ่ม Adjust (confidence)
-              ControlButton(
-                content: Icons.adjust,
-                onPressed: () {
-                  if (activeSlider == SliderType.confidence) {
-                    onSliderToggled(SliderType.none);
-                  } else {
-                    onSliderToggled(SliderType.confidence);
-                  }
-                },
-              ),
-              SizedBox(height: isLandscape ? 8 : 12),
+              // ControlButton(
+              //   content: Icons.adjust,
+              //   onPressed: () {
+              //     if (activeSlider == SliderType.confidence) {
+              //       onSliderToggled(SliderType.none);
+              //     } else {
+              //       onSliderToggled(SliderType.confidence);
+              //     }
+              //   },
+              // ),
+              // SizedBox(height: isLandscape ? 8 : 12),
 
-              // ปุ่ม IOU
-              ControlButton(
-                content: 'assets/iou.png',
-                onPressed: () {
-                  if (activeSlider == SliderType.iou) {
-                    onSliderToggled(SliderType.none);
-                  } else {
-                    onSliderToggled(SliderType.iou);
-                  }
-                },
-              ),
-              SizedBox(height: isLandscape ? 16 : 40),
+              // // ปุ่ม IOU
+              // ControlButton(
+              //   content: 'assets/iou.png',
+              //   onPressed: () {
+              //     if (activeSlider == SliderType.iou) {
+              //       onSliderToggled(SliderType.none);
+              //     } else {
+              //       onSliderToggled(SliderType.iou);
+              //     }
+              //   },
+              // ),
+              // SizedBox(height: isLandscape ? 16 : 40),
             ],
           ),
         ),
 
-        Positioned(
-          bottom: safeBottomPadding + (isLandscape ? 32 : 16),
-          left: isLandscape ? 32 : 16,
-          child: CircleAvatar(
-            radius: isLandscape ? 20 : 24,
-            backgroundColor: Colors.black.withValues(alpha: 0.5),
-            child: IconButton(
-              icon: const Icon(Icons.flip_camera_ios, color: Colors.white),
-              onPressed: onCameraFlipped,
-            ),
-          ),
-        ),
+        // Positioned(
+        //   bottom: safeBottomPadding + (isLandscape ? 32 : 16),
+        //   left: isLandscape ? 32 : 16,
+        //   child: CircleAvatar(
+        //     radius: isLandscape ? 20 : 24,
+        //     backgroundColor: Colors.black.withValues(alpha: 0.5),
+        //     child: IconButton(
+        //       icon: const Icon(Icons.flip_camera_ios, color: Colors.white),
+        //       onPressed: onCameraFlipped,
+        //     ),
+        //   ),
+        // ),
       ],
     );
   }
