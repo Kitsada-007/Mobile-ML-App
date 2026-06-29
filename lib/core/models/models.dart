@@ -6,7 +6,7 @@ enum ModelType {
     YOLOTask.detect,
   ),
   bestFloat16number(
-    'assets/models/best_float16_traffic.tflite',
+    'assets/models/best_float16_number.tflite',
     YOLOTask.detect,
   );
 

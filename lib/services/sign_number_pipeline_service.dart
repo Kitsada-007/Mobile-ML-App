@@ -1,8 +1,6 @@
 import 'dart:math';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart'; // สำหรับ compute
 import 'package:image/image.dart' as img;
-import 'package:ultralytics_yolo/models/yolo_result.dart';
 import 'package:ultralytics_yolo/yolo.dart';
 
 class CropData {

@@ -45,12 +45,10 @@ class VideoProcessingService {
 
       if (info != null) {
         final streams = info.getStreams();
-        if (streams != null) {
-          for (final stream in streams) {
-            if (stream.getType() == 'video') {
-              originalFps = stream.getRealFrameRate() ?? '30';
-              break;
-            }
+        for (final stream in streams) {
+          if (stream.getType() == 'video') {
+            originalFps = stream.getRealFrameRate() ?? '30';
+            break;
           }
         }
       }

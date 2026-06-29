@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:trffic_ilght_app/core/models/models.dart';
@@ -60,7 +61,7 @@ class ModelManager {
       await modelFile.writeAsBytes(assetData.buffer.asUint8List());
       return modelFile.path;
     } catch (e) {
-      print('เกิดข้อผิดพลาดในการโหลดโมเดล Android จาก assets: $e');
+      debugPrint('เกิดข้อผิดพลาดในการโหลดโมเดล Android จาก assets: $e');
       return null;
     }
   }

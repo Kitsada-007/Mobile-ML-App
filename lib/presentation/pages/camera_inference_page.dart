@@ -145,8 +145,12 @@ class _CameraInferencePageState extends State<CameraInferencePage> {
                         // จัดการแสดงผลตัวเลข
                         if (className == "ป้ายตัวเลข" &&
                             _controller.detectedNumber != null) {
-                          displayAlert =
-                              "ความเร็ว ${_controller.detectedNumber}";
+                          final int? val = int.tryParse(_controller.detectedNumber!);
+                          if (val != null && val >= 1 && val <= 3) {
+                            displayAlert = "เตรียมตัวไป";
+                          } else {
+                            displayAlert = "ป้ายตัวเลข ${_controller.detectedNumber}";
+                          }
                         }
 
                         // ถ้าไม่มีคำแจ้งเตือน ให้ใช้ชื่อทางการแทน
@@ -166,8 +170,8 @@ class _CameraInferencePageState extends State<CameraInferencePage> {
                               vertical: 10,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(
-                                0.6,
+                              color: Colors.black.withValues(
+                                alpha: 0.6,
                               ), // พื้นหลังดำโปร่งแสงนิดๆ ให้อ่านตัวหนังสือออก
                               borderRadius: BorderRadius.circular(
                                 30,

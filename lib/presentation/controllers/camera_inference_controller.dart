@@ -26,7 +26,7 @@ class CameraInferenceController extends ChangeNotifier {
   int _numItemsThreshold = 11;
   SliderType _activeSlider = SliderType.none;
 
-  ModelType _selectedModel = ModelType.bestFloat16traffic;
+  final ModelType _selectedModel = ModelType.bestFloat16traffic;
   bool _isModelLoading = false;
   String? _modelPath;
   String _loadingMessage = '';
@@ -46,6 +46,10 @@ class CameraInferenceController extends ChangeNotifier {
   Uint8List? _latestFrameBytes;
   bool _isDetectingNumber = false;
   DateTime? _lastNumberDetectTime;
+
+  bool _hasSpokenGetReady = false;
+  String? _lastSpokenNumber;
+  bool _isSignCurrentlyVisible = false;
 
   bool _isDisposed = false;
   Future<void>? _loadingFuture;
@@ -144,13 +148,15 @@ class CameraInferenceController extends ChangeNotifier {
   Future<void> onDetectionResults(List<YOLOResult> results) async {
     if (_isDisposed) return;
 
+    bool signNumberDetectedInThisFrame = false;
+    String? detectedNumberInThisFrame;
+
     if (results.isNotEmpty) {
       // เรียงลำดับจากความมั่นใจมากไปน้อย
       results.sort((a, b) => b.confidence.compareTo(a.confidence));
 
       List<String> tempFormalNames = [];
       List<String> tempAlerts = [];
-      bool shouldNotify = false;
 
       for (var result in results) {
         // ข้าม Class ที่ความมั่นใจน้อยกว่าค่าที่ตั้งไว้ (เช่น น้อยกว่า 40%)
@@ -172,11 +178,13 @@ class CameraInferenceController extends ChangeNotifier {
           // เรียกใช้งานเสียงพูดเตือน
           _voiceService.processDetection(result.className, result.confidence);
         } else {
-          // ถ้าเป็นป้ายตัวเลข ให้ทำงานตรวจจับตัวเลขต่อ
+          signNumberDetectedInThisFrame = true;
+          // ถ้าเป็นป้ายตัวเลข ให้ทำงานตรวจจับตัวเลขต่อ (ข้ามถ้าร้องเตือน เตรียมตัวไป แล้ว)
           if (_latestFrameBytes != null &&
               _signNumberPipelineService != null &&
               !_isDetectingNumber &&
-              _canRunNumberDetection()) {
+              _canRunNumberDetection() &&
+              !_hasSpokenGetReady) {
             _isDetectingNumber = true;
             _lastNumberDetectTime = DateTime.now();
 
@@ -187,9 +195,8 @@ class CameraInferenceController extends ChangeNotifier {
                     detectionResults: results,
                   );
 
-              if (_detectedNumber != number) {
-                _detectedNumber = number;
-                shouldNotify = true; // ตั้งแฟล็กเพื่อให้อัปเดต UI ตอนจบ
+              if (number != null && number.isNotEmpty) {
+                detectedNumberInThisFrame = number;
               }
             } catch (e) {
               log('Sign number pipeline error: $e');
@@ -200,11 +207,57 @@ class CameraInferenceController extends ChangeNotifier {
         }
       }
 
+      // จัดการสถานะและเสียงสำหรับป้ายตัวเลขในเฟรมนี้
+      if (signNumberDetectedInThisFrame) {
+        _isSignCurrentlyVisible = true;
+        if (detectedNumberInThisFrame != null) {
+          _detectedNumber = detectedNumberInThisFrame;
+          final int? val = int.tryParse(detectedNumberInThisFrame);
+          if (val != null && val >= 1 && val <= 9) {
+            if (val >= 1 && val <= 3) {
+              if (!_hasSpokenGetReady) {
+                _hasSpokenGetReady = true;
+                _lastSpokenNumber = detectedNumberInThisFrame;
+                _voiceService.speakNumber(detectedNumberInThisFrame);
+              }
+            } else {
+              if (_lastSpokenNumber != detectedNumberInThisFrame) {
+                _lastSpokenNumber = detectedNumberInThisFrame;
+                _voiceService.speakNumber(detectedNumberInThisFrame);
+              }
+            }
+          }
+        }
+      } else {
+        if (_isSignCurrentlyVisible) {
+          // สิ้นสุด/จบการตรวจจับป้ายตัวเลขในกล้อง (ป้ายพ้นจอไปแล้ว)
+          if (!_hasSpokenGetReady && _detectedNumber != null) {
+            _voiceService.speakNumber(_detectedNumber!);
+          }
+          // รีเซ็ตสถานะทั้งหมดเพื่อให้พร้อมสำหรับป้ายรอบใหม่
+          _detectedNumber = null;
+          _lastSpokenNumber = null;
+          _hasSpokenGetReady = false;
+          _isSignCurrentlyVisible = false;
+        }
+      }
+
       // อัปเดต List หลักและแจ้ง UI
       _detectedFormalNames = tempFormalNames;
       _detectedAlertMessages = tempAlerts;
       notifyListeners();
     } else {
+      // ถ้าไม่มีผลตรวจจับเลย ให้เช็คและจัดการกรณีก่อนหน้าเป็นป้ายตัวเลข
+      if (_isSignCurrentlyVisible) {
+        if (!_hasSpokenGetReady && _detectedNumber != null) {
+          _voiceService.speakNumber(_detectedNumber!);
+        }
+        _detectedNumber = null;
+        _lastSpokenNumber = null;
+        _hasSpokenGetReady = false;
+        _isSignCurrentlyVisible = false;
+      }
+
       // ถ้าไม่มีผลตรวจจับเลย ให้ล้างหน้าจอ
       if (_detectedFormalNames.isNotEmpty) {
         _detectedFormalNames = [];

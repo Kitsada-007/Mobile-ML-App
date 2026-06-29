@@ -3,8 +3,6 @@
 import 'package:flutter/material.dart';
 import 'package:trffic_ilght_app/core/models/models.dart';
 
-import 'control_button.dart';
-
 /// A widget containing camera control buttons
 class CameraControls extends StatelessWidget {
   const CameraControls({

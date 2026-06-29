@@ -18,10 +18,6 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final ImagePicker picker = ImagePicker();
 
-  void _showSnackBar(String msg) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-  }
 
   @override
   void dispose() {
@@ -76,7 +72,7 @@ class _HomePageState extends State<HomePage> {
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
                     BoxShadow(
-                      color: colorScheme.primary.withOpacity(0.25),
+                      color: colorScheme.primary.withValues(alpha: 0.25),
                       blurRadius: 20,
                       offset: const Offset(0, 8),
                     ),
@@ -91,7 +87,7 @@ class _HomePageState extends State<HomePage> {
                           Text(
                             'Traffic Light AI',
                             style: theme.textTheme.labelSmall?.copyWith(
-                              color: colorScheme.onPrimary.withOpacity(0.85),
+                              color: colorScheme.onPrimary.withValues(alpha: 0.85),
                               fontWeight: FontWeight.w500,
                               letterSpacing: 0.5,
                             ),

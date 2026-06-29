@@ -37,7 +37,7 @@ class SettingPage extends StatelessWidget {
             isHighlighted: true, // ทำให้มีกรอบสีพื้นหลังเหมือนในรูป
             trailing: Switch.adaptive(
               value: settings.isVoiceEnabled,
-              activeColor: Colors.blueGrey, // สีสวิตช์ตอนเปิด
+              activeThumbColor: Colors.blueGrey, // สีสวิตช์ตอนเปิด
               onChanged: (val) {
                 context.read<SettingsProvider>().toggleVoice(val);
               },
@@ -50,7 +50,7 @@ class SettingPage extends StatelessWidget {
             title: 'Dark Mode',
             trailing: Switch.adaptive(
               value: !settings.isLightMode,
-              activeColor: Colors.blueGrey,
+              activeThumbColor: Colors.blueGrey,
               onChanged: (val) {
                 context.read<SettingsProvider>().toggleTheme(!val);
               },

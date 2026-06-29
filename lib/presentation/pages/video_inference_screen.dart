@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
@@ -14,7 +13,7 @@ import 'package:trffic_ilght_app/core/models/models.dart';
 import 'package:trffic_ilght_app/presentation/widgets/video_widgets/empty_state_section.dart';
 import 'package:trffic_ilght_app/presentation/widgets/video_widgets/full_screen_video.dart';
 import 'package:trffic_ilght_app/presentation/widgets/video_widgets/result_image.dart';
-import 'package:trffic_ilght_app/presentation/widgets/video_widgets/video_Inference_action.dart';
+import 'package:trffic_ilght_app/presentation/widgets/video_widgets/video_inference_action.dart';
 import 'package:trffic_ilght_app/presentation/widgets/video_widgets/video_processing.dart';
 import 'package:trffic_ilght_app/presentation/widgets/video_widgets/video_result_section.dart';
 import 'package:trffic_ilght_app/presentation/widgets/video_widgets/video_selected_video.dart';
@@ -33,9 +32,8 @@ class VideoInferenceScreen extends StatefulWidget {
 class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
   final ImagePicker _picker = ImagePicker();
 
-  List<Map<String, dynamic>> _detections = [];
   // เพิ่ม Set สำหรับเก็บชื่อ Class ที่ตรวจพบแบบไม่ซ้ำกัน
-  Set<String> _detectedClasses = {};
+  final Set<String> _detectedClasses = {};
   Uint8List? _imageBytes;
   Uint8List? _annotatedImage;
 
@@ -85,7 +83,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
           ),
         ),
         foregroundColor:
-            theme.appBarTheme.foregroundColor ?? colorScheme.onBackground,
+            theme.appBarTheme.foregroundColor ?? colorScheme.onSurface,
       ),
       body: SafeArea(
         child: Column(
@@ -100,8 +98,8 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                       child: LinearProgressIndicator(
                         minHeight: 3,
                         color: colorScheme.primary,
-                        backgroundColor: colorScheme.onBackground.withOpacity(
-                          0.08,
+                        backgroundColor: colorScheme.onSurface.withValues(
+                          alpha: 0.08,
                         ),
                       ),
                     ),
@@ -119,10 +117,10 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                         margin: const EdgeInsets.only(top: 16),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: colorScheme.surfaceVariant.withOpacity(0.5),
+                          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: colorScheme.primary.withOpacity(0.3),
+                            color: colorScheme.primary.withValues(alpha: 0.3),
                           ),
                         ),
                         child: Column(
@@ -190,7 +188,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                     "อัปโหลดวิดีโอได้ไม่เกิน 50 MB\nและความยาวไม่เกิน 15 วินาที",
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurface.withOpacity(0.7),
+                      color: colorScheme.onSurface.withValues(alpha: 0.7),
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -204,7 +202,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                 color: colorScheme.surface,
                 boxShadow: [
                   BoxShadow(
-                    color: theme.shadowColor.withOpacity(0.12),
+                    color: theme.shadowColor.withValues(alpha: 0.12),
                     blurRadius: 10,
                     offset: const Offset(0, -2),
                   ),
@@ -339,7 +337,6 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
       _processing = true;
       _progressValue = 0.0;
       _progressText = "กำลังเตรียมโฟลเดอร์ชั่วคราว...";
-      _detections = [];
       _detectedClasses.clear(); // เคลียร์ผลลัพธ์เดิมก่อนเริ่มประมวลผล
       _annotatedImage = null;
       _videoController?.dispose();
