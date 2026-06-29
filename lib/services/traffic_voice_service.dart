@@ -1,5 +1,6 @@
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:trffic_ilght_app/core/utils/thai_number_helper.dart';
 
 class TrafficVoiceService {
   final FlutterTts _tts = FlutterTts();
@@ -36,40 +37,6 @@ class TrafficVoiceService {
     await _tts.speak(message);
   }
 
-  String _convertToThaiWords(int val) {
-    if (val == 0) return 'ศูนย์';
-
-    final units = ['', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า'];
-
-    if (val < 10) {
-      return units[val];
-    }
-
-    if (val < 100) {
-      final tens = val ~/ 10;
-      final ones = val % 10;
-
-      String tensStr = '';
-      if (tens == 1) {
-        tensStr = 'สิบ';
-      } else if (tens == 2) {
-        tensStr = 'ยี่สิบ';
-      } else {
-        tensStr = '${units[tens]}สิบ';
-      }
-
-      String onesStr = '';
-      if (ones == 1) {
-        onesStr = 'เอ็ด';
-      } else if (ones > 1) {
-        onesStr = units[ones];
-      }
-
-      return '$tensStr$onesStr';
-    }
-
-    return val.toString(); // Fallback for 100+
-  }
 
   Future<void> speakNumber(String number) async {
     if (!_isEnabled) return;
@@ -83,7 +50,7 @@ class TrafficVoiceService {
     if (val >= 1 && val <= 3) {
       await speak("เตรียมตัวไป");
     } else {
-      final word = _convertToThaiWords(val);
+      final word = convertToThaiWords(val);
       await speak(word);
     }
   }
