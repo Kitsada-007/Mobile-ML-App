@@ -48,6 +48,7 @@ class CameraInferenceController extends ChangeNotifier {
   DateTime? _lastNumberDetectTime;
 
   bool _hasSpokenGetReady = false;
+  bool _hasSpokenInitialNumber = false;
   String? _lastSpokenNumber;
   bool _isSignCurrentlyVisible = false;
 
@@ -213,15 +214,22 @@ class CameraInferenceController extends ChangeNotifier {
         if (detectedNumberInThisFrame != null) {
           _detectedNumber = detectedNumberInThisFrame;
           final int? val = int.tryParse(detectedNumberInThisFrame);
-          if (val != null && val >= 1 && val <= 9) {
+          if (val != null && val >= 1) {
             if (val >= 1 && val <= 3) {
               if (!_hasSpokenGetReady) {
                 _hasSpokenGetReady = true;
                 _lastSpokenNumber = detectedNumberInThisFrame;
                 _voiceService.speakNumber(detectedNumberInThisFrame);
               }
-            } else {
+            } else if (val >= 4 && val <= 9) {
               if (_lastSpokenNumber != detectedNumberInThisFrame) {
+                _lastSpokenNumber = detectedNumberInThisFrame;
+                _voiceService.speakNumber(detectedNumberInThisFrame);
+              }
+            } else {
+              // val > 9
+              if (!_hasSpokenInitialNumber) {
+                _hasSpokenInitialNumber = true;
                 _lastSpokenNumber = detectedNumberInThisFrame;
                 _voiceService.speakNumber(detectedNumberInThisFrame);
               }
@@ -238,6 +246,7 @@ class CameraInferenceController extends ChangeNotifier {
           _detectedNumber = null;
           _lastSpokenNumber = null;
           _hasSpokenGetReady = false;
+          _hasSpokenInitialNumber = false;
           _isSignCurrentlyVisible = false;
         }
       }
@@ -255,6 +264,7 @@ class CameraInferenceController extends ChangeNotifier {
         _detectedNumber = null;
         _lastSpokenNumber = null;
         _hasSpokenGetReady = false;
+        _hasSpokenInitialNumber = false;
         _isSignCurrentlyVisible = false;
       }
 
