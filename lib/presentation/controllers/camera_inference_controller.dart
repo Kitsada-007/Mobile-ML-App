@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trffic_ilght_app/core/models/models.dart';
 import 'package:trffic_ilght_app/services/traffic_voice_service.dart';
 import 'package:trffic_ilght_app/services/sign_number_pipeline_service.dart';
@@ -95,6 +96,13 @@ class CameraInferenceController extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _iouThreshold = prefs.getDouble('iouThreshold') ?? 0.45;
+    } catch (e) {
+      log('Failed to load iouThreshold from SharedPreferences: $e');
+    }
+
     await _loadModelForPlatform();
     await _loadDigitModel();
 
@@ -346,6 +354,11 @@ class CameraInferenceController extends ChangeNotifier {
           _iouThreshold = value;
           _yoloController.setIoUThreshold(value);
           changed = true;
+          SharedPreferences.getInstance().then((prefs) {
+            prefs.setDouble('iouThreshold', value);
+          }).catchError((e) {
+            log('Failed to save iouThreshold to SharedPreferences: $e');
+          });
         }
         break;
 

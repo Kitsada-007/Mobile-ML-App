@@ -6,6 +6,8 @@ import 'package:trffic_ilght_app/presentation/pages/camera_inference_page.dart';
 
 import 'package:trffic_ilght_app/presentation/pages/video_inference_screen.dart';
 
+import 'package:trffic_ilght_app/presentation/pages/single_image_screen.dart';
+
 import 'package:trffic_ilght_app/presentation/widgets/bottom_navigation_bar.dart';
 
 class HomePage extends StatefulWidget {
@@ -50,112 +52,114 @@ class _HomePageState extends State<HomePage> {
       ),
       bottomNavigationBar: const MyBottomNavigationBar(),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      colorScheme.primary,
-                      isDark
-                          ? colorScheme.primaryContainer
-                          : colorScheme.secondary,
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: colorScheme.primary.withValues(alpha: 0.25),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        colorScheme.primary,
+                        isDark
+                            ? colorScheme.primaryContainer
+                            : colorScheme.secondary,
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Traffic Light AI',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: colorScheme.onPrimary.withValues(alpha: 0.85),
-                              fontWeight: FontWeight.w500,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'ระบบตรวจจับ\nสัญญาณไฟจราจร',
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              color: colorScheme.onPrimary,
-                              fontWeight: FontWeight.w800,
-                              height: 1.3,
-                            ),
-                          ),
-                        ],
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: colorScheme.primary.withValues(alpha: 0.25),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 28),
-
-              Text(
-                'เลือกโหมดการตรวจจับ',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 14),
-              _buildActionCard(
-                context,
-                icon: Icons.camera_alt_rounded,
-                title: 'เปิดกล้องตรวจจับ',
-                subtitle: 'ตรวจจับแบบ Real-time ผ่านกล้อง',
-                iconColor: const Color(0xFF3D5AFE),
-                iconBg: const Color(0xFFEEF1FF),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const CameraInferencePage(),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Traffic Light AI',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: colorScheme.onPrimary.withValues(alpha: 0.85),
+                                fontWeight: FontWeight.w500,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'ระบบตรวจจับ\nสัญญาณไฟจราจร',
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                color: colorScheme.onPrimary,
+                                fontWeight: FontWeight.w800,
+                                height: 1.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
-
-              // _buildActionCard(
-              //   context,
-              //   icon: Icons.image_search_rounded,
-              //   title: 'ทดสอบรูปภาพเดี่ยว',
-              //   subtitle: 'อัปโหลดและวิเคราะห์ภาพจากคลัง',
-              //   iconColor: const Color(0xFF00C853),
-              //   iconBg: const Color(0xFFE8FFF0),
-              //   onTap: () => Navigator.push(
-              //     context,
-              //     MaterialPageRoute(builder: (_) => const SingleImageScreen()),
-              //   ),
-              // ),
-              // const SizedBox(height: 12),
-              _buildActionCard(
-                context,
-                icon: Icons.play_circle_rounded,
-                title: 'ทดสอบวิดีโอ',
-                subtitle: 'วิเคราะห์ไฟล์วิดีโอ .mp4',
-                iconColor: const Color(0xFFFF6D00),
-                iconBg: const Color(0xFFFFF3E8),
-                onTap: () => Get.to(() => VideoInferenceScreen()),
-              ),
-            ],
+  
+                const SizedBox(height: 28),
+  
+                Text(
+                  'เลือกโหมดการตรวจจับ',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _buildActionCard(
+                  context,
+                  icon: Icons.camera_alt_rounded,
+                  title: 'เปิดกล้องตรวจจับ',
+                  subtitle: 'ตรวจจับแบบ Real-time ผ่านกล้อง',
+                  iconColor: const Color(0xFF3D5AFE),
+                  iconBg: const Color(0xFFEEF1FF),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const CameraInferencePage(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+  
+                _buildActionCard(
+                  context,
+                  icon: Icons.image_search_rounded,
+                  title: 'ทดสอบรูปภาพเดี่ยว',
+                  subtitle: 'อัปโหลดและวิเคราะห์ภาพจากคลัง',
+                  iconColor: const Color(0xFF00C853),
+                  iconBg: const Color(0xFFE8FFF0),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SingleImageScreen()),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildActionCard(
+                  context,
+                  icon: Icons.play_circle_rounded,
+                  title: 'ทดสอบวิดีโอ',
+                  subtitle: 'วิเคราะห์ไฟล์วิดีโอ .mp4',
+                  iconColor: const Color(0xFFFF6D00),
+                  iconBg: const Color(0xFFFFF3E8),
+                  onTap: () => Get.to(() => VideoInferenceScreen()),
+                ),
+              ],
+            ),
           ),
         ),
       ),

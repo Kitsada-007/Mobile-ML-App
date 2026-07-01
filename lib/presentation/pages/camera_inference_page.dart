@@ -1,6 +1,7 @@
 // Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import 'package:trffic_ilght_app/presentation/controllers/camera_inference_controller.dart';
 
 import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_inference_content.dart';
@@ -118,82 +119,207 @@ class _CameraInferencePageState extends State<CameraInferencePage> {
               ),
 
               // ==========================================
-              // ส่วน UI ใหม่: มินิมอล เรียบง่าย โชว์ด้านบน
+              // UI หน้ากล้องแบบ Green & Clean (Glassmorphism + Emerald Green Accent)
               // ==========================================
               Positioned(
-                top: 100, // ขยับลงมาจากแถบด้านบน (AppBar) นิดหน่อย
-                left: 20,
-                right: 0,
-                child: AnimatedBuilder(
-                  animation: _controller,
-                  builder: (context, _) {
-                    final formalNames = _controller.detectedFormalNames;
-                    final alertMessages = _controller.detectedAlertMessages;
-
-                    // ถ้าไม่เจออะไรเลย ให้หน้าจอโล่งๆ ไปเลย (ซ่อนข้อความ)
-                    if (formalNames.isEmpty) {
-                      return const SizedBox.shrink();
-                    }
-
-                    // ถ้าเจอวัตถุ แสดงเป็นข้อความเรียบๆ ตรงกลาง
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: List.generate(formalNames.length, (index) {
-                        final className = formalNames[index];
-                        String displayAlert = alertMessages[index];
-
-                        // จัดการแสดงผลตัวเลข
-                        if (className == "ป้ายตัวเลข" &&
-                            _controller.detectedNumber != null) {
-                          final int? val = int.tryParse(_controller.detectedNumber!);
-                          if (val != null && val >= 1 && val <= 3) {
-                            displayAlert = "เตรียมตัวไป";
-                          } else {
-                            displayAlert = "ป้ายตัวเลข ${_controller.detectedNumber}";
-                          }
-                        }
-
-                        // ถ้าไม่มีคำแจ้งเตือน ให้ใช้ชื่อทางการแทน
-                        final textToShow = displayAlert.isNotEmpty
-                            ? displayAlert
-                            : className;
-
-                        return AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 200),
-                          child: Container(
-                            key: ValueKey(
-                              textToShow,
-                            ), // ช่วยให้แอนิเมชันเวลาเปลี่ยนคำดูนุ่มนวล
-                            margin: const EdgeInsets.only(bottom: 8),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(
-                                alpha: 0.6,
-                              ), // พื้นหลังดำโปร่งแสงนิดๆ ให้อ่านตัวหนังสือออก
-                              borderRadius: BorderRadius.circular(
-                                30,
-                              ), // ทรงแคปซูลโค้งมน เรียบหรู
-                            ),
-                            child: Text(
-                              textToShow,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: _getAlertColor(
-                                  className,
-                                ), // ดึงสีมาใช้เหมือนเดิม (แดง, เหลือง, เขียว)
-                                fontSize: 24, // ตัวอักษรใหญ่ชัดเจน
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
+                top: 16,
+                left: 16,
+                right: 16,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.3), // Emerald Green
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                            blurRadius: 10,
+                            spreadRadius: 2,
                           ),
-                        );
-                      }),
-                    );
-                  },
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // ส่วนหัว: หัวข้อและสถานะ
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.sensors_rounded,
+                                    color: Color(0xFF10B981),
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'AI TRAFFIC SCANNER',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.9),
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1.2,
+                                      decoration: TextDecoration.none,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF10B981),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'ACTIVE',
+                                    style: TextStyle(
+                                      color: const Color(0xFF10B981).withValues(alpha: 0.85),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 1.0,
+                                      decoration: TextDecoration.none,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          const Divider(
+                            color: Colors.white24,
+                            height: 20,
+                            thickness: 1,
+                          ),
+                          
+                          // แสดงข้อมูลการตรวจจับ
+                          AnimatedBuilder(
+                            animation: _controller,
+                            builder: (context, _) {
+                              final formalNames = _controller.detectedFormalNames;
+                              final alertMessages = _controller.detectedAlertMessages;
+                              final detectedNum = _controller.detectedNumber;
+
+                              if (formalNames.isEmpty) {
+                                return Row(
+                                  children: [
+                                    const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      'กำลังสแกนหาป้ายจราจรและสัญญาณไฟ...',
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(alpha: 0.6),
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        decoration: TextDecoration.none,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: List.generate(formalNames.length, (index) {
+                                  final className = formalNames[index];
+                                  String displayAlert = alertMessages[index];
+
+                                  bool isSpeedLimit = false;
+                                  if (className == "ป้ายตัวเลข" && detectedNum != null) {
+                                    isSpeedLimit = true;
+                                    final int? val = int.tryParse(detectedNum);
+                                    if (val != null && val >= 1 && val <= 3) {
+                                      displayAlert = "เตรียมตัวไป";
+                                    } else {
+                                      displayAlert = "ป้ายจำกัดความเร็ว $detectedNum กม./ชม.";
+                                    }
+                                  }
+
+                                  final textToShow = displayAlert.isNotEmpty ? displayAlert : className;
+                                  final alertColor = _getAlertColor(className);
+
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 6.0),
+                                    child: Row(
+                                      children: [
+                                        // แถบสีแสดงสถานะการเตือน
+                                        Container(
+                                          width: 5,
+                                          height: 24,
+                                          decoration: BoxDecoration(
+                                            color: alertColor,
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Text(
+                                            textToShow,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                              decoration: TextDecoration.none,
+                                            ),
+                                          ),
+                                        ),
+                                        // วงกลมสัญลักษณ์ป้ายจำกัดความเร็ว (แสดงเมื่อพบตัวเลข)
+                                        if (isSpeedLimit && detectedNum != null && int.tryParse(detectedNum) != null && int.parse(detectedNum) > 3)
+                                          Container(
+                                            width: 34,
+                                            height: 34,
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: Colors.white,
+                                              border: Border.all(
+                                                color: Colors.red,
+                                                width: 3,
+                                              ),
+                                            ),
+                                            child: Center(
+                                              child: Text(
+                                                detectedNum,
+                                                style: const TextStyle(
+                                                  color: Colors.black,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w900,
+                                                  decoration: TextDecoration.none,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  );
+                                }),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ],

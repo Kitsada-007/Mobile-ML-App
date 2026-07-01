@@ -4,9 +4,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 class SettingsProvider extends ChangeNotifier {
   bool _isLightMode = true;
   bool _isVoiceEnabled = true;
+  double _iouThreshold = 0.45;
 
   bool get isLightMode => _isLightMode;
   bool get isVoiceEnabled => _isVoiceEnabled;
+  double get iouThreshold => _iouThreshold;
 
   SettingsProvider() {
     _loadSettings();
@@ -16,6 +18,7 @@ class SettingsProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     _isLightMode = prefs.getBool('isLightMode') ?? true;
     _isVoiceEnabled = prefs.getBool('isVoiceEnabled') ?? true;
+    _iouThreshold = prefs.getDouble('iouThreshold') ?? 0.45;
     notifyListeners();
   }
 
@@ -30,6 +33,13 @@ class SettingsProvider extends ChangeNotifier {
     _isVoiceEnabled = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isVoiceEnabled', value);
+    notifyListeners();
+  }
+
+  Future<void> setIouThreshold(double value) async {
+    _iouThreshold = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('iouThreshold', value);
     notifyListeners();
   }
 }

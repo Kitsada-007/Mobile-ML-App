@@ -56,6 +56,68 @@ class SettingPage extends StatelessWidget {
               },
             ),
           ),
+
+          const SizedBox(height: 8),
+
+          // 3. IoU Threshold (มี Slider)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              color: Colors.transparent,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.tune_rounded, size: 22),
+                        SizedBox(width: 16),
+                        Text(
+                          'IoU Threshold',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      settings.iouThreshold.toStringAsFixed(2),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blueGrey,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor: Colors.blueGrey,
+                    inactiveTrackColor: Colors.grey.withValues(alpha: 0.3),
+                    thumbColor: Colors.blueGrey,
+                    overlayColor: Colors.blueGrey.withValues(alpha: 0.2),
+                    trackHeight: 3,
+                  ),
+                  child: Slider(
+                    value: settings.iouThreshold,
+                    min: 0.1,
+                    max: 0.9,
+                    divisions: 80,
+                    label: settings.iouThreshold.toStringAsFixed(2),
+                    onChanged: (val) {
+                      context.read<SettingsProvider>().setIouThreshold(val);
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
