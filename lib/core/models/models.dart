@@ -1,10 +1,7 @@
 import 'package:ultralytics_yolo/models/yolo_task.dart';
 
 enum ModelType {
-  bestFloat16traffic(
-    'assets/models/best_float16_traffic.tflite',
-    YOLOTask.detect,
-  ),
+  bestFloat16traffic('assets/models/best_float16New.tflite', YOLOTask.detect),
   bestFloat16number(
     'assets/models/best_float16_number.tflite',
     YOLOTask.detect,
