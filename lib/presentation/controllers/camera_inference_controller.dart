@@ -52,6 +52,9 @@ class CameraInferenceController extends ChangeNotifier {
   bool _hasSpokenInitialNumber = false;
   String? _lastSpokenNumber;
   bool _isSignCurrentlyVisible = false;
+  DateTime? _lastSignSeenTime;
+  String? _candidateNumber;
+  int _consecutiveDetectCount = 0;
 
   bool _isDisposed = false;
   Future<void>? _loadingFuture;
@@ -99,8 +102,10 @@ class CameraInferenceController extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       _iouThreshold = prefs.getDouble('iouThreshold') ?? 0.45;
+      _confidenceThreshold = prefs.getDouble('confidenceThreshold') ?? 0.5;
+      _numItemsThreshold = prefs.getInt('numItemsThreshold') ?? 11;
     } catch (e) {
-      log('Failed to load iouThreshold from SharedPreferences: $e');
+      log('Failed to load thresholds from SharedPreferences: $e');
     }
 
     await _loadModelForPlatform();
@@ -148,7 +153,18 @@ class CameraInferenceController extends ChangeNotifier {
   bool _canRunNumberDetection() {
     if (_lastNumberDetectTime == null) return true;
     return DateTime.now().difference(_lastNumberDetectTime!).inMilliseconds >
-        700;
+        300;
+  }
+
+  void _resetSignState() {
+    _detectedNumber = null;
+    _lastSpokenNumber = null;
+    _hasSpokenGetReady = false;
+    _hasSpokenInitialNumber = false;
+    _isSignCurrentlyVisible = false;
+    _lastSignSeenTime = null;
+    _candidateNumber = null;
+    _consecutiveDetectCount = 0;
   }
 
   // ==========================================
@@ -205,7 +221,17 @@ class CameraInferenceController extends ChangeNotifier {
                   );
 
               if (number != null && number.isNotEmpty) {
-                detectedNumberInThisFrame = number;
+                // Consensus Logic: ตรวจสอบความถูกต้องต่อเนื่องกัน 2 เฟรมก่อนยืนยันค่า
+                if (_candidateNumber == number) {
+                  _consecutiveDetectCount++;
+                } else {
+                  _candidateNumber = number;
+                  _consecutiveDetectCount = 1;
+                }
+
+                if (_consecutiveDetectCount >= 2) {
+                  detectedNumberInThisFrame = number;
+                }
               }
             } catch (e) {
               log('Sign number pipeline error: $e');
@@ -218,6 +244,7 @@ class CameraInferenceController extends ChangeNotifier {
 
       // จัดการสถานะและเสียงสำหรับป้ายตัวเลขในเฟรมนี้
       if (signNumberDetectedInThisFrame) {
+        _lastSignSeenTime = DateTime.now();
         _isSignCurrentlyVisible = true;
         if (detectedNumberInThisFrame != null) {
           _detectedNumber = detectedNumberInThisFrame;
@@ -246,16 +273,15 @@ class CameraInferenceController extends ChangeNotifier {
         }
       } else {
         if (_isSignCurrentlyVisible) {
-          // สิ้นสุด/จบการตรวจจับป้ายตัวเลขในกล้อง (ป้ายพ้นจอไปแล้ว)
-          if (!_hasSpokenGetReady && _detectedNumber != null) {
-            _voiceService.speakNumber(_detectedNumber!);
+          // Debounce Reset: ล้างสถานะเมื่อไม่พบป้ายติดต่อกันเกิน 1.5 วินาที
+          final now = DateTime.now();
+          final lastSeen = _lastSignSeenTime;
+          if (lastSeen == null || now.difference(lastSeen).inMilliseconds > 1500) {
+            if (!_hasSpokenGetReady && _detectedNumber != null) {
+              _voiceService.speakNumber(_detectedNumber!);
+            }
+            _resetSignState();
           }
-          // รีเซ็ตสถานะทั้งหมดเพื่อให้พร้อมสำหรับป้ายรอบใหม่
-          _detectedNumber = null;
-          _lastSpokenNumber = null;
-          _hasSpokenGetReady = false;
-          _hasSpokenInitialNumber = false;
-          _isSignCurrentlyVisible = false;
         }
       }
 
@@ -264,16 +290,16 @@ class CameraInferenceController extends ChangeNotifier {
       _detectedAlertMessages = tempAlerts;
       notifyListeners();
     } else {
-      // ถ้าไม่มีผลตรวจจับเลย ให้เช็คและจัดการกรณีก่อนหน้าเป็นป้ายตัวเลข
+      // ถ้าไม่มีผลตรวจจับเลย ให้เช็คและจัดการกรณีก่อนหน้าเป็นป้ายตัวเลข (มีดีบาวน์)
       if (_isSignCurrentlyVisible) {
-        if (!_hasSpokenGetReady && _detectedNumber != null) {
-          _voiceService.speakNumber(_detectedNumber!);
+        final now = DateTime.now();
+        final lastSeen = _lastSignSeenTime;
+        if (lastSeen == null || now.difference(lastSeen).inMilliseconds > 1500) {
+          if (!_hasSpokenGetReady && _detectedNumber != null) {
+            _voiceService.speakNumber(_detectedNumber!);
+          }
+          _resetSignState();
         }
-        _detectedNumber = null;
-        _lastSpokenNumber = null;
-        _hasSpokenGetReady = false;
-        _hasSpokenInitialNumber = false;
-        _isSignCurrentlyVisible = false;
       }
 
       // ถ้าไม่มีผลตรวจจับเลย ให้ล้างหน้าจอ

@@ -34,5 +34,25 @@ void main() {
     expect(find.text('Traffic Light AI'), findsOneWidget);
     expect(find.text('เลือกโหมดการตรวจจับ'), findsOneWidget);
   });
+
+  test('SettingsProvider resetThresholds resets thresholds to default values', () async {
+    final provider = SettingsProvider();
+    
+    // Set non-default values
+    await provider.setIouThreshold(0.8);
+    await provider.setConfidenceThreshold(0.7);
+    await provider.setNumItemsThreshold(25);
+    
+    expect(provider.iouThreshold, 0.8);
+    expect(provider.confidenceThreshold, 0.7);
+    expect(provider.numItemsThreshold, 25);
+    
+    // Reset values
+    await provider.resetThresholds();
+    
+    expect(provider.iouThreshold, 0.45);
+    expect(provider.confidenceThreshold, 0.5);
+    expect(provider.numItemsThreshold, 11);
+  });
 }
 

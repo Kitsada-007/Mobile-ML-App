@@ -1,7 +1,7 @@
-// Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:trffic_ilght_app/presentation/controllers/camera_inference_controller.dart';
+import 'package:ultralytics_yolo/yolo.dart';
 import 'package:ultralytics_yolo/yolo_streaming_config.dart';
 import 'package:ultralytics_yolo/yolo_view.dart';
 
@@ -26,10 +26,30 @@ class CameraInferenceContent extends StatelessWidget {
         controller: controller.yoloController,
         modelPath: controller.modelPath!,
         task: controller.selectedModel.task,
-        streamingConfig: const YOLOStreamingConfig.minimal(),
-        onResult: controller.onDetectionResults,
-        onPerformanceMetrics: (metrics) =>
-            controller.onPerformanceMetrics(metrics.fps),
+        streamingConfig: const YOLOStreamingConfig.custom(
+          includeOriginalImage: true,
+          maxFPS: 15,
+          inferenceFrequency: 15,
+        ),
+        onStreamingData: (data) {
+          final originalImage = data['originalImage'] as Uint8List?;
+          if (originalImage != null) {
+            controller.updateLatestFrame(originalImage);
+          }
+
+          final detectionsList = data['detections'] as List<dynamic>?;
+          if (detectionsList != null) {
+            final yoloResults = detectionsList
+                .map((e) => YOLOResult.fromMap(Map<String, dynamic>.from(e)))
+                .toList();
+            controller.onDetectionResults(yoloResults);
+          }
+
+          final fps = data['fps'];
+          if (fps is num) {
+            controller.onPerformanceMetrics(fps.toDouble());
+          }
+        },
         onZoomChanged: controller.onZoomChanged,
         lensFacing: controller.lensFacing,
       );

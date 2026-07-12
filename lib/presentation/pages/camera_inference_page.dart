@@ -6,8 +6,6 @@ import 'package:trffic_ilght_app/presentation/controllers/camera_inference_contr
 
 import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_inference_content.dart';
 import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_inference_overlay.dart';
-import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_controls.dart';
-import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/threshold_slider.dart';
 
 /// A screen that demonstrates real-time YOLO inference using the device camera.
 ///
@@ -97,24 +95,6 @@ class _CameraInferencePageState extends State<CameraInferencePage> {
               ),
               CameraInferenceOverlay(
                 controller: _controller,
-                isLandscape: isLandscape,
-              ),
-
-              CameraControls(
-                currentZoomLevel: _controller.currentZoomLevel,
-                isFrontCamera: _controller.isFrontCamera,
-                activeSlider: _controller.activeSlider,
-                onZoomChanged: _controller.setZoomLevel,
-                onSliderToggled: _controller.toggleSlider,
-                onCameraFlipped: _controller.flipCamera,
-                isLandscape: isLandscape,
-              ),
-              ThresholdSlider(
-                activeSlider: _controller.activeSlider,
-                confidenceThreshold: _controller.confidenceThreshold,
-                iouThreshold: _controller.iouThreshold,
-                numItemsThreshold: _controller.numItemsThreshold,
-                onValueChanged: _controller.updateSliderValue,
                 isLandscape: isLandscape,
               ),
 

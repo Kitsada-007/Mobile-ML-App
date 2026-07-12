@@ -68,7 +68,7 @@ Uint8List? _isolateCropAndProcess(CropData data) {
       cropped,
       width: max(cropped.width * 2, 128),
       height: max(cropped.height * 2, 128),
-      interpolation: img.Interpolation.cubic,
+      interpolation: img.Interpolation.linear,
     );
 
     // 🎯 แปลงเป็นขาวดำ (Grayscale)
@@ -77,7 +77,7 @@ Uint8List? _isolateCropAndProcess(CropData data) {
     // 🎯 ปรับความต่างสี (Contrast) ให้ตัวเลขตัดกับพื้นหลังชัดเจน
     cropped = img.adjustColor(cropped, contrast: 1.5);
 
-    return Uint8List.fromList(img.encodeJpg(cropped, quality: 100));
+    return Uint8List.fromList(img.encodeJpg(cropped, quality: 85));
   } catch (e) {
     debugPrint('Isolate Crop Error: $e');
     return null;

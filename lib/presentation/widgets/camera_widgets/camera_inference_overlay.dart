@@ -1,12 +1,7 @@
-// Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-
 import 'package:flutter/material.dart';
-import 'package:trffic_ilght_app/core/models/models.dart';
 import 'package:trffic_ilght_app/presentation/controllers/camera_inference_controller.dart';
 
 import 'detection_stats_display.dart';
-
-import 'threshold_pill.dart';
 
 /// Top overlay widget containing model selector, stats, and threshold pills
 class CameraInferenceOverlay extends StatelessWidget {
@@ -38,26 +33,8 @@ class CameraInferenceOverlay extends StatelessWidget {
             detectionCount: controller.detectionCount,
             currentFps: controller.currentFps,
           ),
-          const SizedBox(height: 8),
-          _buildThresholdPills(),
         ],
       ),
     );
-  }
-
-  Widget _buildThresholdPills() {
-    if (controller.activeSlider == SliderType.confidence) {
-      return ThresholdPill(
-        label:
-            'CONFIDENCE THRESHOLD: ${controller.confidenceThreshold.toStringAsFixed(2)}',
-      );
-    } else if (controller.activeSlider == SliderType.iou) {
-      return ThresholdPill(
-        label: 'IOU THRESHOLD: ${controller.iouThreshold.toStringAsFixed(2)}',
-      );
-    } else if (controller.activeSlider == SliderType.numItems) {
-      return ThresholdPill(label: 'ITEMS MAX: ${controller.numItemsThreshold}');
-    }
-    return const SizedBox.shrink();
   }
 }

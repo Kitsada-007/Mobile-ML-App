@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:trffic_ilght_app/presentation/controllers/settings_controller.dart';
-import 'package:trffic_ilght_app/presentation/pages/home_page.dart';
+import 'package:trffic_ilght_app/presentation/pages/main_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,8 +23,33 @@ class MyApp extends StatelessWidget {
 
     return GetMaterialApp(
       title: 'Traffic Light App',
-      theme: settings.isLightMode ? ThemeData.light() : ThemeData.dark(),
-      home: const HomePage(),
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF3D5AFE),
+          brightness: Brightness.light,
+        ),
+        scaffoldBackgroundColor: const Color(0xFFF8F9FA),
+        appBarTheme: const AppBarTheme(
+          centerTitle: false,
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+        ),
+      ),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF3D5AFE),
+          brightness: Brightness.dark,
+        ),
+        appBarTheme: const AppBarTheme(
+          centerTitle: false,
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+        ),
+      ),
+      themeMode: settings.isLightMode ? ThemeMode.light : ThemeMode.dark,
+      home: const MainScreen(),
     );
   }
 }

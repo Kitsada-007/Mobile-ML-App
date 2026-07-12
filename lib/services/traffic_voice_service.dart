@@ -33,6 +33,17 @@ class TrafficVoiceService {
     if (!_isEnabled) return;
     if (message.isEmpty) return;
 
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final double volume = prefs.getDouble('ttsVolume') ?? 1.0;
+      final double speed = prefs.getDouble('ttsSpeed') ?? 0.6;
+      final double pitch = prefs.getDouble('ttsPitch') ?? 1.0;
+
+      await _tts.setVolume(volume);
+      await _tts.setSpeechRate(speed);
+      await _tts.setPitch(pitch);
+    } catch (_) {}
+
     await _tts.stop();
     await _tts.speak(message);
   }
