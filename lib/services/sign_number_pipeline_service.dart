@@ -13,6 +13,38 @@ class CropData {
   CropData(this.imageBytes, this.left, this.top, this.right, this.bottom);
 }
 
+typedef CropBounds = ({int left, int top, int right, int bottom});
+
+CropBounds resolveCropBounds(
+  CropData data, {
+  required int imageWidth,
+  required int imageHeight,
+}) {
+  double x1 = data.left;
+  double y1 = data.top;
+  double x2 = data.right;
+  double y2 = data.bottom;
+
+  if (x2 <= 1.0 && y2 <= 1.0) {
+    x1 *= imageWidth;
+    y1 *= imageHeight;
+    x2 *= imageWidth;
+    y2 *= imageHeight;
+  }
+
+  final width = x2 - x1;
+  final height = y2 - y1;
+  final paddingW = width * 0.15;
+  final paddingH = height * 0.15;
+
+  return (
+    left: max(0, (x1 - paddingW).round()),
+    top: max(0, (y1 - paddingH).round()),
+    right: min(imageWidth, (x2 + paddingW).round()),
+    bottom: min(imageHeight, (y2 + paddingH).round()),
+  );
+}
+
 Uint8List? _isolateCropAndProcess(CropData data) {
   try {
     final original = img.decodeImage(data.imageBytes);
@@ -21,44 +53,22 @@ Uint8List? _isolateCropAndProcess(CropData data) {
     final imgW = original.width;
     final imgH = original.height;
 
-    // หาจุดตัด ขยายกรอบ (Padding) ออกมานิดหน่อยเพื่อให้เห็นตัวเลขชัดๆ
-    double x1 = data.left;
-    double y1 = data.top;
-    double x2 = data.right;
-    double y2 = data.bottom;
+    final bounds = resolveCropBounds(
+      data,
+      imageWidth: imgW,
+      imageHeight: imgH,
+    );
 
-    // รองรับ Normalized Box
-    if (x2 <= 1.0 && y2 <= 1.0) {
-      x1 *= imgW;
-      y1 *= imgH;
-      x2 *= imgW;
-      y2 *= imgH;
-    }
-
-    final double width = x2 - x1;
-    final double height = y2 - y1;
-
-    if (width <= 0 || height <= 0) return null;
-
-    // เผื่อขอบ (Padding) 15%
-    final double paddingW = width * 0.15;
-    final double paddingH = height * 0.15;
-
-    final int cropLeft = max(0, (x1 - paddingW).round());
-    final int cropTop = max(0, (y1 - paddingH).round());
-    final int cropRight = min(imgW, (x2 + paddingW).round());
-    final int cropBottom = min(imgH, (y2 + paddingH).round());
-
-    final int cropWidth = cropRight - cropLeft;
-    final int cropHeight = cropBottom - cropTop;
+    final int cropWidth = bounds.right - bounds.left;
+    final int cropHeight = bounds.bottom - bounds.top;
 
     if (cropWidth <= 0 || cropHeight <= 0) return null;
 
     // ตัดภาพ (Crop)
     img.Image cropped = img.copyCrop(
       original,
-      x: cropLeft,
-      y: cropTop,
+      x: bounds.left,
+      y: bounds.top,
       width: cropWidth,
       height: cropHeight,
     );
@@ -102,7 +112,10 @@ class SignNumberPipelineService {
     signResults.sort((a, b) => b.confidence.compareTo(a.confidence));
     final sign = signResults.first;
 
-    final rect = sign.boundingBox;
+    final normalizedRect = sign.normalizedBox;
+    final rect = normalizedRect.width > 0 && normalizedRect.height > 0
+        ? normalizedRect
+        : sign.boundingBox;
     final cropData = CropData(
       frameBytes,
       rect.left,
