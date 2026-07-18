@@ -32,7 +32,9 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
-
+/release-model-v1.2.0
+/docs
+/tasks
 # Symbolication related
 app.*.symbols
 
@@ -43,3 +45,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+A
+Compilation
+Get
+Run
+generated_plugins.cmake

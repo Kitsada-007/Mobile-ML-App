@@ -117,7 +117,9 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                         margin: const EdgeInsets.only(top: 16),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                          color: colorScheme.surfaceContainerHighest.withValues(
+                            alpha: 0.5,
+                          ),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: colorScheme.primary.withValues(alpha: 0.3),
@@ -274,6 +276,25 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
         setState(() => _isModelReady = true);
       }
     } catch (e) {
+      final replacement = await _modelManager.reportModelLoadFailure(
+        ModelType.bestFloat16traffic,
+        failedPath: _modelPath!,
+      );
+      if (replacement != null && replacement != _modelPath) {
+        try {
+          _modelPath = replacement;
+          _yolo = YOLO(
+            modelPath: replacement,
+            task: YOLOTask.detect,
+            useGpu: false,
+          );
+          await _yolo.loadModel();
+          if (mounted) setState(() => _isModelReady = true);
+          return;
+        } catch (_) {
+          // Report the original model error below if fallback loading fails.
+        }
+      }
       if (!mounted) return;
 
       final error = YOLOErrorHandler.handleError(

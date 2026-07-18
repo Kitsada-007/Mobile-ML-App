@@ -53,11 +53,7 @@ Uint8List? _isolateCropAndProcess(CropData data) {
     final imgW = original.width;
     final imgH = original.height;
 
-    final bounds = resolveCropBounds(
-      data,
-      imageWidth: imgW,
-      imageHeight: imgH,
-    );
+    final bounds = resolveCropBounds(data, imageWidth: imgW, imageHeight: imgH);
 
     final int cropWidth = bounds.right - bounds.left;
     final int cropHeight = bounds.bottom - bounds.top;
@@ -81,10 +77,10 @@ Uint8List? _isolateCropAndProcess(CropData data) {
       interpolation: img.Interpolation.linear,
     );
 
-    // 🎯 แปลงเป็นขาวดำ (Grayscale)
+    //  แปลงเป็นขาวดำ (Grayscale)
     cropped = img.grayscale(cropped);
 
-    // 🎯 ปรับความต่างสี (Contrast) ให้ตัวเลขตัดกับพื้นหลังชัดเจน
+    //  ปรับความต่างสี (Contrast) ให้ตัวเลขตัดกับพื้นหลังชัดเจน
     cropped = img.adjustColor(cropped, contrast: 1.5);
 
     return Uint8List.fromList(img.encodeJpg(cropped, quality: 85));

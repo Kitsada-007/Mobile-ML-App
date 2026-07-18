@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:trffic_ilght_app/presentation/controllers/settings_controller.dart';
 import 'package:trffic_ilght_app/presentation/pages/main_screen.dart';
+import 'package:trffic_ilght_app/services/remote_model_update_bootstrap.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -12,6 +15,7 @@ void main() {
       child: const MyApp(),
     ),
   );
+  unawaited(RemoteModelUpdateBootstrap.checkOnce());
 }
 
 class MyApp extends StatelessWidget {

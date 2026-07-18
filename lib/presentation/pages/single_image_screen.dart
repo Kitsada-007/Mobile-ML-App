@@ -53,7 +53,18 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
       }
 
       _digitYolo = YOLO(modelPath: _digitModelPath!, task: YOLOTask.detect);
-      await _digitYolo.loadModel();
+      try {
+        await _digitYolo.loadModel();
+      } catch (_) {
+        final replacement = await _modelManager.reportModelLoadFailure(
+          ModelType.bestFloat16number,
+          failedPath: _digitModelPath!,
+        );
+        if (replacement == null || replacement == _digitModelPath) rethrow;
+        _digitModelPath = replacement;
+        _digitYolo = YOLO(modelPath: replacement, task: YOLOTask.detect);
+        await _digitYolo.loadModel();
+      }
 
       if (!mounted) return;
       setState(() {
@@ -150,8 +161,6 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
       }
     }
   }
-
-
 
   String _thaiLabel(String className) {
     const Map<String, String> labels = {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:trffic_ilght_app/presentation/controllers/camera_inference_controller.dart';
@@ -51,6 +52,9 @@ class CameraInferenceContent extends StatelessWidget {
           }
         },
         onZoomChanged: controller.onZoomChanged,
+        onModelError: (error, modelPath, _) {
+          unawaited(controller.onModelLoadError(error, modelPath));
+        },
         lensFacing: controller.lensFacing,
       );
     } else {

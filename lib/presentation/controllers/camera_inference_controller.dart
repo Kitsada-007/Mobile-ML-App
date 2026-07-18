@@ -58,6 +58,7 @@ class CameraInferenceController extends ChangeNotifier {
 
   bool _isDisposed = false;
   Future<void>? _loadingFuture;
+  Future<void>? _modelRecoveryFuture;
 
   // ==========================================
   // อัปเดตตัวแปรเป็นแบบ List เพื่อรองรับหลาย Class พร้อมกัน
@@ -120,17 +121,7 @@ class CameraInferenceController extends ChangeNotifier {
 
   Future<void> _loadDigitModel() async {
     try {
-      final digitModelPath = await _modelManager.getModelPath(
-        ModelType.bestFloat16number,
-      );
-
-      if (digitModelPath == null) {
-        throw Exception('Digit model path is null');
-      }
-
-      _digitYolo = YOLO(modelPath: digitModelPath, task: YOLOTask.detect);
-
-      await _digitYolo!.loadModel();
+      _digitYolo = await _loadYoloWithRollback(ModelType.bestFloat16number);
 
       _signNumberPipelineService = SignNumberPipelineService(
         digitYolo: _digitYolo!,
@@ -143,6 +134,71 @@ class CameraInferenceController extends ChangeNotifier {
       _loadingMessage = 'Digit model load failed: ${error.message}';
       notifyListeners();
     }
+  }
+
+  Future<YOLO> _loadYoloWithRollback(ModelType modelType) async {
+    final initialPath = await _modelManager.getModelPath(modelType);
+    if (initialPath == null) {
+      throw StateError('${modelType.remoteId} model path is null');
+    }
+
+    Future<YOLO> load(String path) async {
+      final yolo = YOLO(modelPath: path, task: modelType.task);
+      await yolo.loadModel();
+      return yolo;
+    }
+
+    try {
+      return await load(initialPath);
+    } catch (_) {
+      final replacement = await _modelManager.reportModelLoadFailure(
+        modelType,
+        failedPath: initialPath,
+      );
+      if (replacement == null || replacement == initialPath) rethrow;
+      return load(replacement);
+    }
+  }
+
+  Future<void> onModelLoadError(Object error, String failedPath) async {
+    if (_isDisposed || failedPath != _modelPath) return;
+
+    final running = _modelRecoveryFuture;
+    if (running != null) {
+      await running;
+      return;
+    }
+
+    final recovery = _recoverTrafficModel(error, failedPath);
+    _modelRecoveryFuture = recovery;
+    try {
+      await recovery;
+    } finally {
+      if (identical(_modelRecoveryFuture, recovery)) {
+        _modelRecoveryFuture = null;
+      }
+    }
+  }
+
+  Future<void> _recoverTrafficModel(Object error, String failedPath) async {
+    _isModelLoading = true;
+    _loadingMessage = 'โมเดลใหม่ใช้งานไม่ได้ กำลังย้อนกลับ...';
+    notifyListeners();
+
+    final replacement = await _modelManager.reportModelLoadFailure(
+      _selectedModel,
+      failedPath: failedPath,
+    );
+    if (_isDisposed) return;
+
+    _isModelLoading = false;
+    if (replacement == null || replacement == failedPath) {
+      _loadingMessage = 'Failed to recover model: $error';
+    } else {
+      _modelPath = replacement;
+      _loadingMessage = '';
+    }
+    notifyListeners();
   }
 
   void updateLatestFrame(Uint8List frameBytes) {
@@ -276,7 +332,8 @@ class CameraInferenceController extends ChangeNotifier {
           // Debounce Reset: ล้างสถานะเมื่อไม่พบป้ายติดต่อกันเกิน 1.5 วินาที
           final now = DateTime.now();
           final lastSeen = _lastSignSeenTime;
-          if (lastSeen == null || now.difference(lastSeen).inMilliseconds > 1500) {
+          if (lastSeen == null ||
+              now.difference(lastSeen).inMilliseconds > 1500) {
             if (!_hasSpokenGetReady && _detectedNumber != null) {
               _voiceService.speakNumber(_detectedNumber!);
             }
@@ -294,7 +351,8 @@ class CameraInferenceController extends ChangeNotifier {
       if (_isSignCurrentlyVisible) {
         final now = DateTime.now();
         final lastSeen = _lastSignSeenTime;
-        if (lastSeen == null || now.difference(lastSeen).inMilliseconds > 1500) {
+        if (lastSeen == null ||
+            now.difference(lastSeen).inMilliseconds > 1500) {
           if (!_hasSpokenGetReady && _detectedNumber != null) {
             _voiceService.speakNumber(_detectedNumber!);
           }
@@ -380,11 +438,13 @@ class CameraInferenceController extends ChangeNotifier {
           _iouThreshold = value;
           _yoloController.setIoUThreshold(value);
           changed = true;
-          SharedPreferences.getInstance().then((prefs) {
-            prefs.setDouble('iouThreshold', value);
-          }).catchError((e) {
-            log('Failed to save iouThreshold to SharedPreferences: $e');
-          });
+          SharedPreferences.getInstance()
+              .then((prefs) {
+                prefs.setDouble('iouThreshold', value);
+              })
+              .catchError((e) {
+                log('Failed to save iouThreshold to SharedPreferences: $e');
+              });
         }
         break;
 
