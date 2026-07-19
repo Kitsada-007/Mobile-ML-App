@@ -35,6 +35,25 @@ void main() {
     expect(find.text('เลือกโหมดการตรวจจับ'), findsOneWidget);
   });
 
+  testWidgets('Settings page renders without hidden ListTile material effects', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        ],
+        child: const MyApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
+
   test('SettingsProvider resetThresholds resets thresholds to default values', () async {
     final provider = SettingsProvider();
     
@@ -55,4 +74,3 @@ void main() {
     expect(provider.numItemsThreshold, 11);
   });
 }
-

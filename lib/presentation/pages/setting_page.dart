@@ -142,64 +142,67 @@ class SettingPage extends StatelessWidget {
           Container(
             decoration: _cardBoxDecoration(context),
             clipBehavior: Clip.antiAlias,
-            child: Theme(
-              data: theme.copyWith(
-                dividerColor: Colors.transparent,
-                expansionTileTheme: ExpansionTileThemeData(
-                  iconColor: colorScheme.primary,
-                  collapsedIconColor: colorScheme.onSurfaceVariant,
-                ),
-              ),
-              child: ExpansionTile(
-                leading: Icon(Icons.tune_rounded, color: colorScheme.primary),
-                title: const Text(
-                  'Model Threshold Settings',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
+            child: Material(
+              type: MaterialType.transparency,
+              child: Theme(
+                data: theme.copyWith(
+                  dividerColor: Colors.transparent,
+                  expansionTileTheme: ExpansionTileThemeData(
+                    iconColor: colorScheme.primary,
+                    collapsedIconColor: colorScheme.onSurfaceVariant,
                   ),
                 ),
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16.0),
-                    child: Divider(height: 1),
+                child: ExpansionTile(
+                  leading: Icon(Icons.tune_rounded, color: colorScheme.primary),
+                  title: const Text(
+                    'Model Threshold Settings',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  _buildSliderRow(
-                    context,
-                    icon: Icons.adjust_rounded,
-                    title: 'IoU Threshold',
-                    value: settings.iouThreshold,
-                    valueDisplay: settings.iouThreshold.toStringAsFixed(2),
-                    min: 0.1,
-                    max: 0.9,
-                    divisions: 80,
-                    onChanged: (val) => context.read<SettingsProvider>().setIouThreshold(val),
-                  ),
-                  _buildSliderRow(
-                    context,
-                    icon: Icons.filter_center_focus_rounded,
-                    title: 'Confidence Threshold',
-                    value: settings.confidenceThreshold,
-                    valueDisplay: settings.confidenceThreshold.toStringAsFixed(2),
-                    min: 0.1,
-                    max: 0.9,
-                    divisions: 80,
-                    onChanged: (val) => context.read<SettingsProvider>().setConfidenceThreshold(val),
-                  ),
-                  _buildSliderRow(
-                    context,
-                    icon: Icons.layers_outlined,
-                    title: 'Max Detections',
-                    value: settings.numItemsThreshold.toDouble(),
-                    valueDisplay: '${settings.numItemsThreshold}',
-                    min: 5.0,
-                    max: 50.0,
-                    divisions: 45,
-                    onChanged: (val) => context.read<SettingsProvider>().setNumItemsThreshold(val.toInt()),
-                  ),
-                  const SizedBox(height: 12),
-                ],
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.0),
+                      child: Divider(height: 1),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildSliderRow(
+                      context,
+                      icon: Icons.adjust_rounded,
+                      title: 'IoU Threshold',
+                      value: settings.iouThreshold,
+                      valueDisplay: settings.iouThreshold.toStringAsFixed(2),
+                      min: 0.1,
+                      max: 0.9,
+                      divisions: 80,
+                      onChanged: (val) => context.read<SettingsProvider>().setIouThreshold(val),
+                    ),
+                    _buildSliderRow(
+                      context,
+                      icon: Icons.filter_center_focus_rounded,
+                      title: 'Confidence Threshold',
+                      value: settings.confidenceThreshold,
+                      valueDisplay: settings.confidenceThreshold.toStringAsFixed(2),
+                      min: 0.1,
+                      max: 0.9,
+                      divisions: 80,
+                      onChanged: (val) => context.read<SettingsProvider>().setConfidenceThreshold(val),
+                    ),
+                    _buildSliderRow(
+                      context,
+                      icon: Icons.layers_outlined,
+                      title: 'Max Detections',
+                      value: settings.numItemsThreshold.toDouble(),
+                      valueDisplay: '${settings.numItemsThreshold}',
+                      min: 5.0,
+                      max: 50.0,
+                      divisions: 45,
+                      onChanged: (val) => context.read<SettingsProvider>().setNumItemsThreshold(val.toInt()),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                ),
               ),
             ),
           ),
