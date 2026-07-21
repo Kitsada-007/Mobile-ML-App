@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:trffic_ilght_app/services/sign_number_pipeline_service.dart';
 
 void main() {
@@ -30,5 +31,24 @@ void main() {
       expect(bounds.right, 165);
       expect(bounds.bottom, 89);
     });
+  });
+
+  test('preprocessing preserves color information', () {
+    final source = img.Image(width: 8, height: 8);
+    img.fill(source, color: img.ColorRgb8(220, 30, 20));
+
+    final processedBytes = processSignCrop(
+      CropData(Uint8List.fromList(img.encodePng(source)), 0, 0, 8, 8),
+    );
+
+    expect(processedBytes, isNotNull);
+    final processed = img.decodeImage(processedBytes!);
+    expect(processed, isNotNull);
+
+    final centerPixel = processed!.getPixel(
+      processed.width ~/ 2,
+      processed.height ~/ 2,
+    );
+    expect((centerPixel.r - centerPixel.g).abs(), greaterThan(50));
   });
 }

@@ -2,12 +2,11 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:trffic_ilght_app/presentation/controllers/camera_inference_controller.dart';
-import 'package:ultralytics_yolo/yolo.dart';
-import 'package:ultralytics_yolo/yolo_streaming_config.dart';
-import 'package:ultralytics_yolo/yolo_view.dart';
+import 'package:trffic_ilght_app/services/yolo_result_adapter.dart';
+import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 /// Main content widget that handles the camera view and loading states
-class CameraInferenceContent extends StatelessWidget {
+class CameraInferenceContent extends StatefulWidget {
   const CameraInferenceContent({
     super.key,
     required this.controller,
@@ -18,15 +17,62 @@ class CameraInferenceContent extends StatelessWidget {
   final int rebuildKey;
 
   @override
+  State<CameraInferenceContent> createState() => _CameraInferenceContentState();
+}
+
+class _CameraInferenceContentState extends State<CameraInferenceContent> {
+  String? _modelPath;
+  late YOLOTask _task;
+
+  @override
+  void initState() {
+    super.initState();
+    _readModelState();
+    widget.controller.addListener(_handleControllerChanged);
+  }
+
+  @override
+  void didUpdateWidget(CameraInferenceContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_handleControllerChanged);
+      _readModelState();
+      widget.controller.addListener(_handleControllerChanged);
+    }
+  }
+
+  void _readModelState() {
+    _modelPath = widget.controller.modelPath;
+    _task = widget.controller.selectedModel.task;
+  }
+
+  void _handleControllerChanged() {
+    final nextModelPath = widget.controller.modelPath;
+    final nextTask = widget.controller.selectedModel.task;
+    if (nextModelPath == _modelPath && nextTask == _task) return;
+
+    setState(() {
+      _modelPath = nextModelPath;
+      _task = nextTask;
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_handleControllerChanged);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (controller.modelPath != null) {
+    final modelPath = _modelPath;
+    final controller = widget.controller;
+    if (modelPath != null) {
       return YOLOView(
-        key: ValueKey(
-          'yolo_view_${controller.modelPath}_${controller.selectedModel.task.name}_$rebuildKey',
-        ),
+        key: ValueKey('yolo_view_${widget.rebuildKey}'),
         controller: controller.yoloController,
-        modelPath: controller.modelPath!,
-        task: controller.selectedModel.task,
+        modelPath: modelPath,
+        task: _task,
         streamingConfig: const YOLOStreamingConfig.custom(
           includeOriginalImage: true,
           maxFPS: 15,
@@ -38,11 +84,8 @@ class CameraInferenceContent extends StatelessWidget {
             controller.updateLatestFrame(originalImage);
           }
 
-          final detectionsList = data['detections'] as List<dynamic>?;
-          if (detectionsList != null) {
-            final yoloResults = detectionsList
-                .map((e) => YOLOResult.fromMap(Map<String, dynamic>.from(e)))
-                .toList();
+          if (data.containsKey('detections')) {
+            final yoloResults = parseYoloDetections(data['detections']);
             controller.onDetectionResults(yoloResults);
           }
 

@@ -1,7 +1,8 @@
 import 'dart:math';
 import 'package:flutter/foundation.dart'; // สำหรับ compute
 import 'package:image/image.dart' as img;
-import 'package:ultralytics_yolo/yolo.dart';
+import 'package:trffic_ilght_app/services/yolo_result_adapter.dart';
+import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 class CropData {
   final Uint8List imageBytes;
@@ -45,7 +46,8 @@ CropBounds resolveCropBounds(
   );
 }
 
-Uint8List? _isolateCropAndProcess(CropData data) {
+@visibleForTesting
+Uint8List? processSignCrop(CropData data) {
   try {
     final original = img.decodeImage(data.imageBytes);
     if (original == null) return null;
@@ -77,10 +79,7 @@ Uint8List? _isolateCropAndProcess(CropData data) {
       interpolation: img.Interpolation.linear,
     );
 
-    //  แปลงเป็นขาวดำ (Grayscale)
-    cropped = img.grayscale(cropped);
-
-    //  ปรับความต่างสี (Contrast) ให้ตัวเลขตัดกับพื้นหลังชัดเจน
+    // ปรับความต่างสีโดยเก็บข้อมูลสีเดิมไว้ให้โมเดลใช้
     cropped = img.adjustColor(cropped, contrast: 1.5);
 
     return Uint8List.fromList(img.encodeJpg(cropped, quality: 85));
@@ -120,42 +119,12 @@ class SignNumberPipelineService {
       rect.bottom,
     );
 
-    final processedBytes = await compute(_isolateCropAndProcess, cropData);
+    final processedBytes = await compute(processSignCrop, cropData);
     if (processedBytes == null) return null;
 
     final result = await digitYolo.predict(processedBytes);
 
-    final rawBoxes = result['boxes'];
-    if (rawBoxes is! List || rawBoxes.isEmpty) return null;
-
-    final digitBoxes = rawBoxes
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
-
-    if (digitBoxes.isEmpty) return null;
-
-    digitBoxes.sort((a, b) {
-      final ax = _readLeftX(a);
-      final bx = _readLeftX(b);
-      return ax.compareTo(bx);
-    });
-    String number = digitBoxes
-        .map((e) => (e['className'] ?? e['class'] ?? '').toString().trim())
-        .join();
-
-    if (number.length > 2) {
-      number = number.substring(0, 2);
-    }
-
-    return number.isEmpty ? null : number;
-  }
-
-  double _readLeftX(Map<String, dynamic> box) {
-    for (final key in ['x1', 'left', 'xmin']) {
-      final value = box[key];
-      if (value is num) return value.toDouble();
-    }
-    return 0.0;
+    final detections = parseYoloDetections(result['detections']);
+    return readDigitSequence(detections, maxDigits: 2);
   }
 }

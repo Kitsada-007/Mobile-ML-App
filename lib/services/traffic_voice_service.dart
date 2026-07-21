@@ -48,7 +48,6 @@ class TrafficVoiceService {
     await _tts.speak(message);
   }
 
-
   Future<void> speakNumber(String number) async {
     if (!_isEnabled) return;
     final prefs = await SharedPreferences.getInstance();
@@ -101,7 +100,7 @@ class TrafficVoiceService {
       case 'red_light_circle':
         return "สัญญาณไฟจราจรสีแดง";
       case 'sign_number':
-        return "ป้ายตัวเลข";
+        return "สัญญาณไฟนับถอยหลัง";
       case 'turn_left':
         return "สัญญาณไฟเลี้ยวซ้าย";
       case 'turn_right':
@@ -131,7 +130,7 @@ class TrafficVoiceService {
       case 'red_light_circle':
         return "ไฟแดง หยุดรถ";
       case 'sign_number':
-        return "พบป้ายตัวเลข";
+        return "พบสัญญาณไฟนับถอยหลัง";
       case 'turn_left':
         return "เลี้ยวซ้ายได้";
       case 'turn_right':

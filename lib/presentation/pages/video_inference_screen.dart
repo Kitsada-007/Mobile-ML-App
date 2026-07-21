@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
@@ -18,8 +19,8 @@ import 'package:trffic_ilght_app/presentation/widgets/video_widgets/video_proces
 import 'package:trffic_ilght_app/presentation/widgets/video_widgets/video_result_section.dart';
 import 'package:trffic_ilght_app/presentation/widgets/video_widgets/video_selected_video.dart';
 import 'package:trffic_ilght_app/services/model_manager.dart';
-import 'package:ultralytics_yolo/utils/error_handler.dart';
-import 'package:ultralytics_yolo/yolo.dart';
+import 'package:trffic_ilght_app/services/yolo_result_adapter.dart';
+import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:video_player/video_player.dart';
 
 class VideoInferenceScreen extends StatefulWidget {
@@ -37,7 +38,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
   Uint8List? _imageBytes;
   Uint8List? _annotatedImage;
 
-  late YOLO _yolo;
+  YOLO? _yolo;
   String? _modelPath;
   bool _isModelReady = false;
   late final ModelManager _modelManager;
@@ -58,6 +59,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
 
   @override
   void dispose() {
+    unawaited(_yolo?.dispose());
     _videoController?.dispose();
     super.dispose();
   }
@@ -244,7 +246,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
       case 'red_light_circle':
         return "สัญญาณไฟจราจรสีแดง";
       case 'sign_number':
-        return "สัญญาณไฟตัวเลข";
+        return "สัญญาณไฟนับถอยหลัง";
       case 'turn_left':
         return "สัญญาณไฟเลี้ยวซ้าย";
       case 'turn_right':
@@ -268,13 +270,14 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
     _modelPath = await _modelManager.getModelPath(ModelType.bestFloat16traffic);
     if (_modelPath == null) return;
 
-    _yolo = YOLO(modelPath: _modelPath!, task: YOLOTask.detect, useGpu: false);
-
     try {
-      await _yolo.loadModel();
-      if (mounted) {
-        setState(() => _isModelReady = true);
+      final yolo = await _loadYolo(_modelPath!);
+      if (!mounted) {
+        await yolo.dispose();
+        return;
       }
+      _yolo = yolo;
+      setState(() => _isModelReady = true);
     } catch (e) {
       final replacement = await _modelManager.reportModelLoadFailure(
         ModelType.bestFloat16traffic,
@@ -283,13 +286,13 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
       if (replacement != null && replacement != _modelPath) {
         try {
           _modelPath = replacement;
-          _yolo = YOLO(
-            modelPath: replacement,
-            task: YOLOTask.detect,
-            useGpu: false,
-          );
-          await _yolo.loadModel();
-          if (mounted) setState(() => _isModelReady = true);
+          final yolo = await _loadYolo(replacement);
+          if (!mounted) {
+            await yolo.dispose();
+            return;
+          }
+          _yolo = yolo;
+          setState(() => _isModelReady = true);
           return;
         } catch (_) {
           // Report the original model error below if fallback loading fails.
@@ -302,6 +305,21 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
         'Failed to load model $_modelPath for task ${YOLOTask.detect.name}',
       );
       _showSnackBar('Error loading model: ${error.message}');
+    }
+  }
+
+  Future<YOLO> _loadYolo(String modelPath) async {
+    final yolo = YOLO(
+      modelPath: modelPath,
+      task: YOLOTask.detect,
+      useGpu: false,
+    );
+    try {
+      await yolo.loadModel();
+      return yolo;
+    } catch (_) {
+      await yolo.dispose();
+      rethrow;
     }
   }
 
@@ -457,26 +475,15 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
 
       try {
         final bytes = await fileEntity.readAsBytes();
-        final result = await _yolo.predict(bytes);
+        final result = await _yolo!.predict(bytes);
         final annotatedBytes = result['annotatedImage'] as Uint8List?;
 
         // -------------------------------------------------------------
         // ดึงข้อมูล Class ออกมาจาก result และบันทึกเก็บไว้ใน Set
         // -------------------------------------------------------------
-        if (result.containsKey('detections') && result['detections'] != null) {
-          final List<dynamic> currentDetections = result['detections'];
-          for (var element in currentDetections) {
-            if (element is Map) {
-              // แพ็กเกจ yolo อาจใช้ชื่อ key ว่า className, label หรือ class
-              final rawClassName =
-                  element['className'] ?? element['label'] ?? element['class'];
-              if (rawClassName != null) {
-                // >>> นำชื่อเดิมมาผ่านฟังก์ชันแปลเป็นภาษาไทยก่อนเพิ่มลงใน Set <<<
-                final thaiName = _getFormalThaiName(rawClassName.toString());
-                _detectedClasses.add(thaiName);
-              }
-            }
-          }
+        final detections = parseYoloDetections(result['detections']);
+        for (final detection in detections) {
+          _detectedClasses.add(_getFormalThaiName(detection.className));
         }
         // -------------------------------------------------------------
 

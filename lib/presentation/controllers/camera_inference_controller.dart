@@ -121,7 +121,14 @@ class CameraInferenceController extends ChangeNotifier {
 
   Future<void> _loadDigitModel() async {
     try {
-      _digitYolo = await _loadYoloWithRollback(ModelType.bestFloat16number);
+      final digitYolo = await _loadYoloWithRollback(
+        ModelType.bestFloat16number,
+      );
+      if (_isDisposed) {
+        await digitYolo.dispose();
+        return;
+      }
+      _digitYolo = digitYolo;
 
       _signNumberPipelineService = SignNumberPipelineService(
         digitYolo: _digitYolo!,
@@ -144,8 +151,13 @@ class CameraInferenceController extends ChangeNotifier {
 
     Future<YOLO> load(String path) async {
       final yolo = YOLO(modelPath: path, task: modelType.task);
-      await yolo.loadModel();
-      return yolo;
+      try {
+        await yolo.loadModel();
+        return yolo;
+      } catch (_) {
+        await yolo.dispose();
+        rethrow;
+      }
     }
 
     try {
@@ -260,7 +272,8 @@ class CameraInferenceController extends ChangeNotifier {
           _voiceService.processDetection(result.className, result.confidence);
         } else {
           signNumberDetectedInThisFrame = true;
-          // ถ้าเป็นป้ายตัวเลข ให้ทำงานตรวจจับตัวเลขต่อ (ข้ามถ้าร้องเตือน เตรียมตัวไป แล้ว)
+          // ถ้าเป็นสัญญาณไฟนับถอยหลัง ให้ตรวจจับตัวเลขต่อ
+          // (ข้ามถ้าร้องเตือน "เตรียมตัวไป" แล้ว)
           if (_latestFrameBytes != null &&
               _signNumberPipelineService != null &&
               !_isDetectingNumber &&
@@ -298,7 +311,7 @@ class CameraInferenceController extends ChangeNotifier {
         }
       }
 
-      // จัดการสถานะและเสียงสำหรับป้ายตัวเลขในเฟรมนี้
+      // จัดการสถานะและเสียงสำหรับสัญญาณไฟนับถอยหลังในเฟรมนี้
       if (signNumberDetectedInThisFrame) {
         _lastSignSeenTime = DateTime.now();
         _isSignCurrentlyVisible = true;
@@ -347,7 +360,7 @@ class CameraInferenceController extends ChangeNotifier {
       _detectedAlertMessages = tempAlerts;
       notifyListeners();
     } else {
-      // ถ้าไม่มีผลตรวจจับเลย ให้เช็คและจัดการกรณีก่อนหน้าเป็นป้ายตัวเลข (มีดีบาวน์)
+      // ถ้าไม่มีผลตรวจจับ ให้จัดการสัญญาณไฟนับถอยหลังก่อนหน้า (มีดีบาวน์)
       if (_isSignCurrentlyVisible) {
         final now = DateTime.now();
         final lastSeen = _lastSignSeenTime;
@@ -557,8 +570,10 @@ class CameraInferenceController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _voiceService.stop();
     _isDisposed = true;
+    _voiceService.stop();
+    unawaited(_digitYolo?.dispose());
+    _yoloController.dispose();
     super.dispose();
   }
 }

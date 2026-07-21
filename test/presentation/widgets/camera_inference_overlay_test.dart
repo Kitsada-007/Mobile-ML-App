@@ -1,0 +1,118 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_detection_panel.dart';
+import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_inference_overlay.dart';
+
+void main() {
+  testWidgets(
+    'camera HUD uses translucent black styling and an overlay back button',
+    (tester) async {
+      var didGoBack = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Stack(
+              children: [
+                CameraInferenceOverlay(
+                  detectionCount: 2,
+                  currentFps: 15.5,
+                  isLandscape: false,
+                  onBack: () => didGoBack = true,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final hud = tester.widget<DecoratedBox>(
+        find.byKey(const Key('cameraStatusHud')),
+      );
+      final decoration = hud.decoration as BoxDecoration;
+      expect(decoration.color, Colors.black.withValues(alpha: 0.7));
+      expect(find.text('DETECTIONS: 2'), findsOneWidget);
+      expect(find.text('FPS: 15.5'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('ย้อนกลับ'));
+      expect(didGoBack, isTrue);
+    },
+  );
+
+  testWidgets('detection panel uses a responsive translucent black surface', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              CameraDetectionPanel(
+                formalNames: [],
+                alertMessages: [],
+                detectedNumber: null,
+                isLandscape: false,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final panel = tester.widget<DecoratedBox>(
+      find.byKey(const Key('cameraDetectionPanel')),
+    );
+    final decoration = panel.decoration as BoxDecoration;
+    expect(decoration.color, Colors.black.withValues(alpha: 0.7));
+    expect(find.text('กำลังสแกนหาป้ายจราจรและสัญญาณไฟ...'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('detection panel shows traffic-light countdown in seconds', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              CameraDetectionPanel(
+                formalNames: ['สัญญาณไฟนับถอยหลัง'],
+                alertMessages: ['พบสัญญาณไฟนับถอยหลัง'],
+                detectedNumber: '12',
+                isLandscape: false,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('สัญญาณไฟนับถอยหลัง 12 วินาที'), findsOneWidget);
+    expect(find.textContaining('ป้ายจำกัดความเร็ว'), findsNothing);
+    expect(find.textContaining('กม./ชม.'), findsNothing);
+  });
+
+  testWidgets('countdown from three displays get-ready message', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              CameraDetectionPanel(
+                formalNames: ['สัญญาณไฟนับถอยหลัง'],
+                alertMessages: ['พบสัญญาณไฟนับถอยหลัง'],
+                detectedNumber: '3',
+                isLandscape: false,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('เตรียมตัวไป'), findsOneWidget);
+  });
+}

@@ -1,10 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:trffic_ilght_app/core/models/models.dart';
-import 'package:ultralytics_yolo/utils/error_handler.dart';
-import 'package:ultralytics_yolo/utils/map_converter.dart';
-import 'package:ultralytics_yolo/yolo.dart';
+import 'package:trffic_ilght_app/services/yolo_result_adapter.dart';
+import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 import '../../services/model_manager.dart';
 
@@ -18,14 +19,14 @@ class SingleImageScreen extends StatefulWidget {
 class _SingleImageScreenState extends State<SingleImageScreen> {
   final ImagePicker _picker = ImagePicker();
 
-  List<Map<String, dynamic>> _detections = [];
+  List<YOLOResult> _detections = [];
   Uint8List? _imageBytes;
   Uint8List? _annotatedImage;
 
   Uint8List? _signNumberCropImage;
   String? _digitPredictText;
 
-  late YOLO _digitYolo; // model สำหรับ detect digit 0-9
+  YOLO? _digitYolo; // model สำหรับ detect digit 0-9
   late final ModelManager _modelManager;
 
   String? _digitModelPath;
@@ -52,9 +53,9 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
         return;
       }
 
-      _digitYolo = YOLO(modelPath: _digitModelPath!, task: YOLOTask.detect);
+      YOLO loadedYolo;
       try {
-        await _digitYolo.loadModel();
+        loadedYolo = await _loadDigitYolo(_digitModelPath!);
       } catch (_) {
         final replacement = await _modelManager.reportModelLoadFailure(
           ModelType.bestFloat16number,
@@ -62,11 +63,14 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
         );
         if (replacement == null || replacement == _digitModelPath) rethrow;
         _digitModelPath = replacement;
-        _digitYolo = YOLO(modelPath: replacement, task: YOLOTask.detect);
-        await _digitYolo.loadModel();
+        loadedYolo = await _loadDigitYolo(replacement);
       }
 
-      if (!mounted) return;
+      if (!mounted) {
+        await loadedYolo.dispose();
+        return;
+      }
+      _digitYolo = loadedYolo;
       setState(() {
         _isDigitModelReady = true;
       });
@@ -80,8 +84,20 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
     }
   }
 
+  Future<YOLO> _loadDigitYolo(String modelPath) async {
+    final yolo = YOLO(modelPath: modelPath, task: YOLOTask.detect);
+    try {
+      await yolo.loadModel();
+      return yolo;
+    } catch (_) {
+      await yolo.dispose();
+      rethrow;
+    }
+  }
+
   Future<void> _pickAndPredict() async {
-    if (!_isDigitModelReady) {
+    final digitYolo = _digitYolo;
+    if (!_isDigitModelReady || digitYolo == null) {
       _showSnackBar('กรุณารอโมเดลโหลดสักครู่...');
       return;
     }
@@ -104,46 +120,21 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
       // =========================================================
       // 1) predict ตัวเลขจากภาพหลักโดยตรง (ไม่ตัดรูปตามคำขอ)
       // =========================================================
-      final result = await _digitYolo.predict(bytes);
-      final List<Map<String, dynamic>> parsedDetections =
-          result['boxes'] is List
-          ? MapConverter.convertBoxesList(result['boxes'] as List)
-          : [];
+      final result = await digitYolo.predict(bytes);
+      final parsedDetections = parseYoloDetections(result['detections']);
 
       debugPrint('=== YOLO DIGIT DETECTION RESULTS ===');
       debugPrint('จำนวน detections: ${parsedDetections.length}');
       for (int i = 0; i < parsedDetections.length; i++) {
-        final d = parsedDetections[i];
+        final detection = parsedDetections[i];
         debugPrint(
-          'Detection $i => class=${d['className']} conf=${d['confidence']} '
-          'box=(${d['x1']}, ${d['y1']}, ${d['x2']}, ${d['y2']})',
+          'Detection $i => class=${detection.className} '
+          'conf=${detection.confidence} box=${detection.boundingBox}',
         );
       }
       debugPrint('==================================');
 
-      // 🎯 กรองเอาเฉพาะตัวเลข 0-9
-      final filtered = parsedDetections.where((d) {
-        final cls = (d['className'] ?? d['class'] ?? '')
-            .toString()
-            .trim()
-            .toLowerCase();
-        return RegExp(r'^\d$').hasMatch(cls);
-      }).toList();
-
-      String? foundNumber;
-      if (filtered.isNotEmpty) {
-        // 🎯 เรียงจากซ้ายไปขวา
-        filtered.sort((a, b) {
-          final ax = (a['x1'] ?? 0).toDouble();
-          final bx = (b['x1'] ?? 0).toDouble();
-          return ax.compareTo(bx);
-        });
-
-        // นำมาต่อกัน
-        foundNumber = filtered
-            .map((d) => (d['className'] ?? '').toString())
-            .join();
-      }
+      final foundNumber = readDigitSequence(parsedDetections);
 
       if (!mounted) return;
 
@@ -171,7 +162,7 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
       'green_light_circle': 'ไฟเขียว',
       'off_light': 'ไฟดับ',
       'red_light_circle': 'ไฟแดง',
-      'sign_number': 'ป้ายตัวเลข',
+      'sign_number': 'สัญญาณไฟนับถอยหลัง',
       'turn_left': 'เลี้ยวซ้าย',
       'turn_right': 'เลี้ยวขวา',
       'yellow_light': 'ไฟเหลือง',
@@ -272,7 +263,7 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
             border: Border.all(color: Colors.red.shade200),
           ),
           child: const Text(
-            '⚠️ เจอป้ายตัวเลขแล้ว แต่โมเดลเลขยังอ่านไม่ออก',
+            '⚠️ เจอสัญญาณไฟนับถอยหลัง แต่โมเดลเลขยังอ่านไม่ออก',
             style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
@@ -285,6 +276,7 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
 
   @override
   void dispose() {
+    unawaited(_digitYolo?.dispose());
     super.dispose();
   }
 
@@ -428,11 +420,11 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
                     const SizedBox(height: 24),
                   ],
 
-                  // 3. ภาพขาวดำที่ครอบส่วนป้าย
+                  // 3. ภาพสีที่ครอบส่วนสัญญาณไฟนับถอยหลัง
                   if (_signNumberCropImage != null && !_isPredicting)
                     _buildPreviewCard(
-                      title: '✂️ ภาพตัดเฉพาะป้ายตัวเลข',
-                      subtitle: 'ภาพที่ส่งให้ YOLO โมเดลเลขอ่านต่อ (ขาวดำ)',
+                      title: '✂️ ภาพตัดสัญญาณไฟนับถอยหลัง',
+                      subtitle: 'ภาพสีที่ส่งให้ YOLO โมเดลเลขอ่านต่อ',
                       imageBytes: _signNumberCropImage!,
                       borderColor: Colors.orange,
                       height: 140,
@@ -457,20 +449,13 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
                     Wrap(
                       spacing: 10,
                       runSpacing: 10,
-                      children: _detections.map((d) {
-                        final String className =
-                            d['className']?.toString() ??
-                            d['class']?.toString() ??
-                            'Unknown';
-
-                        final String confidence = d['confidence'] != null
-                            ? ((d['confidence'] as double) * 100)
-                                  .toStringAsFixed(1)
-                            : '0.0';
+                      children: _detections.map((detection) {
+                        final confidence = (detection.confidence * 100)
+                            .toStringAsFixed(1);
 
                         return Chip(
                           label: Text(
-                            '${_thaiLabel(className)} ($confidence%)',
+                            '${_thaiLabel(detection.className)} ($confidence%)',
                           ),
                           backgroundColor: Colors.indigo[50],
                           labelStyle: const TextStyle(
