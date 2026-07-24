@@ -4,6 +4,9 @@ import 'package:image/image.dart' as img;
 import 'package:trffic_ilght_app/services/yolo_result_adapter.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
+const double digitConfidenceThreshold = 0.15;
+const double digitIouThreshold = 0.80;
+
 class CropData {
   final Uint8List imageBytes;
   final double left;
@@ -35,7 +38,7 @@ CropBounds resolveCropBounds(
 
   final width = x2 - x1;
   final height = y2 - y1;
-  final paddingW = width * 0.15;
+  final paddingW = width * 0.30;
   final paddingH = height * 0.15;
 
   return (
@@ -71,11 +74,16 @@ Uint8List? processSignCrop(CropData data) {
       height: cropHeight,
     );
 
-    // ขยายภาพ (Upscale) ให้โมเดลตัวเลขอ่านง่ายขึ้น
+    // ขยายภาพโดยรักษาสัดส่วน เพื่อไม่บีบเลขหลายหลักให้เสียรูป
+    final shortestEdge = min(cropped.width, cropped.height);
+    final longestEdge = max(cropped.width, cropped.height);
+    var scale = max(2.0, 128 / shortestEdge);
+    scale = min(scale, 640 / longestEdge);
+
     cropped = img.copyResize(
       cropped,
-      width: max(cropped.width * 2, 128),
-      height: max(cropped.height * 2, 128),
+      width: max(1, (cropped.width * scale).round()),
+      height: max(1, (cropped.height * scale).round()),
       interpolation: img.Interpolation.linear,
     );
 
@@ -122,7 +130,11 @@ class SignNumberPipelineService {
     final processedBytes = await compute(processSignCrop, cropData);
     if (processedBytes == null) return null;
 
-    final result = await digitYolo.predict(processedBytes);
+    final result = await digitYolo.predict(
+      processedBytes,
+      confidenceThreshold: digitConfidenceThreshold,
+      iouThreshold: digitIouThreshold,
+    );
 
     final detections = parseYoloDetections(result['detections']);
     return readDigitSequence(detections, maxDigits: 2);

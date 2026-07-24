@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trffic_ilght_app/core/models/models.dart';
+import 'package:trffic_ilght_app/core/utils/thai_number_helper.dart';
 import 'package:trffic_ilght_app/services/traffic_voice_service.dart';
 import 'package:trffic_ilght_app/services/sign_number_pipeline_service.dart';
 
@@ -14,6 +15,11 @@ import 'package:ultralytics_yolo/yolo.dart';
 import 'package:ultralytics_yolo/yolo_view.dart';
 
 import '../../services/model_manager.dart';
+
+String? acceptCountdownReading(String? reading) {
+  final normalized = reading?.trim();
+  return normalized == null || normalized.isEmpty ? null : normalized;
+}
 
 class CameraInferenceController extends ChangeNotifier {
   int _detectionCount = 0;
@@ -53,8 +59,6 @@ class CameraInferenceController extends ChangeNotifier {
   String? _lastSpokenNumber;
   bool _isSignCurrentlyVisible = false;
   DateTime? _lastSignSeenTime;
-  String? _candidateNumber;
-  int _consecutiveDetectCount = 0;
 
   bool _isDisposed = false;
   Future<void>? _loadingFuture;
@@ -231,8 +235,6 @@ class CameraInferenceController extends ChangeNotifier {
     _hasSpokenInitialNumber = false;
     _isSignCurrentlyVisible = false;
     _lastSignSeenTime = null;
-    _candidateNumber = null;
-    _consecutiveDetectCount = 0;
   }
 
   // ==========================================
@@ -289,19 +291,7 @@ class CameraInferenceController extends ChangeNotifier {
                     detectionResults: results,
                   );
 
-              if (number != null && number.isNotEmpty) {
-                // Consensus Logic: ตรวจสอบความถูกต้องต่อเนื่องกัน 2 เฟรมก่อนยืนยันค่า
-                if (_candidateNumber == number) {
-                  _consecutiveDetectCount++;
-                } else {
-                  _candidateNumber = number;
-                  _consecutiveDetectCount = 1;
-                }
-
-                if (_consecutiveDetectCount >= 2) {
-                  detectedNumberInThisFrame = number;
-                }
-              }
+              detectedNumberInThisFrame = acceptCountdownReading(number);
             } catch (e) {
               log('Sign number pipeline error: $e');
             } finally {
@@ -319,13 +309,13 @@ class CameraInferenceController extends ChangeNotifier {
           _detectedNumber = detectedNumberInThisFrame;
           final int? val = int.tryParse(detectedNumberInThisFrame);
           if (val != null && val >= 1) {
-            if (val >= 1 && val <= 3) {
+            if (shouldPrepareToGo(val)) {
               if (!_hasSpokenGetReady) {
                 _hasSpokenGetReady = true;
                 _lastSpokenNumber = detectedNumberInThisFrame;
                 _voiceService.speakNumber(detectedNumberInThisFrame);
               }
-            } else if (val >= 4 && val <= 9) {
+            } else if (val >= 6 && val <= 9) {
               if (_lastSpokenNumber != detectedNumberInThisFrame) {
                 _lastSpokenNumber = detectedNumberInThisFrame;
                 _voiceService.speakNumber(detectedNumberInThisFrame);

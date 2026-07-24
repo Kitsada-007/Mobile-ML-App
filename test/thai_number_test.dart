@@ -27,4 +27,16 @@ void main() {
       expect(convertToThaiWords(99), 'เก้าสิบเก้า');
     });
   });
+
+  group('Countdown get-ready threshold', () {
+    test('starts the get-ready alert at five seconds', () {
+      expect(shouldPrepareToGo(5), isTrue);
+      expect(shouldPrepareToGo(1), isTrue);
+    });
+
+    test('continues announcing the number above five seconds', () {
+      expect(shouldPrepareToGo(6), isFalse);
+      expect(shouldPrepareToGo(20), isFalse);
+    });
+  });
 }

@@ -82,7 +82,7 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
      - assets/models/traffic_model_v1_2_0.tflite
-     - assets/models/number_model_v1_2_0.tflite
+     - assets/models/number_model_v1_2_1.tflite
      - assets/images/
      - assets/config/
      - assets/iou.png

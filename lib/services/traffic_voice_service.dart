@@ -57,7 +57,7 @@ class TrafficVoiceService {
     final int? val = int.tryParse(number);
     if (val == null) return;
 
-    if (val >= 1 && val <= 3) {
+    if (shouldPrepareToGo(val)) {
       await speak("เตรียมตัวไป");
     } else {
       final word = convertToThaiWords(val);

@@ -22,19 +22,27 @@ List<YOLOResult> parseYoloDetections(Object? rawDetections) {
 String? readDigitSequence(Iterable<YOLOResult> detections, {int? maxDigits}) {
   if (maxDigits != null && maxDigits <= 0) return null;
 
-  final digits =
-      detections
-          .where(
-            (detection) => RegExp(r'^\d$').hasMatch(detection.className.trim()),
-          )
-          .toList()
-        ..sort((a, b) => _leftEdge(a).compareTo(_leftEdge(b)));
+  var digits = detections
+      .where(
+        (detection) => RegExp(r'^\d$').hasMatch(detection.className.trim()),
+      )
+      .toList();
 
   if (digits.isEmpty) return null;
-  return digits
-      .take(maxDigits ?? digits.length)
-      .map((detection) => detection.className.trim())
-      .join();
+
+  if (maxDigits != null && digits.length > maxDigits) {
+    digits.sort((a, b) {
+      final confidenceOrder = b.confidence.compareTo(a.confidence);
+      return confidenceOrder != 0
+          ? confidenceOrder
+          : _leftEdge(a).compareTo(_leftEdge(b));
+    });
+    digits = digits.take(maxDigits).toList();
+  }
+
+  digits.sort((a, b) => _leftEdge(a).compareTo(_leftEdge(b)));
+
+  return digits.map((detection) => detection.className.trim()).join();
 }
 
 bool _hasRequiredDetectionFields(Map<dynamic, dynamic> detection) {

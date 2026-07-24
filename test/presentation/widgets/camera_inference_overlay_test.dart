@@ -115,4 +115,25 @@ void main() {
 
     expect(find.text('เตรียมตัวไป'), findsOneWidget);
   });
+
+  testWidgets('countdown from five displays get-ready message', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              CameraDetectionPanel(
+                formalNames: ['สัญญาณไฟนับถอยหลัง'],
+                alertMessages: ['พบสัญญาณไฟนับถอยหลัง'],
+                detectedNumber: '5',
+                isLandscape: false,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('เตรียมตัวไป'), findsOneWidget);
+  });
 }

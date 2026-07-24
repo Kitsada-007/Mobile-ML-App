@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:trffic_ilght_app/core/utils/thai_number_helper.dart';
 
 /// Live traffic-sign messages displayed over the fullscreen camera preview.
 class CameraDetectionPanel extends StatelessWidget {
@@ -189,7 +190,7 @@ class _DetectionMessage extends StatelessWidget {
     final isCountdownSignal =
         className == 'สัญญาณไฟนับถอยหลัง' && countdown != null;
     final message = isCountdownSignal
-        ? countdown >= 1 && countdown <= 3
+        ? shouldPrepareToGo(countdown)
               ? 'เตรียมตัวไป'
               : 'สัญญาณไฟนับถอยหลัง $countdown วินาที'
         : alertMessage.isNotEmpty

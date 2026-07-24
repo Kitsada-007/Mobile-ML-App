@@ -2,7 +2,18 @@
 String convertToThaiWords(int val) {
   if (val == 0) return 'ศูนย์';
 
-  final units = ['', 'หนึ่ง', 'สอง', 'สาม', 'สี่', 'ห้า', 'หก', 'เจ็ด', 'แปด', 'เก้า'];
+  final units = [
+    '',
+    'หนึ่ง',
+    'สอง',
+    'สาม',
+    'สี่',
+    'ห้า',
+    'หก',
+    'เจ็ด',
+    'แปด',
+    'เก้า',
+  ];
 
   if (val < 10) {
     return units[val];
@@ -33,3 +44,5 @@ String convertToThaiWords(int val) {
 
   return val.toString(); // Fallback for 100+
 }
+
+bool shouldPrepareToGo(int countdown) => countdown >= 1 && countdown <= 5;

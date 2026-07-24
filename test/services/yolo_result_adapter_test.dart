@@ -79,5 +79,15 @@ void main() {
 
       expect(readDigitSequence(results), isNull);
     });
+
+    test('keeps the two strongest digits before sorting left to right', () {
+      final results = parseYoloDetections([
+        detection(className: '9', left: 0.05, confidence: 0.16),
+        detection(className: '2', left: 0.55, confidence: 0.91),
+        detection(className: '1', left: 0.30, confidence: 0.88),
+      ]);
+
+      expect(readDigitSequence(results, maxDigits: 2), '12');
+    });
   });
 }
