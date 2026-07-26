@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:trffic_ilght_app/presentation/controllers/settings_controller.dart';
 import 'package:trffic_ilght_app/services/traffic_voice_service.dart';
 
-
 class SettingPage extends StatelessWidget {
   const SettingPage({super.key});
 
@@ -63,7 +62,8 @@ class SettingPage extends StatelessWidget {
                   min: 0.0,
                   max: 1.0,
                   divisions: 10,
-                  onChanged: (val) => context.read<SettingsProvider>().setTtsVolume(val),
+                  onChanged: (val) =>
+                      context.read<SettingsProvider>().setTtsVolume(val),
                 ),
                 _buildSliderRow(
                   context,
@@ -74,7 +74,8 @@ class SettingPage extends StatelessWidget {
                   min: 0.4,
                   max: 1.0,
                   divisions: 6,
-                  onChanged: (val) => context.read<SettingsProvider>().setTtsSpeed(val),
+                  onChanged: (val) =>
+                      context.read<SettingsProvider>().setTtsSpeed(val),
                 ),
                 _buildSliderRow(
                   context,
@@ -85,16 +86,24 @@ class SettingPage extends StatelessWidget {
                   min: 0.5,
                   max: 1.5,
                   divisions: 10,
-                  onChanged: (val) => context.read<SettingsProvider>().setTtsPitch(val),
+                  onChanged: (val) =>
+                      context.read<SettingsProvider>().setTtsPitch(val),
                 ),
                 Padding(
-                  padding: const EdgeInsets.only(left: 16.0, right: 16.0, bottom: 12.0),
+                  padding: const EdgeInsets.only(
+                    left: 16.0,
+                    right: 16.0,
+                    bottom: 12.0,
+                  ),
                   child: SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
                         foregroundColor: colorScheme.primary,
-                        side: BorderSide(color: colorScheme.primary, width: 1.2),
+                        side: BorderSide(
+                          color: colorScheme.primary,
+                          width: 1.2,
+                        ),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -110,7 +119,9 @@ class SettingPage extends StatelessWidget {
                       ),
                       onPressed: () async {
                         final voiceService = TrafficVoiceService();
-                        await voiceService.speak("ทดสอบการแจ้งเตือนสัญญาณไฟจราจร");
+                        await voiceService.speak(
+                          "ทดสอบการแจ้งเตือนสัญญาณไฟจราจร",
+                        );
                       },
                     ),
                   ),
@@ -156,10 +167,7 @@ class SettingPage extends StatelessWidget {
                   leading: Icon(Icons.tune_rounded, color: colorScheme.primary),
                   title: const Text(
                     'Model Threshold Settings',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
                   ),
                   children: [
                     const Padding(
@@ -176,18 +184,22 @@ class SettingPage extends StatelessWidget {
                       min: 0.1,
                       max: 0.9,
                       divisions: 80,
-                      onChanged: (val) => context.read<SettingsProvider>().setIouThreshold(val),
+                      onChanged: (val) =>
+                          context.read<SettingsProvider>().setIouThreshold(val),
                     ),
                     _buildSliderRow(
                       context,
                       icon: Icons.filter_center_focus_rounded,
                       title: 'Confidence Threshold',
                       value: settings.confidenceThreshold,
-                      valueDisplay: settings.confidenceThreshold.toStringAsFixed(2),
+                      valueDisplay: settings.confidenceThreshold
+                          .toStringAsFixed(2),
                       min: 0.1,
                       max: 0.9,
                       divisions: 80,
-                      onChanged: (val) => context.read<SettingsProvider>().setConfidenceThreshold(val),
+                      onChanged: (val) => context
+                          .read<SettingsProvider>()
+                          .setConfidenceThreshold(val),
                     ),
                     const SizedBox(height: 12),
                   ],
@@ -267,7 +279,9 @@ class SettingPage extends StatelessWidget {
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.bold,
-          color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+          color: Theme.of(
+            context,
+          ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
           letterSpacing: 1.1,
         ),
       ),
@@ -286,7 +300,10 @@ class SettingPage extends StatelessWidget {
     );
   }
 
-  Widget _buildCardContainer(BuildContext context, {required List<Widget> children}) {
+  Widget _buildCardContainer(
+    BuildContext context, {
+    required List<Widget> children,
+  }) {
     return Container(
       decoration: _cardBoxDecoration(context),
       padding: const EdgeInsets.symmetric(vertical: 6.0),
@@ -318,7 +335,11 @@ class SettingPage extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+                  Icon(
+                    icon,
+                    size: 20,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                   const SizedBox(width: 16),
                   Text(
                     title,
@@ -343,9 +364,13 @@ class SettingPage extends StatelessWidget {
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
               activeTrackColor: Theme.of(context).colorScheme.primary,
-              inactiveTrackColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+              inactiveTrackColor: Theme.of(
+                context,
+              ).colorScheme.primary.withValues(alpha: 0.15),
               thumbColor: Theme.of(context).colorScheme.primary,
-              overlayColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+              overlayColor: Theme.of(
+                context,
+              ).colorScheme.primary.withValues(alpha: 0.1),
               trackHeight: 4,
             ),
             child: Slider(

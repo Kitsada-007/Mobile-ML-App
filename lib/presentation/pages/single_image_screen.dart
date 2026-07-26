@@ -4,10 +4,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:trffic_ilght_app/core/models/models.dart';
+import 'package:trffic_ilght_app/services/sign_number_pipeline_service.dart';
 import 'package:trffic_ilght_app/services/yolo_result_adapter.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 import '../../services/model_manager.dart';
+
+@visibleForTesting
+YOLO createSingleImageYolo(String modelPath) =>
+    YOLO(modelPath: modelPath, task: YOLOTask.detect, useMultiInstance: true);
 
 class SingleImageScreen extends StatefulWidget {
   const SingleImageScreen({super.key});
@@ -20,74 +25,123 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
   final ImagePicker _picker = ImagePicker();
 
   List<YOLOResult> _detections = [];
+
   Uint8List? _imageBytes;
   Uint8List? _annotatedImage;
-
   Uint8List? _signNumberCropImage;
+
   String? _digitPredictText;
 
-  YOLO? _digitYolo; // model สำหรับ detect digit 0-9
+  // โมเดลสำหรับตรวจป้ายจราจร
+  YOLO? _trafficYolo;
+
+  // โมเดลสำหรับตรวจตัวเลข 0–9
+  YOLO? _digitYolo;
+
+  // Service สำหรับ crop และตรวจตัวเลข
+  SignNumberPipelineService? _signNumberService;
+
   late final ModelManager _modelManager;
 
+  String? _trafficModelPath;
   String? _digitModelPath;
 
-  bool _isDigitModelReady = false;
+  bool _isModelsReady = false;
   bool _isPredicting = false;
 
   @override
   void initState() {
     super.initState();
+
     _modelManager = ModelManager();
-    // ✅ เรียกใช้ฟังก์ชันโหลดโดยไม่สร้าง YOLO ทันที ป้องกันแอปเด้ง
     _initializeModels();
   }
 
   Future<void> _initializeModels() async {
     try {
-      _digitModelPath = await _modelManager.getModelPath(
-        ModelType.bestFloat16number,
-      );
+      _trafficModelPath = await _modelManager.getModelPath(ModelType.traffic);
 
-      if (_digitModelPath == null) {
-        _showSnackBar('ไม่พบไฟล์โมเดลเลข');
+      _digitModelPath = await _modelManager.getModelPath(ModelType.number);
+
+      debugPrint('Traffic model path: $_trafficModelPath');
+      debugPrint('Digit model path: $_digitModelPath');
+
+      if (_trafficModelPath == null || _digitModelPath == null) {
+        _showSnackBar('ไม่พบไฟล์โมเดล');
         return;
       }
 
-      YOLO loadedYolo;
-      try {
-        loadedYolo = await _loadDigitYolo(_digitModelPath!);
-      } catch (_) {
-        final replacement = await _modelManager.reportModelLoadFailure(
-          ModelType.bestFloat16number,
-          failedPath: _digitModelPath!,
-        );
-        if (replacement == null || replacement == _digitModelPath) rethrow;
-        _digitModelPath = replacement;
-        loadedYolo = await _loadDigitYolo(replacement);
-      }
+      final trafficYolo = await _loadYoloWithRollback(
+        ModelType.traffic,
+        _trafficModelPath!,
+      );
+
+      final digitYolo = await _loadYoloWithRollback(
+        ModelType.number,
+        _digitModelPath!,
+      );
 
       if (!mounted) {
-        await loadedYolo.dispose();
+        await trafficYolo.dispose();
+        await digitYolo.dispose();
         return;
       }
-      _digitYolo = loadedYolo;
+
+      _trafficYolo = trafficYolo;
+      _digitYolo = digitYolo;
+
+      _signNumberService = SignNumberPipelineService(digitYolo: digitYolo);
+
       setState(() {
-        _isDigitModelReady = true;
+        _isModelsReady = true;
       });
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('Model initialization error: $e');
+      debugPrint('$stackTrace');
+
       if (!mounted) return;
-      final error = YOLOErrorHandler.handleError(
-        e,
-        'Failed to load digit model: digit=$_digitModelPath',
-      );
-      _showSnackBar('Error loading digit model: ${error.message}');
+
+      final error = YOLOErrorHandler.handleError(e, 'Failed to load models');
+
+      _showSnackBar('Error loading models: ${error.message}');
     }
   }
 
-  Future<YOLO> _loadDigitYolo(String modelPath) async {
-    final yolo = YOLO(modelPath: modelPath, task: YOLOTask.detect);
+  Future<YOLO> _loadYoloWithRollback(
+    ModelType modelType,
+    String initialPath,
+  ) async {
+    try {
+      return await _loadYolo(initialPath);
+    } catch (e) {
+      debugPrint(
+        'โหลดโมเดลไม่สำเร็จ '
+        'modelType=$modelType path=$initialPath error=$e',
+      );
+
+      final replacement = await _modelManager.reportModelLoadFailure(
+        modelType,
+        failedPath: initialPath,
+      );
+
+      if (replacement == null || replacement == initialPath) {
+        rethrow;
+      }
+
+      debugPrint('ลองโหลดโมเดลสำรอง: $replacement');
+
+      return _loadYolo(replacement);
+    }
+  }
+
+  Future<YOLO> _loadYolo(String modelPath) async {
+    final yolo = createSingleImageYolo(modelPath);
+
     try {
       await yolo.loadModel();
+
+      debugPrint('โหลดโมเดลสำเร็จ: $modelPath');
+
       return yolo;
     } catch (_) {
       await yolo.dispose();
@@ -96,19 +150,27 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
   }
 
   Future<void> _pickAndPredict() async {
+    final trafficYolo = _trafficYolo;
     final digitYolo = _digitYolo;
-    if (!_isDigitModelReady || digitYolo == null) {
+    final signNumberService = _signNumberService;
+
+    if (!_isModelsReady ||
+        trafficYolo == null ||
+        digitYolo == null ||
+        signNumberService == null) {
       _showSnackBar('กรุณารอโมเดลโหลดสักครู่...');
       return;
     }
 
     final XFile? file = await _picker.pickImage(source: ImageSource.gallery);
+
     if (file == null) return;
 
     final Uint8List bytes = await file.readAsBytes();
 
     setState(() {
       _isPredicting = true;
+
       _imageBytes = bytes;
       _annotatedImage = null;
       _detections = [];
@@ -117,38 +179,83 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
     });
 
     try {
-      // =========================================================
-      // 1) predict ตัวเลขจากภาพหลักโดยตรง (ไม่ตัดรูปตามคำขอ)
-      // =========================================================
-      final result = await digitYolo.predict(bytes);
-      final parsedDetections = parseYoloDetections(result['detections']);
+      // --------------------------------------------------
+      // 1. ใช้ Traffic Model ตรวจจับป้ายจากภาพต้นฉบับ
+      // --------------------------------------------------
+      final trafficResult = await trafficYolo.predict(
+        bytes,
+        confidenceThreshold: 0.25,
+        iouThreshold: 0.45,
+      );
 
-      debugPrint('=== YOLO DIGIT DETECTION RESULTS ===');
-      debugPrint('จำนวน detections: ${parsedDetections.length}');
-      for (int i = 0; i < parsedDetections.length; i++) {
-        final detection = parsedDetections[i];
+      debugPrint('Traffic result keys: ${trafficResult.keys}');
+
+      debugPrint(
+        'Raw traffic detections: '
+        '${trafficResult['detections']}',
+      );
+
+      final parsedTrafficDetections = parseYoloDetections(
+        trafficResult['detections'],
+      );
+
+      debugPrint(
+        'Traffic detection count: '
+        '${parsedTrafficDetections.length}',
+      );
+
+      for (final detection in parsedTrafficDetections) {
         debugPrint(
-          'Detection $i => class=${detection.className} '
-          'conf=${detection.confidence} box=${detection.boundingBox}',
+          'Traffic class=${detection.className}, '
+          'confidence=${detection.confidence}, '
+          'box=${detection.boundingBox}, '
+          'normalized=${detection.normalizedBox}',
         );
       }
-      debugPrint('==================================');
 
-      final foundNumber = readDigitSequence(parsedDetections);
+      final Uint8List? annotatedBytes =
+          trafficResult['annotatedImage'] as Uint8List?;
+
+      // --------------------------------------------------
+      // 2. Crop sign_number และตรวจเลขด้วย pipeline เดียว
+      // --------------------------------------------------
+      // crop ที่คืนมาคือ byte ชุดเดียวกับที่ส่งเข้า Number model
+      // จึงไม่เกิดความคลาดเคลื่อนจากการ crop ซ้ำคนละตำแหน่ง
+      final signAnalysis = await signNumberService.analyzeSingleImage(
+        frameBytes: bytes,
+        detectionResults: parsedTrafficDetections,
+      );
+
+      final croppedSignBytes = signAnalysis.cropBytes;
+      final foundNumber = signAnalysis.number;
+
+      debugPrint(
+        'Single-image result: '
+        'sign=${signAnalysis.selectedSign?.confidence}, '
+        'cropBytes=${croppedSignBytes?.length}, '
+        'number=$foundNumber',
+      );
 
       if (!mounted) return;
 
       setState(() {
-        _detections = parsedDetections;
-        _annotatedImage = result['annotatedImage'] as Uint8List?;
-        _signNumberCropImage = null; // ไม่ตัดรูปภาพ
+        _detections = parsedTrafficDetections;
+        _annotatedImage = annotatedBytes;
+        _signNumberCropImage = croppedSignBytes;
         _digitPredictText = foundNumber;
       });
-    } catch (e) {
-      _showSnackBar('เกิดข้อผิดพลาด: $e');
+    } catch (e, stackTrace) {
+      debugPrint('Predict error: $e');
+      debugPrint('$stackTrace');
+
+      if (mounted) {
+        _showSnackBar('เกิดข้อผิดพลาด: $e');
+      }
     } finally {
       if (mounted) {
-        setState(() => _isPredicting = false);
+        setState(() {
+          _isPredicting = false;
+        });
       }
     }
   }
@@ -167,12 +274,16 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
       'turn_right': 'เลี้ยวขวา',
       'yellow_light': 'ไฟเหลือง',
     };
+
     return labels[className] ?? className;
   }
 
-  void _showSnackBar(String msg) {
+  void _showSnackBar(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Widget _buildPreviewCard({
@@ -214,7 +325,18 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
               ),
             ],
             const SizedBox(height: 10),
-            Image.memory(imageBytes, height: height, fit: BoxFit.contain),
+            Image.memory(
+              imageBytes,
+              height: height,
+              fit: BoxFit.contain,
+              errorBuilder:
+                  (BuildContext context, Object error, StackTrace? stackTrace) {
+                    return const SizedBox(
+                      height: 100,
+                      child: Center(child: Text('ไม่สามารถแสดงภาพได้')),
+                    );
+                  },
+            ),
           ],
         ),
       ),
@@ -222,7 +344,9 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
   }
 
   Widget _buildResultBox() {
-    if (_digitPredictText != null) {
+    final String? number = _digitPredictText;
+
+    if (number != null && number.isNotEmpty) {
       return Center(
         child: Container(
           margin: const EdgeInsets.only(bottom: 20),
@@ -239,7 +363,7 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
                 style: TextStyle(color: Colors.white70, fontSize: 14),
               ),
               Text(
-                _digitPredictText!,
+                number,
                 style: const TextStyle(
                   color: Colors.greenAccent,
                   fontSize: 60,
@@ -263,7 +387,8 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
             border: Border.all(color: Colors.red.shade200),
           ),
           child: const Text(
-            '⚠️ เจอสัญญาณไฟนับถอยหลัง แต่โมเดลเลขยังอ่านไม่ออก',
+            '⚠️ เจอสัญญาณไฟนับถอยหลัง '
+            'แต่โมเดลเลขยังอ่านไม่ออก',
             style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
@@ -276,13 +401,17 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
 
   @override
   void dispose() {
+    unawaited(_trafficYolo?.dispose());
     unawaited(_digitYolo?.dispose());
+
+    _signNumberService = null;
+
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final bool allReady = _isDigitModelReady;
+    final bool allReady = _isModelsReady;
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
@@ -358,10 +487,13 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 1. ภาพต้นฉบับ (แสดงตลอดเมื่อเลือกรูป)
+                  // -----------------------------------------
+                  // 1. ภาพต้นฉบับ
+                  // -----------------------------------------
                   if (_imageBytes != null) ...[
                     const Text(
-                      '📸 ภาพต้นฉบับ (ก่อนประมวลผล)',
+                      '📸 ภาพต้นฉบับ '
+                      '(ก่อนประมวลผล)',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -395,10 +527,13 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
                     const SizedBox(height: 24),
                   ],
 
-                  // 2. ภาพที่ตีเส้นขอบเขตแล้ว (แสดงหลังประมวลผลเสร็จ)
+                  // -----------------------------------------
+                  // 2. ภาพผลตรวจจับ Traffic Model
+                  // -----------------------------------------
                   if (_annotatedImage != null && !_isPredicting) ...[
                     const Text(
-                      '🎯 ภาพหลังการตรวจจับป้ายจราจร (YOLO)',
+                      '🎯 ภาพหลังการตรวจจับ'
+                      'ป้ายจราจร',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -420,22 +555,28 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
                     const SizedBox(height: 24),
                   ],
 
-                  // 3. ภาพสีที่ครอบส่วนสัญญาณไฟนับถอยหลัง
+                  // -----------------------------------------
+                  // 3. ภาพ crop ที่ส่งเข้า Number model
+                  // -----------------------------------------
                   if (_signNumberCropImage != null && !_isPredicting)
                     _buildPreviewCard(
                       title: '✂️ ภาพตัดสัญญาณไฟนับถอยหลัง',
-                      subtitle: 'ภาพสีที่ส่งให้ YOLO โมเดลเลขอ่านต่อ',
+                      subtitle: 'ภาพขาวดำที่ขยายแล้วและส่งให้โมเดลเลขจริง',
                       imageBytes: _signNumberCropImage!,
                       borderColor: Colors.orange,
                       height: 140,
                     ),
 
-                  // 4. ผลลัพธ์ตัวเลข
+                  // -----------------------------------------
+                  // 4. ผลตัวเลข
+                  // -----------------------------------------
                   _buildResultBox(),
 
                   const SizedBox(height: 10),
 
-                  // 5. ป้ายกำกับสิ่งที่เจอทั้งหมด
+                  // -----------------------------------------
+                  // 5. รายละเอียด Traffic detections
+                  // -----------------------------------------
                   if (_detections.isNotEmpty && !_isPredicting) ...[
                     const Text(
                       'รายละเอียดที่ตรวจพบ:',

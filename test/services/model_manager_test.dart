@@ -35,7 +35,7 @@ void main() {
     await registry.activate('traffic', _record('1.2.0', active));
     final manager = _manager(registry, temporaryDirectory);
 
-    final path = await manager.getModelPath(ModelType.bestFloat16traffic);
+    final path = await manager.getModelPath(ModelType.traffic);
 
     expect(path, active.path);
   });
@@ -63,7 +63,7 @@ void main() {
     );
     final manager = _manager(registry, temporaryDirectory);
 
-    final path = await manager.getModelPath(ModelType.bestFloat16traffic);
+    final path = await manager.getModelPath(ModelType.traffic);
 
     expect(path, previous.path);
     expect((await registry.getActive('traffic'))!.path, previous.path);
@@ -76,7 +76,7 @@ void main() {
       bundledBytes: <int>[7, 8, 9],
     );
 
-    final path = await manager.getModelPath(ModelType.bestFloat16number);
+    final path = await manager.getModelPath(ModelType.number);
 
     expect(path, isNotNull);
     expect(await File(path!).readAsBytes(), <int>[7, 8, 9]);
@@ -98,7 +98,7 @@ void main() {
     final manager = _manager(registry, temporaryDirectory);
 
     final replacement = await manager.reportModelLoadFailure(
-      ModelType.bestFloat16number,
+      ModelType.number,
       failedPath: active.path,
     );
 

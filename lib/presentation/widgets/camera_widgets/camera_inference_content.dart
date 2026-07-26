@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:trffic_ilght_app/presentation/controllers/camera_inference_controller.dart';
-import 'package:trffic_ilght_app/services/yolo_result_adapter.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 /// Main content widget that handles the camera view and loading states
@@ -75,25 +73,10 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
         task: _task,
         streamingConfig: const YOLOStreamingConfig.custom(
           includeOriginalImage: true,
-          maxFPS: 15,
-          inferenceFrequency: 15,
+          maxFPS: 10,
+          inferenceFrequency: 10,
         ),
-        onStreamingData: (data) {
-          final originalImage = data['originalImage'] as Uint8List?;
-          if (originalImage != null) {
-            controller.updateLatestFrame(originalImage);
-          }
-
-          if (data.containsKey('detections')) {
-            final yoloResults = parseYoloDetections(data['detections']);
-            controller.onDetectionResults(yoloResults);
-          }
-
-          final fps = data['fps'];
-          if (fps is num) {
-            controller.onPerformanceMetrics(fps.toDouble());
-          }
-        },
+        onStreamingData: (data) => unawaited(controller.onStreamingData(data)),
         onZoomChanged: controller.onZoomChanged,
         onModelError: (error, modelPath, _) {
           unawaited(controller.onModelLoadError(error, modelPath));

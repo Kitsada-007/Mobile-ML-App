@@ -44,6 +44,7 @@ class TrafficVoiceService {
       await _tts.setPitch(pitch);
     } catch (_) {}
 
+    _lastSpeakTime = DateTime.now();
     await _tts.stop();
     await _tts.speak(message);
   }
@@ -65,9 +66,17 @@ class TrafficVoiceService {
     }
   }
 
-  Future<void> processDetection(String className, double confidence) async {
+  Future<void> processDetection(
+    String className,
+    double confidence, {
+    bool isSignActive = false,
+    bool hasSpokenGetReady = false,
+  }) async {
     if (!_isEnabled) return;
     if (confidence < 0.40) return;
+
+    // หากพูด "เตรียมตัวไป" แล้ว ไม่ต้องร้องเตือน "ไฟแดง หยุดรถ" หรือสัญญาณไฟอีกในรอบนี้
+    if (hasSpokenGetReady) return;
 
     final prefs = await SharedPreferences.getInstance();
     final isVoiceEnabled = prefs.getBool('isVoiceEnabled') ?? true;
@@ -76,9 +85,10 @@ class TrafficVoiceService {
     if (message.isEmpty) return;
 
     final now = DateTime.now();
-    if (now.difference(_lastSpeakTime).inSeconds >= 3) {
+    // ถ้ามี sign_number อยู่ในภาพเดียวกัน ขยาย cooldown เสียงเตือนไฟจราจรจาก 3 วินาที เป็น 8 วินาที เพื่อไม่ให้พูดถี่เกินไป
+    final cooldown = isSignActive ? 8 : 3;
+    if (now.difference(_lastSpeakTime).inSeconds >= cooldown) {
       await speak(message);
-      _lastSpeakTime = now;
     }
   }
 

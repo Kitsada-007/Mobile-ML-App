@@ -267,7 +267,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
   }
 
   Future<void> _initializeYOLO() async {
-    _modelPath = await _modelManager.getModelPath(ModelType.bestFloat16traffic);
+    _modelPath = await _modelManager.getModelPath(ModelType.traffic);
     if (_modelPath == null) return;
 
     try {
@@ -280,7 +280,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
       setState(() => _isModelReady = true);
     } catch (e) {
       final replacement = await _modelManager.reportModelLoadFailure(
-        ModelType.bestFloat16traffic,
+        ModelType.traffic,
         failedPath: _modelPath!,
       );
       if (replacement != null && replacement != _modelPath) {

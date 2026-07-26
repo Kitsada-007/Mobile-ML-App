@@ -8,6 +8,7 @@ import 'package:trffic_ilght_app/core/models/models.dart';
 import 'package:trffic_ilght_app/core/utils/thai_number_helper.dart';
 import 'package:trffic_ilght_app/services/traffic_voice_service.dart';
 import 'package:trffic_ilght_app/services/sign_number_pipeline_service.dart';
+import 'package:trffic_ilght_app/services/yolo_result_adapter.dart';
 
 import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
 import 'package:ultralytics_yolo/utils/error_handler.dart';
@@ -33,7 +34,7 @@ class CameraInferenceController extends ChangeNotifier {
   int _numItemsThreshold = 11;
   SliderType _activeSlider = SliderType.none;
 
-  final ModelType _selectedModel = ModelType.bestFloat16traffic;
+  final ModelType _selectedModel = ModelType.traffic;
   bool _isModelLoading = false;
   String? _modelPath;
   String _loadingMessage = '';
@@ -50,7 +51,6 @@ class CameraInferenceController extends ChangeNotifier {
   YOLO? _digitYolo;
   SignNumberPipelineService? _signNumberPipelineService;
   String? _detectedNumber;
-  Uint8List? _latestFrameBytes;
   bool _isDetectingNumber = false;
   DateTime? _lastNumberDetectTime;
 
@@ -125,9 +125,7 @@ class CameraInferenceController extends ChangeNotifier {
 
   Future<void> _loadDigitModel() async {
     try {
-      final digitYolo = await _loadYoloWithRollback(
-        ModelType.bestFloat16number,
-      );
+      final digitYolo = await _loadYoloWithRollback(ModelType.number);
       if (_isDisposed) {
         await digitYolo.dispose();
         return;
@@ -140,7 +138,7 @@ class CameraInferenceController extends ChangeNotifier {
     } catch (e) {
       final error = YOLOErrorHandler.handleError(
         e,
-        'Failed to load bestFloat16number model',
+        'Failed to load number model',
       );
       _loadingMessage = 'Digit model load failed: ${error.message}';
       notifyListeners();
@@ -217,15 +215,80 @@ class CameraInferenceController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateLatestFrame(Uint8List frameBytes) {
+  Future<void> onStreamingData(Map<String, dynamic> data) async {
     if (_isDisposed) return;
-    _latestFrameBytes = frameBytes;
+
+    if (data.containsKey('detections')) {
+      await onDetectionResults(parseYoloDetections(data['detections']));
+    }
+
+    final fps = data['fps'];
+    if (fps is num) {
+      onPerformanceMetrics(fps.toDouble());
+    }
+
+    final frameBytes = data['originalImage'];
+    if (frameBytes is Uint8List) {
+      await _readNumberFromFrame(frameBytes);
+    }
   }
 
   bool _canRunNumberDetection() {
     if (_lastNumberDetectTime == null) return true;
-    return DateTime.now().difference(_lastNumberDetectTime!).inMilliseconds >
-        300;
+    return DateTime.now().difference(_lastNumberDetectTime!).inMilliseconds >=
+        500;
+  }
+
+  Future<void> _readNumberFromFrame(Uint8List frameBytes) async {
+    final service = _signNumberPipelineService;
+    if (_isDisposed ||
+        service == null ||
+        _isDetectingNumber ||
+        !_canRunNumberDetection() ||
+        _hasSpokenGetReady) {
+      return;
+    }
+
+    _isDetectingNumber = true;
+    _lastNumberDetectTime = DateTime.now();
+
+    try {
+      final number = await service.detectNumberFromFrame(
+        frameBytes: frameBytes,
+      );
+      final reading = acceptCountdownReading(number);
+      if (reading != null && _isSignCurrentlyVisible) {
+        _applyDetectedNumber(reading);
+      }
+    } catch (e) {
+      log('Whole-frame number inference error: $e');
+    } finally {
+      _isDetectingNumber = false;
+    }
+  }
+
+  void _applyDetectedNumber(String reading) {
+    _detectedNumber = reading;
+    final int? val = int.tryParse(reading);
+    if (val != null && val >= 1) {
+      if (shouldPrepareToGo(val)) {
+        if (!_hasSpokenGetReady) {
+          _hasSpokenGetReady = true;
+          _lastSpokenNumber = reading;
+          _voiceService.speakNumber(reading);
+        }
+      } else if (val <= 9) {
+        if (_lastSpokenNumber != reading) {
+          _lastSpokenNumber = reading;
+          _voiceService.speakNumber(reading);
+        }
+      } else if (!_hasSpokenInitialNumber) {
+        _hasSpokenInitialNumber = true;
+        _lastSpokenNumber = reading;
+        _voiceService.speakNumber(reading);
+      }
+    }
+    notifyListeners();
   }
 
   void _resetSignState() {
@@ -244,18 +307,23 @@ class CameraInferenceController extends ChangeNotifier {
     if (_isDisposed) return;
 
     bool signNumberDetectedInThisFrame = false;
-    String? detectedNumberInThisFrame;
 
     if (results.isNotEmpty) {
       // เรียงลำดับจากความมั่นใจมากไปน้อย
       results.sort((a, b) => b.confidence.compareTo(a.confidence));
 
+      // ตรวจสอบว่ามี sign_number ในผลลัพธ์ของเฟรมนี้หรือไม่
+      signNumberDetectedInThisFrame = results.any(
+        (r) => r.className == 'sign_number' && r.confidence >= 0.25,
+      );
+
       List<String> tempFormalNames = [];
       List<String> tempAlerts = [];
 
       for (var result in results) {
-        // ข้าม Class ที่ความมั่นใจน้อยกว่าค่าที่ตั้งไว้ (เช่น น้อยกว่า 40%)
-        if (result.confidence < 0.40) continue;
+        // ข้าม Class ที่ความมั่นใจน้อยกว่าค่าที่ตั้งไว้ (สำหรับ sign_number ใช้ 0.25 เพื่อจับใน real-time ง่ายขึ้น)
+        final minConfidence = result.className == 'sign_number' ? 0.25 : 0.40;
+        if (result.confidence < minConfidence) continue;
 
         // แปลงชื่อเป็นภาษาไทยผ่าน VoiceService
         final thaiFormalName = _voiceService.getFormalThaiName(
@@ -270,34 +338,16 @@ class CameraInferenceController extends ChangeNotifier {
         }
 
         if (result.className != 'sign_number') {
-          // เรียกใช้งานเสียงพูดเตือน
-          _voiceService.processDetection(result.className, result.confidence);
+          // เรียกใช้งานเสียงพูดเตือน (ส่งข้อมูลว่ามี sign_number / getReady หรือไม่ เพื่อปรับ cooldown และไม่พูดขัดกัน)
+          _voiceService.processDetection(
+            result.className,
+            result.confidence,
+            isSignActive:
+                signNumberDetectedInThisFrame || _isSignCurrentlyVisible,
+            hasSpokenGetReady: _hasSpokenGetReady,
+          );
         } else {
           signNumberDetectedInThisFrame = true;
-          // ถ้าเป็นสัญญาณไฟนับถอยหลัง ให้ตรวจจับตัวเลขต่อ
-          // (ข้ามถ้าร้องเตือน "เตรียมตัวไป" แล้ว)
-          if (_latestFrameBytes != null &&
-              _signNumberPipelineService != null &&
-              !_isDetectingNumber &&
-              _canRunNumberDetection() &&
-              !_hasSpokenGetReady) {
-            _isDetectingNumber = true;
-            _lastNumberDetectTime = DateTime.now();
-
-            try {
-              final number = await _signNumberPipelineService!
-                  .detectNumberFromSign(
-                    frameBytes: _latestFrameBytes!,
-                    detectionResults: results,
-                  );
-
-              detectedNumberInThisFrame = acceptCountdownReading(number);
-            } catch (e) {
-              log('Sign number pipeline error: $e');
-            } finally {
-              _isDetectingNumber = false;
-            }
-          }
         }
       }
 
@@ -305,31 +355,6 @@ class CameraInferenceController extends ChangeNotifier {
       if (signNumberDetectedInThisFrame) {
         _lastSignSeenTime = DateTime.now();
         _isSignCurrentlyVisible = true;
-        if (detectedNumberInThisFrame != null) {
-          _detectedNumber = detectedNumberInThisFrame;
-          final int? val = int.tryParse(detectedNumberInThisFrame);
-          if (val != null && val >= 1) {
-            if (shouldPrepareToGo(val)) {
-              if (!_hasSpokenGetReady) {
-                _hasSpokenGetReady = true;
-                _lastSpokenNumber = detectedNumberInThisFrame;
-                _voiceService.speakNumber(detectedNumberInThisFrame);
-              }
-            } else if (val >= 6 && val <= 9) {
-              if (_lastSpokenNumber != detectedNumberInThisFrame) {
-                _lastSpokenNumber = detectedNumberInThisFrame;
-                _voiceService.speakNumber(detectedNumberInThisFrame);
-              }
-            } else {
-              // val > 9
-              if (!_hasSpokenInitialNumber) {
-                _hasSpokenInitialNumber = true;
-                _lastSpokenNumber = detectedNumberInThisFrame;
-                _voiceService.speakNumber(detectedNumberInThisFrame);
-              }
-            }
-          }
-        }
       } else {
         if (_isSignCurrentlyVisible) {
           // Debounce Reset: ล้างสถานะเมื่อไม่พบป้ายติดต่อกันเกิน 1.5 วินาที
