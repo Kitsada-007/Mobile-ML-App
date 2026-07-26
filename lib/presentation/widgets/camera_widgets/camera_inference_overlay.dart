@@ -9,13 +9,15 @@ class CameraInferenceOverlay extends StatelessWidget {
     required this.detectionCount,
     required this.currentFps,
     required this.isLandscape,
-    required this.onBack,
+    required this.onLeadingPressed,
+    this.showMenuButton = false,
   });
 
   final int detectionCount;
   final double currentFps;
   final bool isLandscape;
-  final VoidCallback onBack;
+  final VoidCallback onLeadingPressed;
+  final bool showMenuButton;
 
   @override
   Widget build(BuildContext context) {
@@ -30,30 +32,105 @@ class CameraInferenceOverlay extends StatelessWidget {
           isLandscape ? 8 : 12,
           0,
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
           children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.7),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-              ),
-              child: IconButton(
-                tooltip: 'ย้อนกลับ',
-                onPressed: onBack,
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-              ),
+            Row(
+              children: [
+                _RoundOverlayButton(
+                  key: const Key('cameraNavigationButton'),
+                  tooltip: showMenuButton ? 'เปิดเมนู' : 'ย้อนกลับ',
+                  icon: showMenuButton
+                      ? Icons.menu_rounded
+                      : Icons.arrow_back_rounded,
+                  onPressed: onLeadingPressed,
+                ),
+                const SizedBox(width: 12),
+                const Expanded(child: _BrandBadge()),
+              ],
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: DetectionStatsDisplay(
-                detectionCount: detectionCount,
-                currentFps: currentFps,
-              ),
+            const SizedBox(height: 8),
+            DetectionStatsDisplay(
+              detectionCount: detectionCount,
+              currentFps: currentFps,
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _BrandBadge extends StatelessWidget {
+  const _BrandBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      header: true,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Flexible(
+            child: Text(
+              'Berng Fai',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.8,
+                shadows: [Shadow(color: Colors.black54, blurRadius: 8)],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFF63E681),
+              borderRadius: BorderRadius.circular(99),
+            ),
+            child: const Text(
+              'LIVE',
+              style: TextStyle(
+                color: Colors.black,
+                fontSize: 9,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RoundOverlayButton extends StatelessWidget {
+  const _RoundOverlayButton({
+    super.key,
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.62),
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+      ),
+      child: IconButton(
+        tooltip: tooltip,
+        onPressed: onPressed,
+        icon: Icon(icon, color: Colors.white),
       ),
     );
   }

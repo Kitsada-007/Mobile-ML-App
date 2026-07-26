@@ -4,16 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:trffic_ilght_app/core/models/models.dart';
-import 'package:trffic_ilght_app/services/number_detection_service.dart';
 import 'package:trffic_ilght_app/services/sign_number_pipeline_service.dart';
 import 'package:trffic_ilght_app/services/yolo_result_adapter.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 import '../../services/model_manager.dart';
-
-@visibleForTesting
-YOLO createSingleImageYolo(String modelPath) =>
-    YOLO(modelPath: modelPath, task: YOLOTask.detect, useMultiInstance: true);
 
 class SingleImageScreen extends StatefulWidget {
   const SingleImageScreen({super.key});
@@ -91,12 +86,7 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
       _trafficYolo = trafficYolo;
       _digitYolo = digitYolo;
 
-      final numberDetectionService = NumberDetectionService(
-        numberYolo: digitYolo,
-      );
-      _signNumberService = SignNumberPipelineService(
-        numberDetectionService: numberDetectionService,
-      );
+      _signNumberService = SignNumberPipelineService(digitYolo: digitYolo);
 
       setState(() {
         _isModelsReady = true;
@@ -141,7 +131,7 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
   }
 
   Future<YOLO> _loadYolo(String modelPath) async {
-    final yolo = createSingleImageYolo(modelPath);
+    final yolo = YOLO(modelPath: modelPath, task: YOLOTask.detect);
 
     try {
       await yolo.loadModel();

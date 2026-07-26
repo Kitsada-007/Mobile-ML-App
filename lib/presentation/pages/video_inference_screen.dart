@@ -280,7 +280,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
       setState(() => _isModelReady = true);
     } catch (e) {
       final replacement = await _modelManager.reportModelLoadFailure(
-        ModelType.traffic,
+        ModelType.number,
         failedPath: _modelPath!,
       );
       if (replacement != null && replacement != _modelPath) {

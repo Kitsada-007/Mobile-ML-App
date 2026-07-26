@@ -21,6 +21,9 @@ class CameraInferenceContent extends StatefulWidget {
 class _CameraInferenceContentState extends State<CameraInferenceContent> {
   String? _modelPath;
   late YOLOTask _task;
+  bool _isModelLoading = false;
+  String _loadingMessage = '';
+  double _downloadProgress = 0;
 
   @override
   void initState() {
@@ -42,16 +45,31 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
   void _readModelState() {
     _modelPath = widget.controller.modelPath;
     _task = widget.controller.selectedModel.task;
+    _isModelLoading = widget.controller.isModelLoading;
+    _loadingMessage = widget.controller.loadingMessage;
+    _downloadProgress = widget.controller.downloadProgress;
   }
 
   void _handleControllerChanged() {
     final nextModelPath = widget.controller.modelPath;
     final nextTask = widget.controller.selectedModel.task;
-    if (nextModelPath == _modelPath && nextTask == _task) return;
+    final nextIsModelLoading = widget.controller.isModelLoading;
+    final nextLoadingMessage = widget.controller.loadingMessage;
+    final nextDownloadProgress = widget.controller.downloadProgress;
+    if (nextModelPath == _modelPath &&
+        nextTask == _task &&
+        nextIsModelLoading == _isModelLoading &&
+        nextLoadingMessage == _loadingMessage &&
+        nextDownloadProgress == _downloadProgress) {
+      return;
+    }
 
     setState(() {
       _modelPath = nextModelPath;
       _task = nextTask;
+      _isModelLoading = nextIsModelLoading;
+      _loadingMessage = nextLoadingMessage;
+      _downloadProgress = nextDownloadProgress;
     });
   }
 
@@ -85,12 +103,94 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
         lensFacing: controller.lensFacing,
       );
     } else {
-      return const Center(
-        child: Text(
-          'No model path available',
-          style: TextStyle(color: Colors.white),
-        ),
+      return _CameraPreparingState(
+        isLoading: _isModelLoading,
+        message: _loadingMessage,
+        progress: _downloadProgress,
       );
     }
+  }
+}
+
+class _CameraPreparingState extends StatelessWidget {
+  const _CameraPreparingState({
+    required this.isLoading,
+    required this.message,
+    required this.progress,
+  });
+
+  final bool isLoading;
+  final String message;
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasProgress = progress > 0 && progress < 1;
+
+    return ColoredBox(
+      color: const Color(0xFF090909),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 320),
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 88,
+                  height: 88,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white24, width: 2),
+                  ),
+                  child: const Icon(
+                    Icons.center_focus_strong_rounded,
+                    color: Colors.white,
+                    size: 38,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  isLoading ? 'กำลังโหลดระบบตรวจจับ' : 'กำลังเตรียมระบบตรวจจับ',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  message.isEmpty
+                      ? 'กล้องจะเริ่มทำงานอัตโนมัติเมื่อโมเดลพร้อม'
+                      : message,
+                  textAlign: TextAlign.center,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white60,
+                    fontSize: 13,
+                    height: 1.45,
+                  ),
+                ),
+                if (hasProgress) ...[
+                  const SizedBox(height: 20),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(99),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 4,
+                      backgroundColor: Colors.white12,
+                      color: const Color(0xFF63E681),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -8,7 +8,14 @@ import 'package:trffic_ilght_app/presentation/widgets/camera_widgets/camera_infe
 
 /// Fullscreen real-time YOLO camera inference with an overlaid status HUD.
 class CameraInferencePage extends StatefulWidget {
-  const CameraInferencePage({super.key});
+  const CameraInferencePage({
+    super.key,
+    this.onMenuPressed,
+    this.initializeOnStart = true,
+  });
+
+  final VoidCallback? onMenuPressed;
+  final bool initializeOnStart;
 
   @override
   State<CameraInferencePage> createState() => _CameraInferencePageState();
@@ -22,11 +29,13 @@ class _CameraInferencePageState extends State<CameraInferencePage> {
   void initState() {
     super.initState();
     _controller = CameraInferenceController();
-    _controller.initialize().catchError((error) {
-      if (mounted) {
-        _showError('Model Loading Error', error.toString());
-      }
-    });
+    if (widget.initializeOnStart) {
+      _controller.initialize().catchError((error) {
+        if (mounted) {
+          _showError('Model Loading Error', error.toString());
+        }
+      });
+    }
   }
 
   @override
@@ -78,7 +87,9 @@ class _CameraInferencePageState extends State<CameraInferencePage> {
                 detectionCount: _controller.detectionCount,
                 currentFps: _controller.currentFps,
                 isLandscape: isLandscape,
-                onBack: () => Navigator.maybePop(context),
+                showMenuButton: widget.onMenuPressed != null,
+                onLeadingPressed:
+                    widget.onMenuPressed ?? () => Navigator.maybePop(context),
               ),
             ],
           );

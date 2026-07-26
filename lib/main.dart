@@ -19,14 +19,16 @@ void main() {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, this.initializeCamera = true});
+
+  final bool initializeCamera;
 
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
 
     return GetMaterialApp(
-      title: 'Traffic Light App',
+      title: 'Berng Fai',
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
@@ -53,7 +55,7 @@ class MyApp extends StatelessWidget {
         ),
       ),
       themeMode: settings.isLightMode ? ThemeMode.light : ThemeMode.dark,
-      home: const MainScreen(),
+      home: MainScreen(initializeCamera: initializeCamera),
     );
   }
 }

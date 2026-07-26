@@ -18,7 +18,6 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final ImagePicker picker = ImagePicker();
 
-
   @override
   void dispose() {
     super.dispose();
@@ -32,22 +31,7 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        title: Text(
-          'Detection',
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.3,
-          ),
-        ),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: theme.dividerColor),
-        ),
-      ),
+
       body: SafeArea(
         child: SingleChildScrollView(
           child: Padding(
@@ -85,22 +69,16 @@ class _HomePageState extends State<HomePage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Traffic Light AI',
+                              'Berng Fai',
                               style: theme.textTheme.labelSmall?.copyWith(
-                                color: colorScheme.onPrimary.withValues(alpha: 0.85),
+                                color: colorScheme.onPrimary.withValues(
+                                  alpha: 0.85,
+                                ),
                                 fontWeight: FontWeight.w500,
                                 letterSpacing: 0.5,
                               ),
                             ),
                             const SizedBox(height: 6),
-                            Text(
-                              'ระบบตรวจจับ\nสัญญาณไฟจราจร',
-                              style: theme.textTheme.headlineSmall?.copyWith(
-                                color: colorScheme.onPrimary,
-                                fontWeight: FontWeight.w800,
-                                height: 1.3,
-                              ),
-                            ),
                           ],
                         ),
                       ),
@@ -137,9 +115,9 @@ class _HomePageState extends State<HomePage> {
                     ],
                   ),
                 ),
-  
+
                 const SizedBox(height: 28),
-  
+
                 Text(
                   'เลือกโหมดการตรวจจับ',
                   style: theme.textTheme.titleMedium?.copyWith(
@@ -173,7 +151,9 @@ class _HomePageState extends State<HomePage> {
                         iconBg: const Color(0xFFE8FFF0),
                         onTap: () => Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => const SingleImageScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => const SingleImageScreen(),
+                          ),
                         ),
                       ),
                     ),
@@ -271,7 +251,9 @@ class _HomePageState extends State<HomePage> {
                       Text(
                         subtitle,
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                          color: colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.8,
+                          ),
                           fontSize: 12.5,
                         ),
                       ),
