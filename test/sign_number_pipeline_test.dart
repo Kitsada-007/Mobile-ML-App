@@ -216,18 +216,22 @@ void main() {
   );
 
   test(
-    'real-time inference sends the original frame directly to YOLO',
-    () async {
-      final yolo = RecordingYolo();
-      final service = SignNumberPipelineService(digitYolo: yolo);
-      final frameBytes = Uint8List.fromList([1, 2, 3, 4]);
+    'real-time frame is rotated into the detection coordinate orientation',
+    () {
+      final source = img.Image(width: 200, height: 100);
+      img.fill(source, color: img.ColorRgb8(220, 30, 20));
+      final sourceBytes = Uint8List.fromList(img.encodePng(source));
 
-      final number = await service.detectNumberFromFrame(
-        frameBytes: frameBytes,
+      final orientedBytes = orientFrameForDetectionCoordinates(
+        sourceBytes,
+        expectedWidth: 100,
+        expectedHeight: 200,
       );
+      final oriented = img.decodeImage(orientedBytes);
 
-      expect(yolo.receivedImageBytes, same(frameBytes));
-      expect(number, '12');
+      expect(oriented, isNotNull);
+      expect(oriented!.width, 100);
+      expect(oriented.height, 200);
     },
   );
 
@@ -294,4 +298,70 @@ void main() {
       expect(result.number, '10');
     },
   );
+
+  test(
+    'real-time analysis tries the opposite camera rotation when the first crop finds no digits',
+    () async {
+      final source = img.Image(width: 200, height: 100);
+      final frameBytes = Uint8List.fromList(img.encodeJpg(source));
+      final yolo = SequencedYolo([
+        [],
+        [],
+        [digitDetection('1', left: 0.2), digitDetection('2', left: 0.6)],
+      ]);
+      final service = SignNumberPipelineService(digitYolo: yolo);
+
+      final number = await service.detectNumberFromSign(
+        frameBytes: frameBytes,
+        detectionResults: [trafficDetection()],
+        expectedFrameWidth: 100,
+        expectedFrameHeight: 200,
+      );
+
+      expect(yolo.receivedImages, hasLength(3));
+      expect(number, '12');
+    },
+  );
+
+  test(
+    'real-time analysis tries 180 degrees for an upside-down landscape frame',
+    () async {
+      final source = img.Image(width: 200, height: 100);
+      final frameBytes = Uint8List.fromList(img.encodeJpg(source));
+      final yolo = SequencedYolo([
+        [],
+        [],
+        [digitDetection('1', left: 0.2), digitDetection('2', left: 0.6)],
+      ]);
+      final service = SignNumberPipelineService(digitYolo: yolo);
+
+      final number = await service.detectNumberFromSign(
+        frameBytes: frameBytes,
+        detectionResults: [trafficDetection()],
+        expectedFrameWidth: 200,
+        expectedFrameHeight: 100,
+      );
+
+      expect(yolo.receivedImages, hasLength(3));
+      expect(number, '12');
+    },
+  );
+
+  test('real-time analysis exposes the failed crop for diagnostics', () async {
+    final source = img.Image(width: 200, height: 100);
+    final frameBytes = Uint8List.fromList(img.encodeJpg(source));
+    final yolo = SequencedYolo([[], [], [], []]);
+    final service = SignNumberPipelineService(digitYolo: yolo);
+
+    final analysis = await service.analyzeRealtimeFrame(
+      frameBytes: frameBytes,
+      detectionResults: [trafficDetection()],
+      expectedFrameWidth: 200,
+      expectedFrameHeight: 100,
+    );
+
+    expect(analysis.number, isNull);
+    expect(analysis.cropBytes, isNotNull);
+    expect(analysis.selectedSign?.className, 'sign_number');
+  });
 }

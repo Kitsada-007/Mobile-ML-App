@@ -5,10 +5,14 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trffic_ilght_app/core/models/models.dart';
+import 'package:trffic_ilght_app/core/models/realtime_inference.dart';
 import 'package:trffic_ilght_app/core/utils/thai_number_helper.dart';
+import 'package:trffic_ilght_app/services/countdown_reading_stabilizer.dart';
+import 'package:trffic_ilght_app/services/latest_frame_queue.dart';
+import 'package:trffic_ilght_app/services/number_detection_service.dart';
+import 'package:trffic_ilght_app/services/realtime_number_inference_engine.dart';
 import 'package:trffic_ilght_app/services/traffic_voice_service.dart';
 import 'package:trffic_ilght_app/services/sign_number_pipeline_service.dart';
-import 'package:trffic_ilght_app/services/yolo_result_adapter.dart';
 
 import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
 import 'package:ultralytics_yolo/utils/error_handler.dart';
@@ -17,10 +21,27 @@ import 'package:ultralytics_yolo/yolo_view.dart';
 
 import '../../services/model_manager.dart';
 
+export 'package:trffic_ilght_app/core/models/realtime_inference.dart'
+    show RealtimeInferenceDiagnostic;
+
 String? acceptCountdownReading(String? reading) {
   final normalized = reading?.trim();
   return normalized == null || normalized.isEmpty ? null : normalized;
 }
+
+const double realtimeSignConfidenceThreshold = 0.25;
+
+double nativeRealtimeConfidenceThreshold(double selectedThreshold) =>
+    selectedThreshold < realtimeSignConfidenceThreshold
+    ? selectedThreshold
+    : realtimeSignConfidenceThreshold;
+
+double realtimeDetectionConfidenceThreshold(
+  String className,
+  double selectedThreshold,
+) => className == 'sign_number'
+    ? realtimeSignConfidenceThreshold
+    : selectedThreshold;
 
 class CameraInferenceController extends ChangeNotifier {
   int _detectionCount = 0;
@@ -49,10 +70,10 @@ class CameraInferenceController extends ChangeNotifier {
   late final ModelManager _modelManager;
 
   YOLO? _digitYolo;
-  SignNumberPipelineService? _signNumberPipelineService;
   String? _detectedNumber;
-  bool _isDetectingNumber = false;
-  DateTime? _lastNumberDetectTime;
+  late final RealtimeNumberInferenceEngine _numberInferenceEngine;
+  late final LatestFrameQueue<RealtimeFramePacket> _streamQueue;
+  int _nextStreamSequence = 0;
 
   bool _hasSpokenGetReady = false;
   bool _hasSpokenInitialNumber = false;
@@ -64,9 +85,6 @@ class CameraInferenceController extends ChangeNotifier {
   Future<void>? _loadingFuture;
   Future<void>? _modelRecoveryFuture;
 
-  // ==========================================
-  // อัปเดตตัวแปรเป็นแบบ List เพื่อรองรับหลาย Class พร้อมกัน
-  // ==========================================
   List<String> _detectedFormalNames = [];
   List<String> _detectedAlertMessages = [];
 
@@ -87,16 +105,35 @@ class CameraInferenceController extends ChangeNotifier {
   YOLOViewController get yoloController => _yoloController;
 
   String? get detectedNumber => _detectedNumber;
+  int get droppedStreamFrameCount => _streamQueue.droppedCount;
+  List<RealtimeInferenceDiagnostic> get realtimeDiagnostics =>
+      _numberInferenceEngine.diagnostics;
+  Uint8List? get lastFailedNumberCropBytes =>
+      _numberInferenceEngine.lastFailedCropBytes;
+  bool get isDetectingNumber => _numberInferenceEngine.isDetecting;
 
   // Getter สำหรับ List ภาษาไทย
   List<String> get detectedFormalNames => _detectedFormalNames;
   List<String> get detectedAlertMessages => _detectedAlertMessages;
 
-  CameraInferenceController() {
+  CameraInferenceController({
+    @visibleForTesting SignNumberPipelineService? signNumberPipelineService,
+    @visibleForTesting
+    Duration numberDetectionInterval = const Duration(milliseconds: 400),
+    @visibleForTesting CountdownReadingStabilizer? countdownStabilizer,
+  }) {
+    _numberInferenceEngine = RealtimeNumberInferenceEngine(
+      service: signNumberPipelineService,
+      detectionInterval: numberDetectionInterval,
+      stabilizer: countdownStabilizer,
+      signConfidenceThreshold: realtimeSignConfidenceThreshold,
+    );
+    _streamQueue = LatestFrameQueue(processor: _processStreamPacket);
     _isFrontCamera = _lensFacing == LensFacing.front;
 
     _modelManager = ModelManager(
       onStatusUpdate: (message) {
+        if (_isDisposed) return;
         _loadingMessage = message;
         notifyListeners();
       },
@@ -115,9 +152,12 @@ class CameraInferenceController extends ChangeNotifier {
 
     await _loadModelForPlatform();
     await _loadDigitModel();
+    if (_isDisposed) return;
 
     _yoloController.setThresholds(
-      confidenceThreshold: _confidenceThreshold,
+      confidenceThreshold: nativeRealtimeConfidenceThreshold(
+        _confidenceThreshold,
+      ),
       iouThreshold: _iouThreshold,
       numItemsThreshold: _numItemsThreshold,
     );
@@ -132,10 +172,14 @@ class CameraInferenceController extends ChangeNotifier {
       }
       _digitYolo = digitYolo;
 
-      _signNumberPipelineService = SignNumberPipelineService(
-        digitYolo: _digitYolo!,
+      final numberDetectionService = NumberDetectionService(
+        numberYolo: _digitYolo!,
+      );
+      _numberInferenceEngine.service = SignNumberPipelineService(
+        numberDetectionService: numberDetectionService,
       );
     } catch (e) {
+      if (_isDisposed) return;
       final error = YOLOErrorHandler.handleError(
         e,
         'Failed to load number model',
@@ -152,7 +196,11 @@ class CameraInferenceController extends ChangeNotifier {
     }
 
     Future<YOLO> load(String path) async {
-      final yolo = YOLO(modelPath: path, task: modelType.task);
+      final yolo = YOLO(
+        modelPath: path,
+        task: modelType.task,
+        useMultiInstance: true,
+      );
       try {
         await yolo.loadModel();
         return yolo;
@@ -215,77 +263,54 @@ class CameraInferenceController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> onStreamingData(Map<String, dynamic> data) async {
+  Future<void> onStreamingData(Map<String, dynamic> data) {
+    if (_isDisposed) return Future.value();
+
+    final packet = RealtimeFramePacket.fromMap(
+      data,
+      fallbackFrameNumber: ++_nextStreamSequence,
+    );
+    return _streamQueue.submit(packet);
+  }
+
+  Future<void> _processStreamPacket(RealtimeFramePacket packet) async {
     if (_isDisposed) return;
 
-    if (data.containsKey('detections')) {
-      await onDetectionResults(parseYoloDetections(data['detections']));
-    }
+    final fps = packet.fps;
+    if (fps != null) onPerformanceMetrics(fps);
 
-    final fps = data['fps'];
-    if (fps is num) {
-      onPerformanceMetrics(fps.toDouble());
-    }
+    await onDetectionResults(packet.detections);
+    if (_isDisposed) return;
 
-    final frameBytes = data['originalImage'];
-    if (frameBytes is Uint8List) {
-      await _readNumberFromFrame(frameBytes);
-    }
-  }
-
-  bool _canRunNumberDetection() {
-    if (_lastNumberDetectTime == null) return true;
-    return DateTime.now().difference(_lastNumberDetectTime!).inMilliseconds >=
-        500;
-  }
-
-  Future<void> _readNumberFromFrame(Uint8List frameBytes) async {
-    final service = _signNumberPipelineService;
-    if (_isDisposed ||
-        service == null ||
-        _isDetectingNumber ||
-        !_canRunNumberDetection() ||
-        _hasSpokenGetReady) {
-      return;
-    }
-
-    _isDetectingNumber = true;
-    _lastNumberDetectTime = DateTime.now();
-
-    try {
-      final number = await service.detectNumberFromFrame(
-        frameBytes: frameBytes,
-      );
-      final reading = acceptCountdownReading(number);
-      if (reading != null && _isSignCurrentlyVisible) {
-        _applyDetectedNumber(reading);
-      }
-    } catch (e) {
-      log('Whole-frame number inference error: $e');
-    } finally {
-      _isDetectingNumber = false;
-    }
+    final stabilizedReading = await _numberInferenceEngine.process(
+      packet,
+      enabled: !_hasSpokenGetReady,
+    );
+    if (_isDisposed || stabilizedReading == null) return;
+    _applyDetectedNumber(stabilizedReading);
   }
 
   void _applyDetectedNumber(String reading) {
+    if (_isDisposed) return;
+
     _detectedNumber = reading;
-    final int? val = int.tryParse(reading);
-    if (val != null && val >= 1) {
-      if (shouldPrepareToGo(val)) {
+    final value = int.tryParse(reading);
+    if (value != null && value >= 1) {
+      if (shouldPrepareToGo(value)) {
         if (!_hasSpokenGetReady) {
           _hasSpokenGetReady = true;
           _lastSpokenNumber = reading;
-          _voiceService.speakNumber(reading);
+          unawaited(_voiceService.speakNumber(reading));
         }
-      } else if (val <= 9) {
+      } else if (value <= 9) {
         if (_lastSpokenNumber != reading) {
           _lastSpokenNumber = reading;
-          _voiceService.speakNumber(reading);
+          unawaited(_voiceService.speakNumber(reading));
         }
       } else if (!_hasSpokenInitialNumber) {
         _hasSpokenInitialNumber = true;
         _lastSpokenNumber = reading;
-        _voiceService.speakNumber(reading);
+        unawaited(_voiceService.speakNumber(reading));
       }
     }
     notifyListeners();
@@ -298,6 +323,7 @@ class CameraInferenceController extends ChangeNotifier {
     _hasSpokenInitialNumber = false;
     _isSignCurrentlyVisible = false;
     _lastSignSeenTime = null;
+    _numberInferenceEngine.resetCycle();
   }
 
   // ==========================================
@@ -306,24 +332,25 @@ class CameraInferenceController extends ChangeNotifier {
   Future<void> onDetectionResults(List<YOLOResult> results) async {
     if (_isDisposed) return;
 
-    bool signNumberDetectedInThisFrame = false;
+    final signNumberDetectedInThisFrame = results.any(
+      (result) =>
+          result.className == 'sign_number' &&
+          result.confidence >= realtimeSignConfidenceThreshold,
+    );
 
     if (results.isNotEmpty) {
       // เรียงลำดับจากความมั่นใจมากไปน้อย
       results.sort((a, b) => b.confidence.compareTo(a.confidence));
 
-      // ตรวจสอบว่ามี sign_number ในผลลัพธ์ของเฟรมนี้หรือไม่
-      signNumberDetectedInThisFrame = results.any(
-        (r) => r.className == 'sign_number' && r.confidence >= 0.25,
-      );
-
       List<String> tempFormalNames = [];
       List<String> tempAlerts = [];
 
       for (var result in results) {
-        // ข้าม Class ที่ความมั่นใจน้อยกว่าค่าที่ตั้งไว้ (สำหรับ sign_number ใช้ 0.25 เพื่อจับใน real-time ง่ายขึ้น)
-        final minConfidence = result.className == 'sign_number' ? 0.25 : 0.40;
-        if (result.confidence < minConfidence) continue;
+        final minimumConfidence = realtimeDetectionConfidenceThreshold(
+          result.className,
+          _confidenceThreshold,
+        );
+        if (result.confidence < minimumConfidence) continue;
 
         // แปลงชื่อเป็นภาษาไทยผ่าน VoiceService
         final thaiFormalName = _voiceService.getFormalThaiName(
@@ -338,16 +365,15 @@ class CameraInferenceController extends ChangeNotifier {
         }
 
         if (result.className != 'sign_number') {
-          // เรียกใช้งานเสียงพูดเตือน (ส่งข้อมูลว่ามี sign_number / getReady หรือไม่ เพื่อปรับ cooldown และไม่พูดขัดกัน)
-          _voiceService.processDetection(
-            result.className,
-            result.confidence,
-            isSignActive:
-                signNumberDetectedInThisFrame || _isSignCurrentlyVisible,
-            hasSpokenGetReady: _hasSpokenGetReady,
+          unawaited(
+            _voiceService.processDetection(
+              result.className,
+              result.confidence,
+              isSignActive:
+                  signNumberDetectedInThisFrame || _isSignCurrentlyVisible,
+              hasSpokenGetReady: _hasSpokenGetReady,
+            ),
           );
-        } else {
-          signNumberDetectedInThisFrame = true;
         }
       }
 
@@ -363,7 +389,7 @@ class CameraInferenceController extends ChangeNotifier {
           if (lastSeen == null ||
               now.difference(lastSeen).inMilliseconds > 1500) {
             if (!_hasSpokenGetReady && _detectedNumber != null) {
-              _voiceService.speakNumber(_detectedNumber!);
+              unawaited(_voiceService.speakNumber(_detectedNumber!));
             }
             _resetSignState();
           }
@@ -382,7 +408,7 @@ class CameraInferenceController extends ChangeNotifier {
         if (lastSeen == null ||
             now.difference(lastSeen).inMilliseconds > 1500) {
           if (!_hasSpokenGetReady && _detectedNumber != null) {
-            _voiceService.speakNumber(_detectedNumber!);
+            unawaited(_voiceService.speakNumber(_detectedNumber!));
           }
           _resetSignState();
         }
@@ -456,7 +482,9 @@ class CameraInferenceController extends ChangeNotifier {
       case SliderType.confidence:
         if ((_confidenceThreshold - value).abs() > 0.01) {
           _confidenceThreshold = value;
-          _yoloController.setConfidenceThreshold(value);
+          _yoloController.setConfidenceThreshold(
+            nativeRealtimeConfidenceThreshold(value),
+          );
           changed = true;
         }
         break;
@@ -586,8 +614,19 @@ class CameraInferenceController extends ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true;
-    _voiceService.stop();
-    unawaited(_digitYolo?.dispose());
+    _streamQueue.dispose();
+    _numberInferenceEngine.dispose();
+    unawaited(_voiceService.stop());
+
+    final digitYolo = _digitYolo;
+    final runningStream = _streamQueue.running;
+    if (digitYolo != null) {
+      if (runningStream == null) {
+        unawaited(digitYolo.dispose());
+      } else {
+        unawaited(runningStream.whenComplete(digitYolo.dispose));
+      }
+    }
     _yoloController.dispose();
     super.dispose();
   }

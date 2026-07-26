@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:trffic_ilght_app/core/models/models.dart';
+import 'package:trffic_ilght_app/services/number_detection_service.dart';
 import 'package:trffic_ilght_app/services/sign_number_pipeline_service.dart';
 import 'package:trffic_ilght_app/services/yolo_result_adapter.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
@@ -90,7 +91,12 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
       _trafficYolo = trafficYolo;
       _digitYolo = digitYolo;
 
-      _signNumberService = SignNumberPipelineService(digitYolo: digitYolo);
+      final numberDetectionService = NumberDetectionService(
+        numberYolo: digitYolo,
+      );
+      _signNumberService = SignNumberPipelineService(
+        numberDetectionService: numberDetectionService,
+      );
 
       setState(() {
         _isModelsReady = true;

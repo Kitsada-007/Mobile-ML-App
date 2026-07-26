@@ -73,8 +73,9 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
         task: _task,
         streamingConfig: const YOLOStreamingConfig.custom(
           includeOriginalImage: true,
-          maxFPS: 10,
+          maxFPS: 8,
           inferenceFrequency: 10,
+          analysisResolution: Size(1280, 960),
         ),
         onStreamingData: (data) => unawaited(controller.onStreamingData(data)),
         onZoomChanged: controller.onZoomChanged,
