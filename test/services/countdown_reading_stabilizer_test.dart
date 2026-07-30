@@ -21,14 +21,13 @@ void main() {
     expect(stabilizer.acceptedReading, '12');
   });
 
-  test('accepts a repeated monotonic countdown transition', () {
+  test('accepts a monotonic countdown transition immediately without delay', () {
     final stabilizer = CountdownReadingStabilizer(requiredMatches: 2);
 
     stabilizer
       ..add('12')
       ..add('12');
 
-    expect(stabilizer.add('11'), isNull);
     expect(stabilizer.add('11'), '11');
   });
 

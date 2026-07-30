@@ -83,6 +83,49 @@ bool _frameDimensionsAreReversed(
   return oriented.width == expectedHeight && oriented.height == expectedWidth;
 }
 
+class OrientFrameData {
+  final Uint8List frameBytes;
+  final int? expectedWidth;
+  final int? expectedHeight;
+  final int? rotationDegrees;
+
+  const OrientFrameData({
+    required this.frameBytes,
+    this.expectedWidth,
+    this.expectedHeight,
+    this.rotationDegrees,
+  });
+}
+
+Uint8List _orientFrameTask(OrientFrameData data) {
+  return orientFrameForDetectionCoordinates(
+    data.frameBytes,
+    expectedWidth: data.expectedWidth,
+    expectedHeight: data.expectedHeight,
+    rotationDegrees: data.rotationDegrees,
+  );
+}
+
+class ReversedDimensionsData {
+  final Uint8List frameBytes;
+  final int expectedWidth;
+  final int expectedHeight;
+
+  const ReversedDimensionsData({
+    required this.frameBytes,
+    required this.expectedWidth,
+    required this.expectedHeight,
+  });
+}
+
+bool _frameDimensionsAreReversedTask(ReversedDimensionsData data) {
+  return _frameDimensionsAreReversed(
+    data.frameBytes,
+    expectedWidth: data.expectedWidth,
+    expectedHeight: data.expectedHeight,
+  );
+}
+
 class SignNumberAnalysis {
   final Uint8List? cropBytes;
   final String? number;
@@ -214,6 +257,162 @@ Uint8List? processSignCrop(CropData data) {
   }
 }
 
+class RealtimeFrameTaskData {
+  final Uint8List frameBytes;
+  final List<YOLOResult> detectionResults;
+  final int? expectedFrameWidth;
+  final int? expectedFrameHeight;
+  final int? rotationDegrees;
+  final bool runAlternative;
+
+  RealtimeFrameTaskData({
+    required this.frameBytes,
+    required this.detectionResults,
+    this.expectedFrameWidth,
+    this.expectedFrameHeight,
+    this.rotationDegrees,
+    this.runAlternative = false,
+  });
+}
+
+class RealtimeFrameTaskResult {
+  final Uint8List? tightCropBytes;
+  final Uint8List? wideCropBytes;
+  final YOLOResult? selectedSign;
+
+  RealtimeFrameTaskResult({
+    this.tightCropBytes,
+    this.wideCropBytes,
+    this.selectedSign,
+  });
+}
+
+RealtimeFrameTaskResult _processRealtimeFrameTask(RealtimeFrameTaskData data) {
+  final signResults = data.detectionResults
+      .where((result) => result.className == 'sign_number')
+      .toList();
+
+  if (signResults.isEmpty) {
+    return RealtimeFrameTaskResult();
+  }
+
+  signResults.sort((a, b) => b.confidence.compareTo(a.confidence));
+  final sign = signResults.first;
+  final normalizedRect = sign.normalizedBox;
+
+  final bool normalizedIsValid =
+      normalizedRect.left >= 0 &&
+      normalizedRect.top >= 0 &&
+      normalizedRect.right > normalizedRect.left &&
+      normalizedRect.bottom > normalizedRect.top &&
+      normalizedRect.right <= 1.01 &&
+      normalizedRect.bottom <= 1.01;
+
+  final rect = normalizedIsValid ? normalizedRect : sign.boundingBox;
+
+  final decoded = img.decodeImage(data.frameBytes);
+  if (decoded == null) return RealtimeFrameTaskResult();
+
+  img.Image original = img.bakeOrientation(decoded);
+
+  int degrees = 0;
+  if (data.rotationDegrees != null) {
+    degrees = ((data.rotationDegrees! % 360) + 360) % 360;
+  } else if (data.expectedFrameWidth != null && data.expectedFrameHeight != null) {
+    final dimensionsAreReversed = original.width == data.expectedFrameHeight &&
+        original.height == data.expectedFrameWidth;
+    if (data.runAlternative) {
+      degrees = dimensionsAreReversed ? 270 : 180;
+    } else {
+      degrees = dimensionsAreReversed ? 90 : 0;
+    }
+  }
+
+  if (degrees != 0) {
+    original = img.copyRotate(original, angle: degrees);
+  }
+
+  final int imageWidth = original.width;
+  final int imageHeight = original.height;
+
+  double x1 = rect.left;
+  double y1 = rect.top;
+  double x2 = rect.right;
+  double y2 = rect.bottom;
+
+  final bool isNormalized =
+      x1 >= -0.01 && y1 >= -0.01 && x2 <= 1.01 && y2 <= 1.01;
+
+  if (isNormalized) {
+    x1 *= imageWidth;
+    y1 *= imageHeight;
+    x2 *= imageWidth;
+    y2 *= imageHeight;
+  }
+
+  final int left = x1.floor().clamp(0, imageWidth - 1);
+  final int top = y1.floor().clamp(0, imageHeight - 1);
+  final int right = x2.ceil().clamp(left + 1, imageWidth);
+  final int bottom = y2.ceil().clamp(top + 1, imageHeight);
+
+  final bounds = (left: left, top: top, right: right, bottom: bottom);
+  final int cropWidth = bounds.right - bounds.left;
+  final int cropHeight = bounds.bottom - bounds.top;
+
+  if (cropWidth <= 0 || cropHeight <= 0) {
+    return RealtimeFrameTaskResult();
+  }
+
+  Uint8List? cropAndEncode(double hPadding, double vPadding) {
+    final padded = expandCropBounds(
+      bounds,
+      imageWidth: imageWidth,
+      imageHeight: imageHeight,
+      horizontalPaddingFactor: hPadding,
+      verticalPaddingFactor: vPadding,
+    );
+
+    img.Image cropped = img.copyCrop(
+      original,
+      x: padded.left,
+      y: padded.top,
+      width: padded.right - padded.left,
+      height: padded.bottom - padded.top,
+    );
+
+    final int shortestEdge = min(cropped.width, cropped.height);
+    final int longestEdge = max(cropped.width, cropped.height);
+    double scale = shortestEdge < minimumDigitCropEdge
+        ? minimumDigitCropEdge / shortestEdge
+        : 1;
+
+    if (longestEdge * scale > maximumDigitCropEdge) {
+      scale = maximumDigitCropEdge / longestEdge;
+    }
+
+    if ((scale - 1).abs() > 0.001) {
+      cropped = img.copyResize(
+        cropped,
+        width: max(1, (cropped.width * scale).round()),
+        height: max(1, (cropped.height * scale).round()),
+        interpolation: img.Interpolation.linear,
+      );
+    }
+
+    cropped = img.grayscale(cropped);
+    return Uint8List.fromList(img.encodeJpg(cropped, quality: 95));
+  }
+
+  final tightBytes = cropAndEncode(tightHorizontalPaddingFactor, tightVerticalPaddingFactor);
+  final wideBytes = cropAndEncode(wideHorizontalPaddingFactor, wideVerticalPaddingFactor);
+
+  return RealtimeFrameTaskResult(
+    tightCropBytes: tightBytes,
+    wideCropBytes: wideBytes,
+    selectedSign: sign,
+  );
+}
+
 class SignNumberPipelineService {
   SignNumberPipelineService({
     NumberDetectionService? numberDetectionService,
@@ -260,42 +459,90 @@ class SignNumberPipelineService {
     int? expectedFrameHeight,
     int? rotationDegrees,
   }) async {
-    final orientedFrameBytes = orientFrameForDetectionCoordinates(
-      frameBytes,
-      expectedWidth: expectedFrameWidth,
-      expectedHeight: expectedFrameHeight,
-      rotationDegrees: rotationDegrees,
+    final taskResult = await compute(
+      _processRealtimeFrameTask,
+      RealtimeFrameTaskData(
+        frameBytes: frameBytes,
+        detectionResults: detectionResults,
+        expectedFrameWidth: expectedFrameWidth,
+        expectedFrameHeight: expectedFrameHeight,
+        rotationDegrees: rotationDegrees,
+      ),
     );
-    final analysis = await analyzeSingleImage(
-      frameBytes: orientedFrameBytes,
-      detectionResults: detectionResults,
-    );
-    if (analysis.number != null ||
+
+    if (taskResult.tightCropBytes == null) {
+      return const SignNumberAnalysis();
+    }
+
+    final tightReading = await _numberDetectionService.detect(taskResult.tightCropBytes!);
+    if (tightReading.digitCount >= 2) {
+      return SignNumberAnalysis(
+        cropBytes: taskResult.tightCropBytes,
+        number: tightReading.number,
+        selectedSign: taskResult.selectedSign,
+      );
+    }
+
+    final wideReading = taskResult.wideCropBytes != null
+        ? await _numberDetectionService.detect(taskResult.wideCropBytes!)
+        : const NumberDetectionResult();
+
+    final preferred = wideReading.digitCount != tightReading.digitCount
+        ? (wideReading.digitCount > tightReading.digitCount ? wideReading : tightReading)
+        : (wideReading.averageConfidence > tightReading.averageConfidence ? wideReading : tightReading);
+
+    final selectedBytes = preferred == wideReading ? taskResult.wideCropBytes : taskResult.tightCropBytes;
+
+    if (preferred.number != null ||
         rotationDegrees != null ||
         expectedFrameWidth == null ||
         expectedFrameHeight == null) {
-      return analysis;
+      return SignNumberAnalysis(
+        cropBytes: selectedBytes,
+        number: preferred.number,
+        selectedSign: taskResult.selectedSign,
+      );
     }
 
-    // YOLOView 0.6.10 does not include CameraX rotationDegrees in stream
-    // metadata. Try the remaining plausible orientation only when the first
-    // crop produces no digits, avoiding extra work on successful frames.
-    final dimensionsAreReversed = _frameDimensionsAreReversed(
-      frameBytes,
-      expectedWidth: expectedFrameWidth,
-      expectedHeight: expectedFrameHeight,
+    final altResult = await compute(
+      _processRealtimeFrameTask,
+      RealtimeFrameTaskData(
+        frameBytes: frameBytes,
+        detectionResults: detectionResults,
+        expectedFrameWidth: expectedFrameWidth,
+        expectedFrameHeight: expectedFrameHeight,
+        runAlternative: true,
+      ),
     );
-    final alternativeFrameBytes = orientFrameForDetectionCoordinates(
-      frameBytes,
-      expectedWidth: expectedFrameWidth,
-      expectedHeight: expectedFrameHeight,
-      rotationDegrees: dimensionsAreReversed ? 270 : 180,
+
+    if (altResult.tightCropBytes == null) {
+      return const SignNumberAnalysis();
+    }
+
+    final altTightReading = await _numberDetectionService.detect(altResult.tightCropBytes!);
+    if (altTightReading.digitCount >= 2) {
+      return SignNumberAnalysis(
+        cropBytes: altResult.tightCropBytes,
+        number: altTightReading.number,
+        selectedSign: altResult.selectedSign,
+      );
+    }
+
+    final altWideReading = altResult.wideCropBytes != null
+        ? await _numberDetectionService.detect(altResult.wideCropBytes!)
+        : const NumberDetectionResult();
+
+    final altPreferred = altWideReading.digitCount != altTightReading.digitCount
+        ? (altWideReading.digitCount > altTightReading.digitCount ? altWideReading : altTightReading)
+        : (altWideReading.averageConfidence > altTightReading.averageConfidence ? altWideReading : altTightReading);
+
+    final altSelectedBytes = altPreferred == altWideReading ? altResult.wideCropBytes : altResult.tightCropBytes;
+
+    return SignNumberAnalysis(
+      cropBytes: altSelectedBytes,
+      number: altPreferred.number,
+      selectedSign: altResult.selectedSign,
     );
-    final alternative = await analyzeSingleImage(
-      frameBytes: alternativeFrameBytes,
-      detectionResults: detectionResults,
-    );
-    return alternative.cropBytes != null ? alternative : analysis;
   }
 
   Future<SignNumberAnalysis> analyzeSingleImage({

@@ -84,6 +84,31 @@ Map<String, dynamic> _signDetection() {
   };
 }
 
+YOLOResult _trafficLightDetection(
+  String className, {
+  double confidence = 0.9,
+  double left = 0.4,
+  double right = 0.6,
+}) {
+  return YOLOResult.fromMap({
+    'classIndex': switch (className) {
+      'red_light_circle' => 1,
+      'yellow_light' => 2,
+      'green_light_circle' => 3,
+      _ => 0,
+    },
+    'className': className,
+    'confidence': confidence,
+    'boundingBox': {
+      'left': left * 100,
+      'top': 10.0,
+      'right': right * 100,
+      'bottom': 30.0,
+    },
+    'normalizedBox': {'left': left, 'top': 0.1, 'right': right, 'bottom': 0.3},
+  });
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   SharedPreferences.setMockInitialValues({'isVoiceEnabled': false});
@@ -263,6 +288,37 @@ void main() {
     expect(controller.realtimeDiagnostics, hasLength(20));
     expect(controller.realtimeDiagnostics.first.frameNumber, 6);
     expect(controller.realtimeDiagnostics.last.frameNumber, 25);
+    controller.dispose();
+  });
+
+  test('traffic light state is exposed only after confirmation', () async {
+    final controller = CameraInferenceController();
+    final redLight = _trafficLightDetection('red_light_circle');
+
+    await controller.onDetectionResults([redLight]);
+    expect(controller.confirmedTrafficLightClassName, isNull);
+
+    await controller.onDetectionResults([redLight]);
+    expect(controller.confirmedTrafficLightClassName, 'red_light_circle');
+    controller.dispose();
+  });
+
+  test('traffic light tracking selects the centered relevant light', () async {
+    final controller = CameraInferenceController();
+    final detections = [
+      _trafficLightDetection(
+        'green_light_circle',
+        confidence: 0.99,
+        left: 0.78,
+        right: 0.94,
+      ),
+      _trafficLightDetection('red_light_circle', confidence: 0.86),
+    ];
+
+    await controller.onDetectionResults(detections);
+    await controller.onDetectionResults(detections);
+
+    expect(controller.confirmedTrafficLightClassName, 'red_light_circle');
     controller.dispose();
   });
 }

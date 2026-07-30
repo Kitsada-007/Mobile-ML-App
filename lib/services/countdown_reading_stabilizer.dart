@@ -23,6 +23,19 @@ class CountdownReadingStabilizer {
     }
 
     final canonical = value.toString();
+    final previous = _acceptedValue;
+
+    // หากเป็นการนับถอยหลังปกติ (ลดลง 1) หรือตัวเลขเดิมในช่วงวินาทีเดิม (ลดลง 0)
+    // ให้ยอมรับค่านั้นทันทีเพื่อขจัดดีเลย์ในแอป Realtime
+    if (previous != null) {
+      final stepDown = previous - value;
+      if (stepDown == 0 || stepDown == 1) {
+        _acceptedValue = value;
+        _clearCandidate();
+        return canonical;
+      }
+    }
+
     if (_candidate == canonical) {
       _candidateMatches += 1;
     } else {
@@ -32,7 +45,6 @@ class CountdownReadingStabilizer {
 
     if (_candidateMatches < requiredMatches) return null;
 
-    final previous = _acceptedValue;
     if (previous != null) {
       final stepDown = previous - value;
       if (stepDown < 0) {

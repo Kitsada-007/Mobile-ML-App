@@ -71,6 +71,7 @@ class TrafficVoiceService {
     double confidence, {
     bool isSignActive = false,
     bool hasSpokenGetReady = false,
+    bool announceImmediately = false,
   }) async {
     if (!_isEnabled) return;
     if (confidence < 0.40) return;
@@ -87,7 +88,8 @@ class TrafficVoiceService {
     final now = DateTime.now();
     // ถ้ามี sign_number อยู่ในภาพเดียวกัน ขยาย cooldown เสียงเตือนไฟจราจรจาก 3 วินาที เป็น 8 วินาที เพื่อไม่ให้พูดถี่เกินไป
     final cooldown = isSignActive ? 8 : 3;
-    if (now.difference(_lastSpeakTime).inSeconds >= cooldown) {
+    if (announceImmediately ||
+        now.difference(_lastSpeakTime).inSeconds >= cooldown) {
       await speak(message);
     }
   }

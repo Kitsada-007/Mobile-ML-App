@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trffic_ilght_app/core/models/models.dart';
@@ -11,6 +12,7 @@ import 'package:trffic_ilght_app/services/countdown_reading_stabilizer.dart';
 import 'package:trffic_ilght_app/services/latest_frame_queue.dart';
 import 'package:trffic_ilght_app/services/number_detection_service.dart';
 import 'package:trffic_ilght_app/services/realtime_number_inference_engine.dart';
+import 'package:trffic_ilght_app/services/traffic_light_state_stabilizer.dart';
 import 'package:trffic_ilght_app/services/traffic_voice_service.dart';
 import 'package:trffic_ilght_app/services/sign_number_pipeline_service.dart';
 
@@ -73,6 +75,7 @@ class CameraInferenceController extends ChangeNotifier {
   String? _detectedNumber;
   late final RealtimeNumberInferenceEngine _numberInferenceEngine;
   late final LatestFrameQueue<RealtimeFramePacket> _streamQueue;
+  late final TrafficLightStateStabilizer _trafficLightStateStabilizer;
   int _nextStreamSequence = 0;
 
   bool _hasSpokenGetReady = false;
@@ -111,6 +114,8 @@ class CameraInferenceController extends ChangeNotifier {
   Uint8List? get lastFailedNumberCropBytes =>
       _numberInferenceEngine.lastFailedCropBytes;
   bool get isDetectingNumber => _numberInferenceEngine.isDetecting;
+  String? get confirmedTrafficLightClassName =>
+      _trafficLightStateStabilizer.confirmedClassName;
 
   // Getter สำหรับ List ภาษาไทย
   List<String> get detectedFormalNames => _detectedFormalNames;
@@ -121,6 +126,7 @@ class CameraInferenceController extends ChangeNotifier {
     @visibleForTesting
     Duration numberDetectionInterval = const Duration(milliseconds: 400),
     @visibleForTesting CountdownReadingStabilizer? countdownStabilizer,
+    @visibleForTesting TrafficLightStateStabilizer? trafficLightStateStabilizer,
   }) {
     _numberInferenceEngine = RealtimeNumberInferenceEngine(
       service: signNumberPipelineService,
@@ -129,6 +135,8 @@ class CameraInferenceController extends ChangeNotifier {
       signConfidenceThreshold: realtimeSignConfidenceThreshold,
     );
     _streamQueue = LatestFrameQueue(processor: _processStreamPacket);
+    _trafficLightStateStabilizer =
+        trafficLightStateStabilizer ?? TrafficLightStateStabilizer();
     _isFrontCamera = _lensFacing == LensFacing.front;
 
     _modelManager = ModelManager(
@@ -332,11 +340,51 @@ class CameraInferenceController extends ChangeNotifier {
   Future<void> onDetectionResults(List<YOLOResult> results) async {
     if (_isDisposed) return;
 
+    bool shouldNotify = false;
+
     final signNumberDetectedInThisFrame = results.any(
       (result) =>
           result.className == 'sign_number' &&
           result.confidence >= realtimeSignConfidenceThreshold,
     );
+    final trafficLightUpdate = _trafficLightStateStabilizer.update(
+      results
+          .where(
+            (result) =>
+                isTrafficLightStateClass(result.className) &&
+                result.confidence >=
+                    realtimeDetectionConfidenceThreshold(
+                      result.className,
+                      _confidenceThreshold,
+                    ),
+          )
+          .map((result) {
+            final box = result.normalizedBox;
+            return TrafficLightObservation(
+              className: result.className,
+              confidence: result.confidence,
+              left: box.left,
+              top: box.top,
+              right: box.right,
+              bottom: box.bottom,
+            );
+          }),
+      timestamp: DateTime.now(),
+    );
+
+    final confirmedTrafficLight = trafficLightUpdate.confirmedClassName;
+    if (trafficLightUpdate.stateChanged && confirmedTrafficLight != null) {
+      unawaited(
+        _voiceService.processDetection(
+          confirmedTrafficLight,
+          1,
+          isSignActive:
+              signNumberDetectedInThisFrame || _isSignCurrentlyVisible,
+          hasSpokenGetReady: _hasSpokenGetReady,
+          announceImmediately: true,
+        ),
+      );
+    }
 
     if (results.isNotEmpty) {
       // เรียงลำดับจากความมั่นใจมากไปน้อย
@@ -351,6 +399,7 @@ class CameraInferenceController extends ChangeNotifier {
           _confidenceThreshold,
         );
         if (result.confidence < minimumConfidence) continue;
+        if (isTrafficLightStateClass(result.className)) continue;
 
         // แปลงชื่อเป็นภาษาไทยผ่าน VoiceService
         final thaiFormalName = _voiceService.getFormalThaiName(
@@ -377,6 +426,12 @@ class CameraInferenceController extends ChangeNotifier {
         }
       }
 
+      _appendConfirmedTrafficLight(
+        confirmedTrafficLight,
+        formalNames: tempFormalNames,
+        alertMessages: tempAlerts,
+      );
+
       // จัดการสถานะและเสียงสำหรับสัญญาณไฟนับถอยหลังในเฟรมนี้
       if (signNumberDetectedInThisFrame) {
         _lastSignSeenTime = DateTime.now();
@@ -396,10 +451,13 @@ class CameraInferenceController extends ChangeNotifier {
         }
       }
 
-      // อัปเดต List หลักและแจ้ง UI
-      _detectedFormalNames = tempFormalNames;
-      _detectedAlertMessages = tempAlerts;
-      notifyListeners();
+      // อัปเดต List หลักและแจ้ง UI เฉพาะเมื่อมีข้อมูลเปลี่ยนแปลง
+      if (!listEquals(_detectedFormalNames, tempFormalNames) ||
+          !listEquals(_detectedAlertMessages, tempAlerts)) {
+        _detectedFormalNames = tempFormalNames;
+        _detectedAlertMessages = tempAlerts;
+        shouldNotify = true;
+      }
     } else {
       // ถ้าไม่มีผลตรวจจับ ให้จัดการสัญญาณไฟนับถอยหลังก่อนหน้า (มีดีบาวน์)
       if (_isSignCurrentlyVisible) {
@@ -414,11 +472,20 @@ class CameraInferenceController extends ChangeNotifier {
         }
       }
 
-      // ถ้าไม่มีผลตรวจจับเลย ให้ล้างหน้าจอ
-      if (_detectedFormalNames.isNotEmpty) {
-        _detectedFormalNames = [];
-        _detectedAlertMessages = [];
-        notifyListeners();
+      final tempFormalNames = <String>[];
+      final tempAlerts = <String>[];
+      _appendConfirmedTrafficLight(
+        confirmedTrafficLight,
+        formalNames: tempFormalNames,
+        alertMessages: tempAlerts,
+      );
+
+      // คงสถานะไฟที่ track ไว้ระหว่างเฟรมหลุดสั้น ๆ และล้างเมื่อหมดเวลา
+      if (!listEquals(_detectedFormalNames, tempFormalNames) ||
+          !listEquals(_detectedAlertMessages, tempAlerts)) {
+        _detectedFormalNames = tempFormalNames;
+        _detectedAlertMessages = tempAlerts;
+        shouldNotify = true;
       }
     }
 
@@ -431,13 +498,31 @@ class CameraInferenceController extends ChangeNotifier {
       _currentFps = _frameCount * 1000 / elapsed;
       _frameCount = 0;
       _lastFpsUpdate = now;
-      notifyListeners();
+      shouldNotify = true;
     }
 
     if (_detectionCount != results.length) {
       _detectionCount = results.length;
+      shouldNotify = true;
+    }
+
+    if (shouldNotify) {
       notifyListeners();
     }
+  }
+
+  void _appendConfirmedTrafficLight(
+    String? className, {
+    required List<String> formalNames,
+    required List<String> alertMessages,
+  }) {
+    if (className == null) return;
+
+    final formalName = _voiceService.getFormalThaiName(className);
+    if (formalNames.contains(formalName)) return;
+
+    formalNames.add(formalName);
+    alertMessages.add(_voiceService.getThaiMessage(className));
   }
 
   void onPerformanceMetrics(double fps) {
@@ -526,6 +611,7 @@ class CameraInferenceController extends ChangeNotifier {
   void flipCamera() {
     if (_isDisposed) return;
 
+    _trafficLightStateStabilizer.reset();
     _isFrontCamera = !_isFrontCamera;
     _lensFacing = _isFrontCamera ? LensFacing.front : LensFacing.back;
 
@@ -541,6 +627,7 @@ class CameraInferenceController extends ChangeNotifier {
     if (_isDisposed) return;
 
     if (_lensFacing != facing) {
+      _trafficLightStateStabilizer.reset();
       _lensFacing = facing;
       _isFrontCamera = facing == LensFacing.front;
 
@@ -616,6 +703,7 @@ class CameraInferenceController extends ChangeNotifier {
     _isDisposed = true;
     _streamQueue.dispose();
     _numberInferenceEngine.dispose();
+    _trafficLightStateStabilizer.reset();
     unawaited(_voiceService.stop());
 
     final digitYolo = _digitYolo;

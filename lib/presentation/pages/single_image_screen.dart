@@ -10,6 +10,15 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 import '../../services/model_manager.dart';
 
+@visibleForTesting
+YOLO createSingleImageYolo(String modelPath) {
+  return YOLO(
+    modelPath: modelPath,
+    task: YOLOTask.detect,
+    useMultiInstance: true,
+  );
+}
+
 class SingleImageScreen extends StatefulWidget {
   const SingleImageScreen({super.key});
 
@@ -131,7 +140,7 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
   }
 
   Future<YOLO> _loadYolo(String modelPath) async {
-    final yolo = YOLO(modelPath: modelPath, task: YOLOTask.detect);
+    final yolo = createSingleImageYolo(modelPath);
 
     try {
       await yolo.loadModel();
