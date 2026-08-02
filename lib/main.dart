@@ -1,11 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:provider/provider.dart';
-import 'package:trffic_ilght_app/presentation/controllers/settings_controller.dart';
-import 'package:trffic_ilght_app/presentation/pages/main_screen.dart';
-import 'package:trffic_ilght_app/services/remote_model_update_bootstrap.dart';
+import 'package:trffic_ilght_app/app/app.dart';
+import 'package:trffic_ilght_app/core/services/model_management/remote_model_update_bootstrap.dart';
+import 'package:trffic_ilght_app/features/settings/settings.dart';
+
+export 'package:trffic_ilght_app/app/app.dart' show MyApp;
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,46 +17,4 @@ void main() {
     ),
   );
   unawaited(RemoteModelUpdateBootstrap.checkOnce());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key, this.initializeCamera = true});
-
-  final bool initializeCamera;
-
-  @override
-  Widget build(BuildContext context) {
-    final settings = context.watch<SettingsProvider>();
-
-    return GetMaterialApp(
-      title: 'Berng Fai',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF3D5AFE),
-          brightness: Brightness.light,
-        ),
-        scaffoldBackgroundColor: const Color(0xFFF8F9FA),
-        appBarTheme: const AppBarTheme(
-          centerTitle: false,
-          elevation: 0,
-          backgroundColor: Colors.transparent,
-        ),
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF3D5AFE),
-          brightness: Brightness.dark,
-        ),
-        appBarTheme: const AppBarTheme(
-          centerTitle: false,
-          elevation: 0,
-          backgroundColor: Colors.transparent,
-        ),
-      ),
-      themeMode: settings.isLightMode ? ThemeMode.light : ThemeMode.dark,
-      home: MainScreen(initializeCamera: initializeCamera),
-    );
-  }
 }

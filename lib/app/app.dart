@@ -1,0 +1,25 @@
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:provider/provider.dart';
+import 'package:trffic_ilght_app/app/app_shell.dart';
+import 'package:trffic_ilght_app/app/theme.dart';
+import 'package:trffic_ilght_app/features/settings/settings.dart';
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key, this.initializeCamera = true});
+
+  final bool initializeCamera;
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = context.watch<SettingsProvider>();
+
+    return GetMaterialApp(
+      title: 'Berng Fai',
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: settings.isLightMode ? ThemeMode.light : ThemeMode.dark,
+      home: MainScreen(initializeCamera: initializeCamera),
+    );
+  }
+}

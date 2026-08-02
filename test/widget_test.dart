@@ -10,10 +10,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trffic_ilght_app/main.dart';
-import 'package:trffic_ilght_app/presentation/controllers/settings_controller.dart';
-import 'package:trffic_ilght_app/presentation/pages/camera_inference_page.dart';
-import 'package:trffic_ilght_app/presentation/pages/setting_page.dart';
-import 'package:trffic_ilght_app/presentation/pages/single_image_screen.dart';
+import 'package:trffic_ilght_app/features/settings/presentation/controllers/settings_controller.dart';
+import 'package:trffic_ilght_app/features/camera_detection/presentation/screens/camera_inference_page.dart';
+import 'package:trffic_ilght_app/features/settings/presentation/screens/setting_page.dart';
+import 'package:trffic_ilght_app/features/image_detection/presentation/screens/single_image_screen.dart';
 
 void main() {
   setUp(() {

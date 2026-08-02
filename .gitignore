@@ -33,8 +33,6 @@ migrate_working_dir/
 /build/
 /coverage/
 /release-model-v1.2.0
-/docs
-/tasks
 # Symbolication related
 app.*.symbols
 
