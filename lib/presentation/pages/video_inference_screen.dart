@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get_core/src/get_main.dart';
@@ -18,10 +19,21 @@ import 'package:trffic_ilght_app/presentation/widgets/video_widgets/video_infere
 import 'package:trffic_ilght_app/presentation/widgets/video_widgets/video_processing.dart';
 import 'package:trffic_ilght_app/presentation/widgets/video_widgets/video_result_section.dart';
 import 'package:trffic_ilght_app/presentation/widgets/video_widgets/video_selected_video.dart';
+import 'package:trffic_ilght_app/services/countdown_reading_stabilizer.dart';
 import 'package:trffic_ilght_app/services/model_manager.dart';
-import 'package:trffic_ilght_app/services/yolo_result_adapter.dart';
+import 'package:trffic_ilght_app/services/sign_number_pipeline_service.dart';
+import 'package:trffic_ilght_app/services/video_frame_analysis_service.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:video_player/video_player.dart';
+
+@visibleForTesting
+YOLO createVideoYolo(String modelPath) {
+  return YOLO(
+    modelPath: modelPath,
+    task: YOLOTask.detect,
+    useMultiInstance: true,
+  );
+}
 
 class VideoInferenceScreen extends StatefulWidget {
   const VideoInferenceScreen({super.key});
@@ -35,12 +47,18 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
 
   // เพิ่ม Set สำหรับเก็บชื่อ Class ที่ตรวจพบแบบไม่ซ้ำกัน
   final Set<String> _detectedClasses = {};
+  final Set<String> _detectedNumbers = {};
+  final CountdownReadingStabilizer _countdownStabilizer =
+      CountdownReadingStabilizer();
   Uint8List? _imageBytes;
   Uint8List? _annotatedImage;
 
-  YOLO? _yolo;
-  String? _modelPath;
-  bool _isModelReady = false;
+  YOLO? _trafficYolo;
+  YOLO? _numberYolo;
+  VideoFrameAnalysisService? _videoFrameAnalysisService;
+  String? _trafficModelPath;
+  String? _numberModelPath;
+  bool _areModelsReady = false;
   late final ModelManager _modelManager;
 
   VideoPlayerController? _videoController;
@@ -54,12 +72,13 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
   void initState() {
     super.initState();
     _modelManager = ModelManager();
-    _initializeYOLO();
+    _initializeModels();
   }
 
   @override
   void dispose() {
-    unawaited(_yolo?.dispose());
+    unawaited(_trafficYolo?.dispose());
+    unawaited(_numberYolo?.dispose());
     _videoController?.dispose();
     super.dispose();
   }
@@ -94,7 +113,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                 children: [
-                  if (!_isModelReady)
+                  if (!_areModelsReady)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: LinearProgressIndicator(
@@ -113,8 +132,9 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                       onTogglePlayPause: _togglePlayPause,
                     ),
 
-                    // แสดงผลรายชื่อ Class ที่พบหลังจากประมวลผลเสร็จ
-                    if (_detectedClasses.isNotEmpty)
+                    // แสดงผล Class และตัวเลขที่พบหลังประมวลผลเสร็จ
+                    if (_detectedClasses.isNotEmpty ||
+                        _detectedNumbers.isNotEmpty)
                       Container(
                         margin: const EdgeInsets.only(top: 16),
                         padding: const EdgeInsets.all(16),
@@ -162,6 +182,36 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                                 );
                               }).toList(),
                             ),
+                            if (_detectedNumbers.isNotEmpty) ...[
+                              const SizedBox(height: 16),
+                              Text(
+                                'ตัวเลขที่ตรวจพบ:',
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: _detectedNumbers.map((number) {
+                                  return Chip(
+                                    avatar: const Icon(
+                                      Icons.numbers_rounded,
+                                      size: 18,
+                                    ),
+                                    label: Text(number),
+                                    backgroundColor:
+                                        colorScheme.secondaryContainer,
+                                    labelStyle: TextStyle(
+                                      color: colorScheme.onSecondaryContainer,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                    side: BorderSide.none,
+                                  );
+                                }).toList(),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -266,54 +316,71 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
     });
   }
 
-  Future<void> _initializeYOLO() async {
-    _modelPath = await _modelManager.getModelPath(ModelType.traffic);
-    if (_modelPath == null) return;
-
+  Future<void> _initializeModels() async {
+    YOLO? trafficYolo;
+    YOLO? numberYolo;
     try {
-      final yolo = await _loadYolo(_modelPath!);
-      if (!mounted) {
-        await yolo.dispose();
+      _trafficModelPath = await _modelManager.getModelPath(ModelType.traffic);
+      _numberModelPath = await _modelManager.getModelPath(ModelType.number);
+
+      if (_trafficModelPath == null || _numberModelPath == null) {
+        _showSnackBar('ไม่พบไฟล์โมเดล Traffic หรือ Number');
         return;
       }
-      _yolo = yolo;
-      setState(() => _isModelReady = true);
-    } catch (e) {
-      final replacement = await _modelManager.reportModelLoadFailure(
-        ModelType.number,
-        failedPath: _modelPath!,
+
+      trafficYolo = await _loadYoloWithRollback(
+        ModelType.traffic,
+        _trafficModelPath!,
       );
-      if (replacement != null && replacement != _modelPath) {
-        try {
-          _modelPath = replacement;
-          final yolo = await _loadYolo(replacement);
-          if (!mounted) {
-            await yolo.dispose();
-            return;
-          }
-          _yolo = yolo;
-          setState(() => _isModelReady = true);
-          return;
-        } catch (_) {
-          // Report the original model error below if fallback loading fails.
-        }
+      numberYolo = await _loadYoloWithRollback(
+        ModelType.number,
+        _numberModelPath!,
+      );
+
+      if (!mounted) {
+        await trafficYolo.dispose();
+        await numberYolo.dispose();
+        return;
       }
+
+      _trafficYolo = trafficYolo;
+      _numberYolo = numberYolo;
+      _videoFrameAnalysisService = VideoFrameAnalysisService(
+        trafficYolo: trafficYolo,
+        signNumberPipeline: SignNumberPipelineService(digitYolo: numberYolo),
+      );
+      setState(() => _areModelsReady = true);
+    } catch (e) {
+      await trafficYolo?.dispose();
+      await numberYolo?.dispose();
       if (!mounted) return;
 
       final error = YOLOErrorHandler.handleError(
         e,
-        'Failed to load model $_modelPath for task ${YOLOTask.detect.name}',
+        'Failed to load video inference models',
       );
-      _showSnackBar('Error loading model: ${error.message}');
+      _showSnackBar('Error loading models: ${error.message}');
+    }
+  }
+
+  Future<YOLO> _loadYoloWithRollback(
+    ModelType modelType,
+    String initialPath,
+  ) async {
+    try {
+      return await _loadYolo(initialPath);
+    } catch (_) {
+      final replacement = await _modelManager.reportModelLoadFailure(
+        modelType,
+        failedPath: initialPath,
+      );
+      if (replacement == null || replacement == initialPath) rethrow;
+      return _loadYolo(replacement);
     }
   }
 
   Future<YOLO> _loadYolo(String modelPath) async {
-    final yolo = YOLO(
-      modelPath: modelPath,
-      task: YOLOTask.detect,
-      useGpu: false,
-    );
+    final yolo = createVideoYolo(modelPath);
     try {
       await yolo.loadModel();
       return yolo;
@@ -363,12 +430,16 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
       _videoController = null;
       _annotatedImage = null;
       _detectedClasses.clear(); // เคลียร์ผลลัพธ์เดิมเมื่อเลือกวิดีโอใหม่
+      _detectedNumbers.clear();
+      _countdownStabilizer.reset();
     });
   }
 
   Future<void> _predictVideo() async {
-    if (!_isModelReady || _videoFile == null) {
-      _showSnackBar("Please select a video and wait for model to load.");
+    if (!_areModelsReady ||
+        _videoFrameAnalysisService == null ||
+        _videoFile == null) {
+      _showSnackBar('กรุณาเลือกวิดีโอและรอให้โมเดลโหลดเสร็จ');
       return;
     }
 
@@ -377,6 +448,8 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
       _progressValue = 0.0;
       _progressText = "กำลังเตรียมโฟลเดอร์ชั่วคราว...";
       _detectedClasses.clear(); // เคลียร์ผลลัพธ์เดิมก่อนเริ่มประมวลผล
+      _detectedNumbers.clear();
+      _countdownStabilizer.reset();
       _annotatedImage = null;
       _videoController?.dispose();
       _videoController = null;
@@ -431,6 +504,11 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
     required String inputFolder,
     required String outputFolder,
   }) async {
+    final frameAnalysisService = _videoFrameAnalysisService;
+    if (frameAnalysisService == null) {
+      throw StateError('Video inference models are not ready');
+    }
+
     for (final path in [inputFolder, outputFolder]) {
       final dir = Directory(path);
       if (await dir.exists()) {
@@ -475,23 +553,19 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
 
       try {
         final bytes = await fileEntity.readAsBytes();
-        final result = await _yolo!.predict(bytes);
-        final annotatedBytes = result['annotatedImage'] as Uint8List?;
+        final result = await frameAnalysisService.analyze(bytes);
 
-        // -------------------------------------------------------------
-        // ดึงข้อมูล Class ออกมาจาก result และบันทึกเก็บไว้ใน Set
-        // -------------------------------------------------------------
-        final detections = parseYoloDetections(result['detections']);
-        for (final detection in detections) {
+        for (final detection in result.detections) {
           _detectedClasses.add(_getFormalThaiName(detection.className));
         }
-        // -------------------------------------------------------------
-
-        if (annotatedBytes != null) {
-          await outFile.writeAsBytes(annotatedBytes);
-        } else {
-          await fileEntity.copy(outFile.path);
+        final detectedNumber = _countdownStabilizer.add(
+          result.detectedNumber,
+        );
+        if (detectedNumber != null && detectedNumber.isNotEmpty) {
+          _detectedNumbers.add(detectedNumber);
         }
+
+        await outFile.writeAsBytes(result.outputImageBytes);
       } catch (frameError) {
         debugPrint('Error predicting frame $fileName: $frameError');
         await fileEntity.copy(outFile.path);
