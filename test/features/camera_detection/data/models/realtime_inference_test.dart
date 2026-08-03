@@ -67,4 +67,59 @@ void main() {
     expect(packet.imageWidth, isNull);
     expect(packet.fps, isNull);
   });
+
+  test('derives capture timing and stage metrics from native metadata', () {
+    final receivedAt = DateTime.fromMillisecondsSinceEpoch(1400);
+    final packet = RealtimeFramePacket.fromMap(
+      {
+        'frameNumber': 8,
+        'timestamp': 1300,
+        'processingTimeMs': 50,
+        'preMs': 5,
+        'inferenceMs': 35,
+        'postMs': 10,
+        'detections': [_signDetection()],
+        'originalImage': Uint8List.fromList([4, 5, 6]),
+      },
+      fallbackFrameNumber: 99,
+      receivedAt: receivedAt,
+    );
+
+    expect(packet.resultProducedAt, DateTime.fromMillisecondsSinceEpoch(1300));
+    expect(
+      packet.estimatedCapturedAt,
+      DateTime.fromMillisecondsSinceEpoch(1250),
+    );
+    expect(packet.receivedAt, receivedAt);
+    expect(packet.processingTimeMilliseconds, 50);
+    expect(packet.preProcessingMilliseconds, 5);
+    expect(packet.inferenceMilliseconds, 35);
+    expect(packet.postProcessingMilliseconds, 10);
+  });
+
+  test('retains full frame bytes only when a number sign needs a crop', () {
+    final imageBytes = Uint8List.fromList([1, 2, 3]);
+
+    final ordinaryPacket = RealtimeFramePacket.fromMap({
+      'detections': [_detection('red_light_circle')],
+      'originalImage': imageBytes,
+    }, fallbackFrameNumber: 1);
+    final signPacket = RealtimeFramePacket.fromMap({
+      'detections': [_signDetection()],
+      'originalImage': imageBytes,
+    }, fallbackFrameNumber: 2);
+
+    expect(ordinaryPacket.frameBytes, isNull);
+    expect(signPacket.frameBytes, same(imageBytes));
+  });
 }
+
+Map<String, dynamic> _signDetection() => _detection('sign_number');
+
+Map<String, dynamic> _detection(String className) => {
+  'classIndex': 0,
+  'className': className,
+  'confidence': 0.9,
+  'boundingBox': {'left': 10.0, 'top': 20.0, 'right': 30.0, 'bottom': 40.0},
+  'normalizedBox': {'left': 0.1, 'top': 0.2, 'right': 0.3, 'bottom': 0.4},
+};

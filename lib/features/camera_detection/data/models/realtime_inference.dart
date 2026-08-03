@@ -6,44 +6,81 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 class RealtimeFramePacket {
   const RealtimeFramePacket({
     required this.frameNumber,
-    required this.timestamp,
+    required this.resultProducedAt,
+    required this.estimatedCapturedAt,
+    required this.receivedAt,
     required this.detections,
     this.frameBytes,
     this.imageWidth,
     this.imageHeight,
     this.rotationDegrees,
     this.fps,
+    this.processingTimeMilliseconds,
+    this.preProcessingMilliseconds,
+    this.inferenceMilliseconds,
+    this.postProcessingMilliseconds,
   });
 
   factory RealtimeFramePacket.fromMap(
     Map<String, dynamic> data, {
     required int fallbackFrameNumber,
+    DateTime? receivedAt,
   }) {
+    final callbackReceivedAt = receivedAt ?? DateTime.now();
     final timestampMilliseconds = _readInt(data['timestamp']);
+    final resultProducedAt = timestampMilliseconds == null
+        ? callbackReceivedAt
+        : DateTime.fromMillisecondsSinceEpoch(timestampMilliseconds);
+    final processingTimeMilliseconds = _readDouble(data['processingTimeMs']);
+    final detections = parseYoloDetections(data['detections']);
+    final needsNumberCrop = detections.any(
+      (detection) => detection.className == 'sign_number',
+    );
+
     return RealtimeFramePacket(
       frameNumber: _readInt(data['frameNumber']) ?? fallbackFrameNumber,
-      timestamp: timestampMilliseconds == null
-          ? DateTime.now()
-          : DateTime.fromMillisecondsSinceEpoch(timestampMilliseconds),
-      detections: parseYoloDetections(data['detections']),
-      frameBytes: data['originalImage'] is Uint8List
+      resultProducedAt: resultProducedAt,
+      estimatedCapturedAt: resultProducedAt.subtract(
+        _durationFromMilliseconds(processingTimeMilliseconds),
+      ),
+      receivedAt: callbackReceivedAt,
+      detections: detections,
+      frameBytes: needsNumberCrop && data['originalImage'] is Uint8List
           ? data['originalImage'] as Uint8List
           : null,
       imageWidth: _readInt(data['imageWidth']),
       imageHeight: _readInt(data['imageHeight']),
       rotationDegrees: _readInt(data['rotationDegrees']),
-      fps: data['fps'] is num ? (data['fps'] as num).toDouble() : null,
+      fps: _readDouble(data['fps']),
+      processingTimeMilliseconds: processingTimeMilliseconds,
+      preProcessingMilliseconds: _readDouble(data['preMs']),
+      inferenceMilliseconds: _readDouble(data['inferenceMs']),
+      postProcessingMilliseconds: _readDouble(data['postMs']),
     );
   }
 
   final int frameNumber;
-  final DateTime timestamp;
+  final DateTime resultProducedAt;
+  final DateTime estimatedCapturedAt;
+  final DateTime receivedAt;
   final List<YOLOResult> detections;
   final Uint8List? frameBytes;
   final int? imageWidth;
   final int? imageHeight;
   final int? rotationDegrees;
   final double? fps;
+  final double? processingTimeMilliseconds;
+  final double? preProcessingMilliseconds;
+  final double? inferenceMilliseconds;
+  final double? postProcessingMilliseconds;
+
+  /// Backwards-compatible name used by existing diagnostics.
+  DateTime get timestamp => resultProducedAt;
+
+  Duration ageAt(DateTime now) {
+    final age = now.difference(estimatedCapturedAt);
+    return age.isNegative ? Duration.zero : age;
+  }
 }
 
 class RealtimeInferenceDiagnostic {
@@ -67,3 +104,8 @@ class RealtimeInferenceDiagnostic {
 }
 
 int? _readInt(Object? value) => value is num ? value.toInt() : null;
+
+double? _readDouble(Object? value) => value is num ? value.toDouble() : null;
+
+Duration _durationFromMilliseconds(double? value) =>
+    Duration(microseconds: value == null ? 0 : (value * 1000).round());

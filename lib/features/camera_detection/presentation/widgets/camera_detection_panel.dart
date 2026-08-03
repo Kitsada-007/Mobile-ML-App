@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:trffic_ilght_app/core/utils/thai_number_helper.dart';
 
-/// Live traffic-sign messages displayed over the fullscreen camera preview.
+/// Live traffic-sign results displayed below the camera preview.
 class CameraDetectionPanel extends StatelessWidget {
   const CameraDetectionPanel({
     super.key,
@@ -9,102 +9,204 @@ class CameraDetectionPanel extends StatelessWidget {
     required this.alertMessages,
     required this.detectedNumber,
     required this.isLandscape,
+    this.isPipelineStale = true,
+    this.latencyP50 = Duration.zero,
+    this.latencyP95 = Duration.zero,
+    this.latencyP99 = Duration.zero,
+    this.droppedFrameCount = 0,
+    this.trackingId,
   });
 
   final List<String> formalNames;
   final List<String> alertMessages;
   final String? detectedNumber;
   final bool isLandscape;
+  final bool isPipelineStale;
+  final Duration latencyP50;
+  final Duration latencyP95;
+  final Duration latencyP99;
+  final int droppedFrameCount;
+  final int? trackingId;
 
   @override
   Widget build(BuildContext context) {
     final countdown = int.tryParse(detectedNumber ?? '');
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Positioned(
-      key: const Key('cameraDetectionPanelPosition'),
-      bottom: 0,
-      left: 0,
-      right: 0,
-      child: SafeArea(
-        minimum: EdgeInsets.fromLTRB(
-          isLandscape ? 72 : 16,
-          0,
-          isLandscape ? 72 : 16,
-          isLandscape ? 8 : 12,
+    return DecoratedBox(
+      key: const Key('cameraDetectionPanel'),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF17191C) : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? Colors.white12 : const Color(0xFFE7E9ED),
         ),
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 640),
-            child: IgnorePointer(
-              child: DecoratedBox(
-                key: const Key('cameraDetectionPanel'),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.7),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.18),
-                  ),
-                ),
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(
-                    12,
-                    isLandscape ? 8 : 12,
-                    12,
-                    isLandscape ? 8 : 12,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const _PanelHeader(),
-                      const Divider(color: Colors.white24, height: 16),
-                      Semantics(
-                        liveRegion: true,
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (countdown != null) ...[
-                              _CountdownBadge(countdown: countdown),
-                              const SizedBox(width: 12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.24 : 0.07),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          isLandscape ? 12 : 16,
+          16,
+          isLandscape ? 12 : 16,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _PanelHeader(),
+            const SizedBox(height: 12),
+            _RealtimePipelineStatus(
+              isStale: isPipelineStale,
+              latencyP50: latencyP50,
+              latencyP95: latencyP95,
+              latencyP99: latencyP99,
+              droppedFrameCount: droppedFrameCount,
+              trackingId: trackingId,
+            ),
+            Divider(
+              color: isDark ? Colors.white12 : const Color(0xFFE7E9ED),
+              height: 20,
+            ),
+            Semantics(
+              liveRegion: true,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (countdown != null) ...[
+                    _CountdownBadge(countdown: countdown),
+                    const SizedBox(width: 12),
+                  ],
+                  Expanded(
+                    child: formalNames.isEmpty
+                        ? const _ScanningMessage()
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              for (
+                                var index = 0;
+                                index < formalNames.length;
+                                index++
+                              )
+                                _DetectionMessage(
+                                  className: formalNames[index],
+                                  alertMessage: index < alertMessages.length
+                                      ? alertMessages[index]
+                                      : '',
+                                  detectedNumber: detectedNumber,
+                                ),
                             ],
-                            Expanded(
-                              child: formalNames.isEmpty
-                                  ? const _ScanningMessage()
-                                  : ConstrainedBox(
-                                      constraints: BoxConstraints(
-                                        maxHeight: isLandscape ? 72 : 160,
-                                      ),
-                                      child: SingleChildScrollView(
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            for (
-                                              var index = 0;
-                                              index < formalNames.length;
-                                              index++
-                                            )
-                                              _DetectionMessage(
-                                                className: formalNames[index],
-                                                alertMessage:
-                                                    index < alertMessages.length
-                                                    ? alertMessages[index]
-                                                    : '',
-                                                detectedNumber: detectedNumber,
-                                              ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                          ),
                   ),
-                ),
+                ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RealtimePipelineStatus extends StatelessWidget {
+  const _RealtimePipelineStatus({
+    required this.isStale,
+    required this.latencyP50,
+    required this.latencyP95,
+    required this.latencyP99,
+    required this.droppedFrameCount,
+    required this.trackingId,
+  });
+
+  final bool isStale;
+  final Duration latencyP50;
+  final Duration latencyP95;
+  final Duration latencyP99;
+  final int droppedFrameCount;
+  final int? trackingId;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final statusColor = isStale
+        ? const Color(0xFFE07A1F)
+        : const Color(0xFF0B9A5A);
+
+    return Semantics(
+      container: true,
+      label: isStale ? 'ข้อมูลจากกล้องล่าช้า' : 'ข้อมูลจากกล้องเป็นปัจจุบัน',
+      child: Wrap(
+        key: const Key('realtimePipelineStatus'),
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          _PipelineMetricChip(
+            label: isStale ? 'STALE' : 'LIVE',
+            foregroundColor: statusColor,
+            backgroundColor: statusColor.withValues(alpha: 0.12),
+          ),
+          _PipelineMetricChip(
+            label: 'P50 ${latencyP50.inMilliseconds} ms',
+            foregroundColor: colorScheme.onSurfaceVariant,
+          ),
+          _PipelineMetricChip(
+            label: 'P95 ${latencyP95.inMilliseconds} ms',
+            foregroundColor: colorScheme.onSurfaceVariant,
+          ),
+          _PipelineMetricChip(
+            label: 'P99 ${latencyP99.inMilliseconds} ms',
+            foregroundColor: colorScheme.onSurfaceVariant,
+          ),
+          _PipelineMetricChip(
+            label: 'DROP $droppedFrameCount',
+            foregroundColor: colorScheme.onSurfaceVariant,
+          ),
+          if (trackingId != null)
+            _PipelineMetricChip(
+              label: 'TRACK #$trackingId',
+              foregroundColor: colorScheme.onSurfaceVariant,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PipelineMetricChip extends StatelessWidget {
+  const _PipelineMetricChip({
+    required this.label,
+    required this.foregroundColor,
+    this.backgroundColor,
+  });
+
+  final String label;
+  final Color foregroundColor;
+  final Color? backgroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color:
+            backgroundColor ??
+            Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: foregroundColor,
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
           ),
         ),
       ),
@@ -117,20 +219,25 @@ class _PanelHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Row(
       children: [
-        const Icon(Icons.sensors_rounded, color: Colors.white, size: 18),
+        const Icon(
+          Icons.center_focus_strong_rounded,
+          color: Color(0xFF0B9A5A),
+          size: 20,
+        ),
         const SizedBox(width: 8),
-        const Expanded(
+        Expanded(
           child: Text(
-            'LIVE DETECTION',
+            'ผลการตรวจจับ',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.1,
+              color: colorScheme.onSurface,
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ),
@@ -144,12 +251,11 @@ class _PanelHeader extends StatelessWidget {
         ),
         const SizedBox(width: 6),
         Text(
-          'ACTIVE',
+          'กำลังทำงาน',
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.78),
+            color: colorScheme.onSurfaceVariant,
             fontSize: 10,
             fontWeight: FontWeight.w700,
-            letterSpacing: 0.8,
           ),
         ),
       ],
@@ -167,11 +273,12 @@ class _CountdownBadge extends StatelessWidget {
     return Semantics(
       label: 'ตัวเลขนับถอยหลัง $countdown วินาที',
       child: Container(
-        width: 72,
-        height: 72,
+        width: 86,
+        height: 86,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: const Color(0xFFFFEEEE),
           borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFFFD6D6)),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -180,8 +287,8 @@ class _CountdownBadge extends StatelessWidget {
               '$countdown',
               maxLines: 1,
               style: const TextStyle(
-                color: Colors.black,
-                fontSize: 34,
+                color: Color(0xFFE63D3D),
+                fontSize: 38,
                 height: 0.95,
                 fontWeight: FontWeight.w900,
                 letterSpacing: -1.5,
@@ -189,12 +296,11 @@ class _CountdownBadge extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             const Text(
-              'SECONDS',
+              'วินาที',
               style: TextStyle(
-                color: Colors.black54,
-                fontSize: 8,
+                color: Color(0xFF9F3A3A),
+                fontSize: 11,
                 fontWeight: FontWeight.w800,
-                letterSpacing: 0.7,
               ),
             ),
           ],
@@ -209,6 +315,8 @@ class _ScanningMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Row(
       children: [
         Container(
@@ -227,7 +335,7 @@ class _ScanningMessage extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.72),
+              color: colorScheme.onSurfaceVariant,
               fontSize: 14,
               fontWeight: FontWeight.w500,
             ),
@@ -251,6 +359,7 @@ class _DetectionMessage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final countdown = int.tryParse(detectedNumber ?? '');
     final isCountdownSignal =
         className == 'สัญญาณไฟนับถอยหลัง' && countdown != null;
@@ -280,8 +389,8 @@ class _DetectionMessage extends StatelessWidget {
               message,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: colorScheme.onSurface,
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
               ),

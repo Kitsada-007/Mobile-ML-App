@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:trffic_ilght_app/core/services/inference/countdown_reading_stabilizer.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/controllers/camera_inference_controller.dart';
 import 'package:trffic_ilght_app/core/services/inference/sign_number_pipeline_service.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
@@ -54,6 +55,27 @@ class BlockingDigitYolo extends RecordingDigitYolo {
   }
 }
 
+class ClockAdvancingDigitYolo extends RecordingDigitYolo {
+  ClockAdvancingDigitYolo(this.advanceClock);
+
+  final void Function() advanceClock;
+
+  @override
+  Future<Map<String, dynamic>> predict(
+    Uint8List imageBytes, {
+    double? confidenceThreshold,
+    double? iouThreshold,
+  }) async {
+    final result = await super.predict(
+      imageBytes,
+      confidenceThreshold: confidenceThreshold,
+      iouThreshold: iouThreshold,
+    );
+    advanceClock();
+    return result;
+  }
+}
+
 Map<String, dynamic> _digitDetection(String digit, {required double left}) {
   return {
     'classIndex': int.parse(digit),
@@ -81,6 +103,16 @@ Map<String, dynamic> _signDetection() {
     'confidence': 0.9,
     'boundingBox': {'left': 25.0, 'top': 40.0, 'right': 75.0, 'bottom': 160.0},
     'normalizedBox': {'left': 0.25, 'top': 0.20, 'right': 0.75, 'bottom': 0.80},
+  };
+}
+
+Map<String, dynamic> _trafficLightDetectionMap(String className) {
+  return {
+    'classIndex': 1,
+    'className': className,
+    'confidence': 0.9,
+    'boundingBox': {'left': 40.0, 'top': 10.0, 'right': 60.0, 'bottom': 30.0},
+    'normalizedBox': {'left': 0.4, 'top': 0.1, 'right': 0.6, 'bottom': 0.3},
   };
 }
 
@@ -201,6 +233,37 @@ void main() {
     },
   );
 
+  test('default freshness budget keeps a successful Number result', () async {
+    var now = DateTime(2026, 8, 3, 12);
+    final capturedAt = now;
+    final digitYolo = ClockAdvancingDigitYolo(
+      () => now = now.add(const Duration(milliseconds: 600)),
+    );
+    final controller = CameraInferenceController(
+      signNumberPipelineService: SignNumberPipelineService(
+        digitYolo: digitYolo,
+      ),
+      numberDetectionInterval: Duration.zero,
+      countdownStabilizer: CountdownReadingStabilizer(requiredMatches: 1),
+      clock: () => now,
+      enableFreshnessWatchdog: false,
+    );
+    final frame = img.Image(width: 200, height: 100);
+
+    await controller.onStreamingData({
+      'frameNumber': 1,
+      'timestamp': capturedAt.millisecondsSinceEpoch,
+      'detections': [_signDetection()],
+      'originalImage': Uint8List.fromList(img.encodeJpg(frame)),
+      'imageWidth': 200,
+      'imageHeight': 100,
+    });
+
+    expect(controller.detectedNumber, '12');
+    expect(controller.isRealtimePipelineStale, isFalse);
+    controller.dispose();
+  });
+
   test(
     'real-time queue processes one frame and keeps only the latest',
     () async {
@@ -319,6 +382,98 @@ void main() {
     await controller.onDetectionResults(detections);
 
     expect(controller.confirmedTrafficLightClassName, 'red_light_circle');
+    controller.dispose();
+  });
+
+  test('stale stream frames are rejected before updating detections', () async {
+    final capturedAt = DateTime(2026, 8, 3, 12);
+    final now = capturedAt.add(const Duration(milliseconds: 501));
+    final controller = CameraInferenceController(
+      clock: () => now,
+      maximumFrameAge: const Duration(milliseconds: 500),
+      enableFreshnessWatchdog: false,
+    );
+
+    await controller.onStreamingData({
+      'frameNumber': 1,
+      'timestamp': capturedAt.millisecondsSinceEpoch,
+      'detections': [_trafficLightDetectionMap('red_light_circle')],
+    });
+
+    expect(controller.detectionCount, 0);
+    expect(controller.pipelineSnapshot.staleFrameCount, 1);
+    expect(controller.confirmedTrafficLightClassName, isNull);
+    controller.dispose();
+  });
+
+  test('duplicate stream frame numbers are rejected', () async {
+    final now = DateTime(2026, 8, 3, 12);
+    final controller = CameraInferenceController(
+      clock: () => now,
+      enableFreshnessWatchdog: false,
+    );
+
+    Future<void> send(int frameNumber) => controller.onStreamingData({
+      'frameNumber': frameNumber,
+      'timestamp': now.millisecondsSinceEpoch,
+      'detections': [_trafficLightDetectionMap('red_light_circle')],
+    });
+
+    await send(2);
+    await send(2);
+
+    expect(controller.pipelineSnapshot.processedFrameCount, 1);
+    expect(controller.pipelineSnapshot.outOfOrderFrameCount, 1);
+    controller.dispose();
+  });
+
+  test('freshness watchdog clears an expired visual result', () async {
+    var now = DateTime(2026, 8, 3, 12);
+    final controller = CameraInferenceController(
+      clock: () => now,
+      maximumFrameAge: const Duration(milliseconds: 500),
+      enableFreshnessWatchdog: false,
+    );
+
+    for (var frame = 1; frame <= 2; frame++) {
+      await controller.onStreamingData({
+        'frameNumber': frame,
+        'timestamp': now.millisecondsSinceEpoch,
+        'detections': [_trafficLightDetectionMap('red_light_circle')],
+      });
+      now = now.add(const Duration(milliseconds: 50));
+    }
+    expect(controller.confirmedTrafficLightClassName, 'red_light_circle');
+
+    now = now.add(const Duration(milliseconds: 501));
+    controller.expireStaleResults(now: now);
+
+    expect(controller.confirmedTrafficLightClassName, isNull);
+    expect(controller.detectionCount, 0);
+    expect(controller.detectedFormalNames, isEmpty);
+    expect(controller.isRealtimePipelineStale, isTrue);
+    controller.dispose();
+  });
+
+  test('records end-to-end latency for accepted stream frames', () async {
+    final capturedAt = DateTime(2026, 8, 3, 12);
+    final now = capturedAt.add(const Duration(milliseconds: 120));
+    final controller = CameraInferenceController(
+      clock: () => now,
+      enableFreshnessWatchdog: false,
+    );
+
+    await controller.onStreamingData({
+      'frameNumber': 1,
+      'timestamp': capturedAt.millisecondsSinceEpoch,
+      'inferenceMs': 30,
+      'detections': <Map<String, dynamic>>[],
+    });
+
+    expect(controller.pipelineSnapshot.processedFrameCount, 1);
+    expect(controller.pipelineSnapshot.endToEndLatencyP95.inMilliseconds, 120);
+    expect(controller.pipelineSnapshot.inferenceLatencyP95.inMilliseconds, 30);
+    expect(controller.isRealtimePipelineStale, isFalse);
     controller.dispose();
   });
 }

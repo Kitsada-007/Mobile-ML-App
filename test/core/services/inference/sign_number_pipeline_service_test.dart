@@ -243,6 +243,7 @@ void main() {
       final frameBytes = Uint8List.fromList(img.encodeJpg(source));
       final yolo = RecordingYolo();
       final service = SignNumberPipelineService(digitYolo: yolo);
+      addTearDown(service.dispose);
 
       final result = await service.analyzeSingleImage(
         frameBytes: frameBytes,
@@ -262,6 +263,7 @@ void main() {
     final frameBytes = Uint8List.fromList(img.encodeJpg(source));
     final yolo = RecordingYolo();
     final service = SignNumberPipelineService(digitYolo: yolo);
+    addTearDown(service.dispose);
 
     final result = await service.analyzeSingleImage(
       frameBytes: frameBytes,
@@ -287,6 +289,7 @@ void main() {
         ],
       ]);
       final service = SignNumberPipelineService(digitYolo: yolo);
+      addTearDown(service.dispose);
 
       final result = await service.analyzeSingleImage(
         frameBytes: frameBytes,
@@ -310,6 +313,7 @@ void main() {
         [digitDetection('1', left: 0.2), digitDetection('2', left: 0.6)],
       ]);
       final service = SignNumberPipelineService(digitYolo: yolo);
+      addTearDown(service.dispose);
 
       final number = await service.detectNumberFromSign(
         frameBytes: frameBytes,
@@ -334,6 +338,7 @@ void main() {
         [digitDetection('1', left: 0.2), digitDetection('2', left: 0.6)],
       ]);
       final service = SignNumberPipelineService(digitYolo: yolo);
+      addTearDown(service.dispose);
 
       final number = await service.detectNumberFromSign(
         frameBytes: frameBytes,
@@ -352,6 +357,7 @@ void main() {
     final frameBytes = Uint8List.fromList(img.encodeJpg(source));
     final yolo = SequencedYolo([[], [], [], []]);
     final service = SignNumberPipelineService(digitYolo: yolo);
+    addTearDown(service.dispose);
 
     final analysis = await service.analyzeRealtimeFrame(
       frameBytes: frameBytes,
@@ -363,5 +369,29 @@ void main() {
     expect(analysis.number, isNull);
     expect(analysis.cropBytes, isNotNull);
     expect(analysis.selectedSign?.className, 'sign_number');
+  });
+
+  test('real-time crop worker reuses one isolate across frames', () async {
+    final source = img.Image(width: 200, height: 100);
+    img.fill(source, color: img.ColorRgb8(220, 30, 20));
+    final frameBytes = Uint8List.fromList(img.encodeJpg(source));
+    final worker = PersistentSignCropWorker();
+    addTearDown(worker.dispose);
+    final request = RealtimeFrameTaskData(
+      frameBytes: frameBytes,
+      left: 0.4,
+      top: 0.2,
+      right: 0.6,
+      bottom: 0.8,
+      expectedFrameWidth: 200,
+      expectedFrameHeight: 100,
+    );
+
+    final first = await worker.process(request);
+    final second = await worker.process(request);
+
+    expect(first.tightCropBytes, isNotNull);
+    expect(second.tightCropBytes, isNotNull);
+    expect(worker.spawnCount, 1);
   });
 }

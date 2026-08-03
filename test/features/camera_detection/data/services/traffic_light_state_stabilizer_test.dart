@@ -134,5 +134,31 @@ void main() {
 
       expect(stabilizer.confirmedClassName, isNull);
     });
+
+    test('keeps a tracking id and allocates a new one after timeout', () {
+      final stabilizer = TrafficLightStateStabilizer(
+        trackingTimeout: const Duration(milliseconds: 500),
+      );
+      final startedAt = DateTime(2026, 1, 1);
+
+      final first = stabilizer.update([
+        _light('red_light_circle'),
+      ], timestamp: startedAt);
+      final second = stabilizer.update([
+        _light('red_light_circle', left: 0.41, right: 0.61),
+      ], timestamp: startedAt.add(const Duration(milliseconds: 100)));
+      final expired = stabilizer.update(
+        const [],
+        timestamp: startedAt.add(const Duration(milliseconds: 601)),
+      );
+      final reacquired = stabilizer.update([
+        _light('red_light_circle'),
+      ], timestamp: startedAt.add(const Duration(milliseconds: 700)));
+
+      expect(first.trackingId, 1);
+      expect(second.trackingId, 1);
+      expect(expired.trackingId, isNull);
+      expect(reacquired.trackingId, 2);
+    });
   });
 }

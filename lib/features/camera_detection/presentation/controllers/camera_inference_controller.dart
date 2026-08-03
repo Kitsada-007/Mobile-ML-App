@@ -1,15 +1,14 @@
 import 'dart:async';
 import 'dart:developer';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trffic_ilght_app/shared/models/model_types.dart';
 import 'package:trffic_ilght_app/features/camera_detection/data/models/realtime_inference.dart';
 import 'package:trffic_ilght_app/core/utils/thai_number_helper.dart';
 import 'package:trffic_ilght_app/core/services/inference/countdown_reading_stabilizer.dart';
 import 'package:trffic_ilght_app/features/camera_detection/data/services/latest_frame_queue.dart';
+import 'package:trffic_ilght_app/features/camera_detection/data/services/realtime_pipeline_monitor.dart';
 import 'package:trffic_ilght_app/core/services/inference/number_detection_service.dart';
 import 'package:trffic_ilght_app/features/camera_detection/data/services/realtime_number_inference_engine.dart';
 import 'package:trffic_ilght_app/features/camera_detection/data/services/traffic_light_state_stabilizer.dart';
@@ -76,6 +75,16 @@ class CameraInferenceController extends ChangeNotifier {
   late final RealtimeNumberInferenceEngine _numberInferenceEngine;
   late final LatestFrameQueue<RealtimeFramePacket> _streamQueue;
   late final TrafficLightStateStabilizer _trafficLightStateStabilizer;
+  late final RealtimeFrameFreshnessGuard _frameFreshnessGuard;
+  late final RealtimePipelineMonitor _pipelineMonitor;
+  late final DateTime Function() _clock;
+  late final Duration _maximumFrameAge;
+  late final bool _enableFreshnessWatchdog;
+  Timer? _freshnessWatchdog;
+  RealtimePipelineSnapshot _pipelineSnapshot =
+      const RealtimePipelineSnapshot.empty();
+  DateTime? _lastFreshFrameCapturedAt;
+  bool _isRealtimePipelineStale = true;
   int _nextStreamSequence = 0;
 
   bool _hasSpokenGetReady = false;
@@ -116,6 +125,10 @@ class CameraInferenceController extends ChangeNotifier {
   bool get isDetectingNumber => _numberInferenceEngine.isDetecting;
   String? get confirmedTrafficLightClassName =>
       _trafficLightStateStabilizer.confirmedClassName;
+  int? get activeTrafficLightTrackingId =>
+      _trafficLightStateStabilizer.activeTrackingId;
+  RealtimePipelineSnapshot get pipelineSnapshot => _pipelineSnapshot;
+  bool get isRealtimePipelineStale => _isRealtimePipelineStale;
 
   // Getter สำหรับ List ภาษาไทย
   List<String> get detectedFormalNames => _detectedFormalNames;
@@ -127,7 +140,14 @@ class CameraInferenceController extends ChangeNotifier {
     Duration numberDetectionInterval = const Duration(milliseconds: 400),
     @visibleForTesting CountdownReadingStabilizer? countdownStabilizer,
     @visibleForTesting TrafficLightStateStabilizer? trafficLightStateStabilizer,
+    @visibleForTesting DateTime Function()? clock,
+    @visibleForTesting
+    Duration maximumFrameAge = defaultRealtimeMaximumFrameAge,
+    @visibleForTesting bool enableFreshnessWatchdog = true,
   }) {
+    _clock = clock ?? DateTime.now;
+    _maximumFrameAge = maximumFrameAge;
+    _enableFreshnessWatchdog = enableFreshnessWatchdog;
     _numberInferenceEngine = RealtimeNumberInferenceEngine(
       service: signNumberPipelineService,
       detectionInterval: numberDetectionInterval,
@@ -135,6 +155,10 @@ class CameraInferenceController extends ChangeNotifier {
       signConfidenceThreshold: realtimeSignConfidenceThreshold,
     );
     _streamQueue = LatestFrameQueue(processor: _processStreamPacket);
+    _frameFreshnessGuard = RealtimeFrameFreshnessGuard(
+      maximumFrameAge: maximumFrameAge,
+    );
+    _pipelineMonitor = RealtimePipelineMonitor();
     _trafficLightStateStabilizer =
         trafficLightStateStabilizer ?? TrafficLightStateStabilizer();
     _isFrontCamera = _lensFacing == LensFacing.front;
@@ -149,6 +173,8 @@ class CameraInferenceController extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    _startFreshnessWatchdog();
+
     try {
       final prefs = await SharedPreferences.getInstance();
       _iouThreshold = prefs.getDouble('iouThreshold') ?? 0.45;
@@ -168,6 +194,14 @@ class CameraInferenceController extends ChangeNotifier {
       ),
       iouThreshold: _iouThreshold,
       numItemsThreshold: _numItemsThreshold,
+    );
+  }
+
+  void _startFreshnessWatchdog() {
+    if (!_enableFreshnessWatchdog || _freshnessWatchdog != null) return;
+    _freshnessWatchdog = Timer.periodic(
+      const Duration(milliseconds: 200),
+      (_) => expireStaleResults(),
     );
   }
 
@@ -277,6 +311,7 @@ class CameraInferenceController extends ChangeNotifier {
     final packet = RealtimeFramePacket.fromMap(
       data,
       fallbackFrameNumber: ++_nextStreamSequence,
+      receivedAt: _clock(),
     );
     return _streamQueue.submit(packet);
   }
@@ -284,18 +319,104 @@ class CameraInferenceController extends ChangeNotifier {
   Future<void> _processStreamPacket(RealtimeFramePacket packet) async {
     if (_isDisposed) return;
 
+    final processingStartedAt = _clock();
+    final decision = _frameFreshnessGuard.evaluate(
+      packet,
+      now: processingStartedAt,
+    );
+    if (decision != RealtimeFrameDecision.accept) {
+      _pipelineMonitor.recordRejected(decision);
+      if (decision == RealtimeFrameDecision.stale) {
+        _isRealtimePipelineStale = true;
+        _clearRealtimeResults();
+      }
+      _refreshPipelineSnapshot(processingStartedAt);
+      notifyListeners();
+      return;
+    }
+
+    _lastFreshFrameCapturedAt = packet.estimatedCapturedAt;
+    _isRealtimePipelineStale = false;
+
     final fps = packet.fps;
     if (fps != null) onPerformanceMetrics(fps);
 
-    await onDetectionResults(packet.detections);
+    await onDetectionResults(
+      packet.detections,
+      timestamp: packet.estimatedCapturedAt,
+    );
     if (_isDisposed) return;
 
     final stabilizedReading = await _numberInferenceEngine.process(
       packet,
       enabled: !_hasSpokenGetReady,
     );
-    if (_isDisposed || stabilizedReading == null) return;
-    _applyDetectedNumber(stabilizedReading);
+    if (_isDisposed) return;
+
+    final completedAt = _clock();
+    _pipelineMonitor.recordProcessed(
+      packet,
+      processingStartedAt: processingStartedAt,
+      completedAt: completedAt,
+    );
+    _refreshPipelineSnapshot(completedAt);
+
+    if (packet.ageAt(completedAt) > _maximumFrameAge) {
+      _isRealtimePipelineStale = true;
+      _clearRealtimeResults();
+    } else if (stabilizedReading != null) {
+      _applyDetectedNumber(stabilizedReading);
+    }
+    notifyListeners();
+  }
+
+  void _refreshPipelineSnapshot(DateTime now) {
+    _pipelineSnapshot = _pipelineMonitor.snapshot(
+      droppedFrameCount: _streamQueue.droppedCount,
+      now: now,
+    );
+  }
+
+  @visibleForTesting
+  void expireStaleResults({DateTime? now}) {
+    if (_isDisposed) return;
+
+    final checkedAt = now ?? _clock();
+    final lastCapturedAt = _lastFreshFrameCapturedAt;
+    if (lastCapturedAt == null ||
+        checkedAt.difference(lastCapturedAt) <= _maximumFrameAge) {
+      return;
+    }
+    if (_isRealtimePipelineStale) return;
+
+    _isRealtimePipelineStale = true;
+    _clearRealtimeResults();
+    _refreshPipelineSnapshot(checkedAt);
+    notifyListeners();
+  }
+
+  bool _clearRealtimeResults() {
+    final changed =
+        _detectionCount != 0 ||
+        _detectedFormalNames.isNotEmpty ||
+        _detectedAlertMessages.isNotEmpty ||
+        _detectedNumber != null ||
+        _trafficLightStateStabilizer.confirmedClassName != null;
+
+    _detectionCount = 0;
+    _detectedFormalNames = [];
+    _detectedAlertMessages = [];
+    _trafficLightStateStabilizer.reset();
+    _resetSignState();
+    return changed;
+  }
+
+  void _resetRealtimePipeline() {
+    _frameFreshnessGuard.reset();
+    _pipelineMonitor.reset();
+    _pipelineSnapshot = const RealtimePipelineSnapshot.empty();
+    _lastFreshFrameCapturedAt = null;
+    _isRealtimePipelineStale = true;
   }
 
   void _applyDetectedNumber(String reading) {
@@ -337,10 +458,14 @@ class CameraInferenceController extends ChangeNotifier {
   // ==========================================
   // อัปเดต onDetectionResults เพื่อดึงทุก Class และแปลภาษาไทย
   // ==========================================
-  Future<void> onDetectionResults(List<YOLOResult> results) async {
+  Future<void> onDetectionResults(
+    List<YOLOResult> results, {
+    DateTime? timestamp,
+  }) async {
     if (_isDisposed) return;
 
     bool shouldNotify = false;
+    final observationTime = timestamp ?? _clock();
 
     final signNumberDetectedInThisFrame = results.any(
       (result) =>
@@ -369,7 +494,7 @@ class CameraInferenceController extends ChangeNotifier {
               bottom: box.bottom,
             );
           }),
-      timestamp: DateTime.now(),
+      timestamp: observationTime,
     );
 
     final confirmedTrafficLight = trafficLightUpdate.confirmedClassName;
@@ -434,12 +559,12 @@ class CameraInferenceController extends ChangeNotifier {
 
       // จัดการสถานะและเสียงสำหรับสัญญาณไฟนับถอยหลังในเฟรมนี้
       if (signNumberDetectedInThisFrame) {
-        _lastSignSeenTime = DateTime.now();
+        _lastSignSeenTime = observationTime;
         _isSignCurrentlyVisible = true;
       } else {
         if (_isSignCurrentlyVisible) {
           // Debounce Reset: ล้างสถานะเมื่อไม่พบป้ายติดต่อกันเกิน 1.5 วินาที
-          final now = DateTime.now();
+          final now = observationTime;
           final lastSeen = _lastSignSeenTime;
           if (lastSeen == null ||
               now.difference(lastSeen).inMilliseconds > 1500) {
@@ -461,7 +586,7 @@ class CameraInferenceController extends ChangeNotifier {
     } else {
       // ถ้าไม่มีผลตรวจจับ ให้จัดการสัญญาณไฟนับถอยหลังก่อนหน้า (มีดีบาวน์)
       if (_isSignCurrentlyVisible) {
-        final now = DateTime.now();
+        final now = observationTime;
         final lastSeen = _lastSignSeenTime;
         if (lastSeen == null ||
             now.difference(lastSeen).inMilliseconds > 1500) {
@@ -612,6 +737,7 @@ class CameraInferenceController extends ChangeNotifier {
     if (_isDisposed) return;
 
     _trafficLightStateStabilizer.reset();
+    _resetRealtimePipeline();
     _isFrontCamera = !_isFrontCamera;
     _lensFacing = _isFrontCamera ? LensFacing.front : LensFacing.back;
 
@@ -628,6 +754,7 @@ class CameraInferenceController extends ChangeNotifier {
 
     if (_lensFacing != facing) {
       _trafficLightStateStabilizer.reset();
+      _resetRealtimePipeline();
       _lensFacing = facing;
       _isFrontCamera = facing == LensFacing.front;
 
@@ -701,6 +828,7 @@ class CameraInferenceController extends ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true;
+    _freshnessWatchdog?.cancel();
     _streamQueue.dispose();
     _numberInferenceEngine.dispose();
     _trafficLightStateStabilizer.reset();

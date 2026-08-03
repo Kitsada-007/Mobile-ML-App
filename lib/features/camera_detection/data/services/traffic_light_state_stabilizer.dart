@@ -43,10 +43,12 @@ class TrafficLightStateUpdate {
   const TrafficLightStateUpdate({
     required this.confirmedClassName,
     required this.stateChanged,
+    required this.trackingId,
   });
 
   final String? confirmedClassName;
   final bool stateChanged;
+  final int? trackingId;
 }
 
 /// Tracks one relevant traffic light and stabilizes its color over time.
@@ -87,8 +89,11 @@ class TrafficLightStateStabilizer {
   String? _pendingClassName;
   int _pendingFrameCount = 0;
   String? _confirmedClassName;
+  int _nextTrackingId = 1;
+  int? _activeTrackingId;
 
   String? get confirmedClassName => _confirmedClassName;
+  int? get activeTrackingId => _activeTrackingId;
 
   TrafficLightStateUpdate update(
     Iterable<TrafficLightObservation> observations, {
@@ -107,6 +112,7 @@ class TrafficLightStateStabilizer {
       return _handleMissingObservation(timestamp);
     }
 
+    _activeTrackingId ??= _nextTrackingId++;
     _lastSeenAt = timestamp;
     _trackedBox = _smoothTrackedBox(selected);
     _updateBeliefs(selected);
@@ -133,6 +139,7 @@ class TrafficLightStateStabilizer {
     return TrafficLightStateUpdate(
       confirmedClassName: _confirmedClassName,
       stateChanged: stateChanged,
+      trackingId: _activeTrackingId,
     );
   }
 
@@ -241,6 +248,7 @@ class TrafficLightStateStabilizer {
       return TrafficLightStateUpdate(
         confirmedClassName: _confirmedClassName,
         stateChanged: false,
+        trackingId: _activeTrackingId,
       );
     }
 
@@ -249,6 +257,7 @@ class TrafficLightStateStabilizer {
     return TrafficLightStateUpdate(
       confirmedClassName: null,
       stateChanged: hadConfirmedState,
+      trackingId: null,
     );
   }
 
@@ -258,6 +267,7 @@ class TrafficLightStateStabilizer {
     _pendingClassName = null;
     _pendingFrameCount = 0;
     _confirmedClassName = null;
+    _activeTrackingId = null;
     for (final className in trafficLightStateClassNames) {
       _beliefs[className] = 0;
     }

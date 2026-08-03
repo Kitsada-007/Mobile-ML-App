@@ -1,61 +1,44 @@
 import 'package:flutter/material.dart';
 
-import 'detection_stats_display.dart';
-
-/// Compact top HUD rendered over the fullscreen camera preview.
+/// Page header for the real-time traffic-light detection experience.
 class CameraInferenceOverlay extends StatelessWidget {
   const CameraInferenceOverlay({
     super.key,
-    required this.detectionCount,
-    required this.currentFps,
-    required this.isLandscape,
     required this.onLeadingPressed,
     this.showMenuButton = false,
   });
 
-  final int detectionCount;
-  final double currentFps;
-  final bool isLandscape;
   final VoidCallback onLeadingPressed;
   final bool showMenuButton;
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      child: SafeArea(
-        minimum: EdgeInsets.fromLTRB(
-          isLandscape ? 8 : 12,
-          isLandscape ? 6 : 8,
-          isLandscape ? 8 : 12,
-          0,
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Row(
+      key: const Key('cameraPageHeader'),
+      children: [
+        _HeaderButton(
+          key: const Key('cameraNavigationButton'),
+          tooltip: showMenuButton ? 'เปิดเมนู' : 'ย้อนกลับ',
+          icon: showMenuButton ? Icons.menu_rounded : Icons.arrow_back_rounded,
+          onPressed: onLeadingPressed,
         ),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                _RoundOverlayButton(
-                  key: const Key('cameraNavigationButton'),
-                  tooltip: showMenuButton ? 'เปิดเมนู' : 'ย้อนกลับ',
-                  icon: showMenuButton
-                      ? Icons.menu_rounded
-                      : Icons.arrow_back_rounded,
-                  onPressed: onLeadingPressed,
-                ),
-                const SizedBox(width: 12),
-                const Expanded(child: _BrandBadge()),
-              ],
+        const SizedBox(width: 8),
+        const Expanded(child: _BrandBadge()),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 48,
+          height: 48,
+          child: Center(
+            child: Icon(
+              Icons.notifications_none_rounded,
+              color: colorScheme.onSurface,
+              semanticLabel: 'การแจ้งเตือน',
             ),
-            const SizedBox(height: 8),
-            DetectionStatsDisplay(
-              detectionCount: detectionCount,
-              currentFps: currentFps,
-            ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -65,40 +48,44 @@ class _BrandBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Semantics(
       header: true,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Flexible(
-            child: Text(
-              'Berng Fai',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.8,
-                shadows: [Shadow(color: Colors.black54, blurRadius: 8)],
-              ),
+          Text(
+            'ระบบตรวจจับไฟจราจร',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: colorScheme.onSurface,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.4,
             ),
           ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-            decoration: BoxDecoration(
-              color: const Color(0xFF63E681),
-              borderRadius: BorderRadius.circular(99),
+          const SizedBox(height: 2),
+          Text(
+            'Traffic Light Detection',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: colorScheme.onSurfaceVariant,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
             ),
-            child: const Text(
-              'LIVE',
-              style: TextStyle(
-                color: Colors.black,
-                fontSize: 9,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.8,
-              ),
+          ),
+          const Text(
+            'Berng Fai',
+            style: TextStyle(
+              color: Color(0xFF0B9A5A),
+              fontSize: 9,
+              height: 1.1,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -107,8 +94,8 @@ class _BrandBadge extends StatelessWidget {
   }
 }
 
-class _RoundOverlayButton extends StatelessWidget {
-  const _RoundOverlayButton({
+class _HeaderButton extends StatelessWidget {
+  const _HeaderButton({
     super.key,
     required this.tooltip,
     required this.icon,
@@ -121,17 +108,13 @@ class _RoundOverlayButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.62),
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-      ),
-      child: IconButton(
-        tooltip: tooltip,
-        onPressed: onPressed,
-        icon: Icon(icon, color: Colors.white),
-      ),
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon),
+      color: Theme.of(context).colorScheme.onSurface,
+      iconSize: 30,
+      constraints: const BoxConstraints.tightFor(width: 48, height: 48),
     );
   }
 }

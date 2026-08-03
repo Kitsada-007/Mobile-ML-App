@@ -5,8 +5,9 @@ import 'package:trffic_ilght_app/features/camera_detection/presentation/controll
 import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_detection_panel.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_inference_content.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_inference_overlay.dart';
+import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/detection_stats_display.dart';
 
-/// Fullscreen real-time YOLO camera inference with an overlaid status HUD.
+/// Real-time YOLO camera inference with results displayed below the preview.
 class CameraInferencePage extends StatefulWidget {
   const CameraInferencePage({
     super.key,
@@ -61,39 +62,107 @@ class _CameraInferencePageState extends State<CameraInferencePage> {
   Widget build(BuildContext context) {
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: ListenableBuilder(
-        listenable: _controller,
-        child: CameraInferenceContent(
-          key: ValueKey('camera_content_$_rebuildKey'),
-          controller: _controller,
-          rebuildKey: _rebuildKey,
+      backgroundColor: colorScheme.surface,
+      body: SafeArea(
+        child: ListenableBuilder(
+          listenable: _controller,
+          child: CameraInferenceContent(
+            key: ValueKey('camera_content_$_rebuildKey'),
+            controller: _controller,
+            rebuildKey: _rebuildKey,
+          ),
+          builder: (context, cameraContent) {
+            return SingleChildScrollView(
+              key: const Key('cameraDetectionScrollView'),
+              padding: EdgeInsets.fromLTRB(
+                isLandscape ? 24 : 16,
+                8,
+                isLandscape ? 24 : 16,
+                24,
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      CameraInferenceOverlay(
+                        showMenuButton: widget.onMenuPressed != null,
+                        onLeadingPressed:
+                            widget.onMenuPressed ??
+                            () => Navigator.maybePop(context),
+                      ),
+                      const SizedBox(height: 16),
+                      DecoratedBox(
+                        key: const Key('cameraPreviewCard'),
+                        decoration: BoxDecoration(
+                          color: Colors.black,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.12),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(24),
+                          child: AspectRatio(
+                            aspectRatio: isLandscape ? 16 / 9 : 4 / 3,
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                cameraContent!,
+                                Positioned(
+                                  top: 14,
+                                  left: 14,
+                                  child: _LiveStatusBadge(
+                                    hasDetections:
+                                        _controller.detectionCount > 0,
+                                  ),
+                                ),
+                                Positioned(
+                                  left: 14,
+                                  right: 14,
+                                  bottom: 14,
+                                  child: DetectionStatsDisplay(
+                                    detectionCount: _controller.detectionCount,
+                                    currentFps: _controller.currentFps,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      CameraDetectionPanel(
+                        formalNames: _controller.detectedFormalNames,
+                        alertMessages: _controller.detectedAlertMessages,
+                        detectedNumber: _controller.detectedNumber,
+                        isLandscape: isLandscape,
+                        isPipelineStale: _controller.isRealtimePipelineStale,
+                        latencyP50:
+                            _controller.pipelineSnapshot.endToEndLatencyP50,
+                        latencyP95:
+                            _controller.pipelineSnapshot.endToEndLatencyP95,
+                        latencyP99:
+                            _controller.pipelineSnapshot.endToEndLatencyP99,
+                        droppedFrameCount:
+                            _controller.pipelineSnapshot.droppedFrameCount,
+                        trackingId: _controller.activeTrafficLightTrackingId,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
         ),
-        builder: (context, cameraContent) {
-          return Stack(
-            key: const Key('fullscreenCameraStack'),
-            fit: StackFit.expand,
-            children: [
-              Positioned.fill(child: cameraContent!),
-              CameraDetectionPanel(
-                formalNames: _controller.detectedFormalNames,
-                alertMessages: _controller.detectedAlertMessages,
-                detectedNumber: _controller.detectedNumber,
-                isLandscape: isLandscape,
-              ),
-              CameraInferenceOverlay(
-                detectionCount: _controller.detectionCount,
-                currentFps: _controller.currentFps,
-                isLandscape: isLandscape,
-                showMenuButton: widget.onMenuPressed != null,
-                onLeadingPressed:
-                    widget.onMenuPressed ?? () => Navigator.maybePop(context),
-              ),
-            ],
-          );
-        },
       ),
     );
   }
@@ -111,4 +180,50 @@ class _CameraInferencePageState extends State<CameraInferencePage> {
       ],
     ),
   );
+}
+
+class _LiveStatusBadge extends StatelessWidget {
+  const _LiveStatusBadge({required this.hasDetections});
+
+  final bool hasDetections;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      label: hasDetections ? 'ตรวจจับสัญญาณแล้ว' : 'กำลังตรวจจับ',
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.62),
+          borderRadius: BorderRadius.circular(99),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 9,
+                height: 9,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF34C759),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                hasDetections ? 'ตรวจจับแล้ว' : 'กำลังตรวจจับ',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

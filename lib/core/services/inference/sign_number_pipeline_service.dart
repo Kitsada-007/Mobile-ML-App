@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:isolate';
 import 'dart:math';
 import 'dart:ui';
 
@@ -70,60 +72,6 @@ Uint8List orientFrameForDetectionCoordinates(
 
   oriented = img.copyRotate(oriented, angle: degrees);
   return Uint8List.fromList(img.encodeJpg(oriented, quality: 95));
-}
-
-bool _frameDimensionsAreReversed(
-  Uint8List frameBytes, {
-  required int expectedWidth,
-  required int expectedHeight,
-}) {
-  final decoded = img.decodeImage(frameBytes);
-  if (decoded == null) return false;
-  final oriented = img.bakeOrientation(decoded);
-  return oriented.width == expectedHeight && oriented.height == expectedWidth;
-}
-
-class OrientFrameData {
-  final Uint8List frameBytes;
-  final int? expectedWidth;
-  final int? expectedHeight;
-  final int? rotationDegrees;
-
-  const OrientFrameData({
-    required this.frameBytes,
-    this.expectedWidth,
-    this.expectedHeight,
-    this.rotationDegrees,
-  });
-}
-
-Uint8List _orientFrameTask(OrientFrameData data) {
-  return orientFrameForDetectionCoordinates(
-    data.frameBytes,
-    expectedWidth: data.expectedWidth,
-    expectedHeight: data.expectedHeight,
-    rotationDegrees: data.rotationDegrees,
-  );
-}
-
-class ReversedDimensionsData {
-  final Uint8List frameBytes;
-  final int expectedWidth;
-  final int expectedHeight;
-
-  const ReversedDimensionsData({
-    required this.frameBytes,
-    required this.expectedWidth,
-    required this.expectedHeight,
-  });
-}
-
-bool _frameDimensionsAreReversedTask(ReversedDimensionsData data) {
-  return _frameDimensionsAreReversed(
-    data.frameBytes,
-    expectedWidth: data.expectedWidth,
-    expectedHeight: data.expectedHeight,
-  );
 }
 
 class SignNumberAnalysis {
@@ -259,7 +207,10 @@ Uint8List? processSignCrop(CropData data) {
 
 class RealtimeFrameTaskData {
   final Uint8List frameBytes;
-  final List<YOLOResult> detectionResults;
+  final double left;
+  final double top;
+  final double right;
+  final double bottom;
   final int? expectedFrameWidth;
   final int? expectedFrameHeight;
   final int? rotationDegrees;
@@ -267,7 +218,10 @@ class RealtimeFrameTaskData {
 
   RealtimeFrameTaskData({
     required this.frameBytes,
-    required this.detectionResults,
+    required this.left,
+    required this.top,
+    required this.right,
+    required this.bottom,
     this.expectedFrameWidth,
     this.expectedFrameHeight,
     this.rotationDegrees,
@@ -278,38 +232,11 @@ class RealtimeFrameTaskData {
 class RealtimeFrameTaskResult {
   final Uint8List? tightCropBytes;
   final Uint8List? wideCropBytes;
-  final YOLOResult? selectedSign;
 
-  RealtimeFrameTaskResult({
-    this.tightCropBytes,
-    this.wideCropBytes,
-    this.selectedSign,
-  });
+  RealtimeFrameTaskResult({this.tightCropBytes, this.wideCropBytes});
 }
 
 RealtimeFrameTaskResult _processRealtimeFrameTask(RealtimeFrameTaskData data) {
-  final signResults = data.detectionResults
-      .where((result) => result.className == 'sign_number')
-      .toList();
-
-  if (signResults.isEmpty) {
-    return RealtimeFrameTaskResult();
-  }
-
-  signResults.sort((a, b) => b.confidence.compareTo(a.confidence));
-  final sign = signResults.first;
-  final normalizedRect = sign.normalizedBox;
-
-  final bool normalizedIsValid =
-      normalizedRect.left >= 0 &&
-      normalizedRect.top >= 0 &&
-      normalizedRect.right > normalizedRect.left &&
-      normalizedRect.bottom > normalizedRect.top &&
-      normalizedRect.right <= 1.01 &&
-      normalizedRect.bottom <= 1.01;
-
-  final rect = normalizedIsValid ? normalizedRect : sign.boundingBox;
-
   final decoded = img.decodeImage(data.frameBytes);
   if (decoded == null) return RealtimeFrameTaskResult();
 
@@ -337,10 +264,10 @@ RealtimeFrameTaskResult _processRealtimeFrameTask(RealtimeFrameTaskData data) {
   final int imageWidth = original.width;
   final int imageHeight = original.height;
 
-  double x1 = rect.left;
-  double y1 = rect.top;
-  double x2 = rect.right;
-  double y2 = rect.bottom;
+  double x1 = data.left;
+  double y1 = data.top;
+  double x2 = data.right;
+  double y2 = data.bottom;
 
   final bool isNormalized =
       x1 >= -0.01 && y1 >= -0.01 && x2 <= 1.01 && y2 <= 1.01;
@@ -417,20 +344,183 @@ RealtimeFrameTaskResult _processRealtimeFrameTask(RealtimeFrameTaskData data) {
   return RealtimeFrameTaskResult(
     tightCropBytes: tightBytes,
     wideCropBytes: wideBytes,
-    selectedSign: sign,
   );
 }
+
+abstract interface class RealtimeSignCropProcessor {
+  Future<RealtimeFrameTaskResult> process(RealtimeFrameTaskData data);
+
+  Future<void> dispose();
+}
+
+/// Reuses one isolate and transfers frame buffers without copying them.
+class PersistentSignCropWorker implements RealtimeSignCropProcessor {
+  ReceivePort? _responsePort;
+  StreamSubscription<dynamic>? _responseSubscription;
+  Isolate? _isolate;
+  SendPort? _workerPort;
+  Completer<SendPort>? _startupCompleter;
+  final Map<int, Completer<RealtimeFrameTaskResult>> _pending = {};
+  int _nextRequestId = 0;
+  int _spawnCount = 0;
+  bool _isDisposed = false;
+
+  int get spawnCount => _spawnCount;
+
+  @override
+  Future<RealtimeFrameTaskResult> process(RealtimeFrameTaskData data) async {
+    final workerPort = await _ensureStarted();
+    final requestId = _nextRequestId++;
+    final completer = Completer<RealtimeFrameTaskResult>();
+    _pending[requestId] = completer;
+
+    workerPort.send([
+      requestId,
+      TransferableTypedData.fromList([data.frameBytes]),
+      data.left,
+      data.top,
+      data.right,
+      data.bottom,
+      data.expectedFrameWidth,
+      data.expectedFrameHeight,
+      data.rotationDegrees,
+      data.runAlternative,
+    ]);
+    return completer.future;
+  }
+
+  Future<SendPort> _ensureStarted() async {
+    if (_isDisposed) {
+      throw StateError('PersistentSignCropWorker is disposed');
+    }
+    final workerPort = _workerPort;
+    if (workerPort != null) return workerPort;
+
+    final starting = _startupCompleter;
+    if (starting != null) return starting.future;
+
+    final startupCompleter = Completer<SendPort>();
+    _startupCompleter = startupCompleter;
+    final responsePort = ReceivePort();
+    _responsePort = responsePort;
+    _responseSubscription = responsePort.listen(_handleWorkerMessage);
+    _isolate = await Isolate.spawn(
+      _signCropWorkerEntryPoint,
+      responsePort.sendPort,
+      debugName: 'realtime-sign-crop-worker',
+    );
+    _spawnCount += 1;
+    return startupCompleter.future;
+  }
+
+  void _handleWorkerMessage(dynamic message) {
+    if (message is SendPort) {
+      _workerPort = message;
+      final startupCompleter = _startupCompleter;
+      if (startupCompleter != null && !startupCompleter.isCompleted) {
+        startupCompleter.complete(message);
+      }
+      return;
+    }
+
+    if (message is! List || message.length < 4) return;
+    final requestId = message[0] as int;
+    final completer = _pending.remove(requestId);
+    if (completer == null) return;
+
+    final error = message[3] as String?;
+    if (error != null) {
+      completer.completeError(StateError(error));
+      return;
+    }
+
+    completer.complete(
+      RealtimeFrameTaskResult(
+        tightCropBytes: _materializeBytes(message[1]),
+        wideCropBytes: _materializeBytes(message[2]),
+      ),
+    );
+  }
+
+  @override
+  Future<void> dispose() async {
+    if (_isDisposed) return;
+    _isDisposed = true;
+    _workerPort?.send(null);
+    _isolate?.kill(priority: Isolate.immediate);
+    _isolate = null;
+    _workerPort = null;
+    for (final completer in _pending.values) {
+      if (!completer.isCompleted) {
+        completer.completeError(StateError('Sign crop worker was disposed'));
+      }
+    }
+    _pending.clear();
+    await _responseSubscription?.cancel();
+    _responsePort?.close();
+    _responsePort = null;
+  }
+}
+
+void _signCropWorkerEntryPoint(SendPort responsePort) async {
+  final requestPort = ReceivePort();
+  responsePort.send(requestPort.sendPort);
+
+  await for (final dynamic message in requestPort) {
+    if (message == null) break;
+    if (message is! List || message.length < 10) continue;
+
+    final requestId = message[0] as int;
+    try {
+      final frameBytes = (message[1] as TransferableTypedData)
+          .materialize()
+          .asUint8List();
+      final result = _processRealtimeFrameTask(
+        RealtimeFrameTaskData(
+          frameBytes: frameBytes,
+          left: message[2] as double,
+          top: message[3] as double,
+          right: message[4] as double,
+          bottom: message[5] as double,
+          expectedFrameWidth: message[6] as int?,
+          expectedFrameHeight: message[7] as int?,
+          rotationDegrees: message[8] as int?,
+          runAlternative: message[9] as bool,
+        ),
+      );
+      responsePort.send([
+        requestId,
+        _transferBytes(result.tightCropBytes),
+        _transferBytes(result.wideCropBytes),
+        null,
+      ]);
+    } catch (error, stackTrace) {
+      responsePort.send([requestId, null, null, '$error\n$stackTrace']);
+    }
+  }
+  requestPort.close();
+}
+
+TransferableTypedData? _transferBytes(Uint8List? bytes) =>
+    bytes == null ? null : TransferableTypedData.fromList([bytes]);
+
+Uint8List? _materializeBytes(dynamic data) =>
+    data is TransferableTypedData ? data.materialize().asUint8List() : null;
 
 class SignNumberPipelineService {
   SignNumberPipelineService({
     NumberDetectionService? numberDetectionService,
     YOLO? digitYolo,
+    RealtimeSignCropProcessor? realtimeCropProcessor,
   }) : _numberDetectionService = _resolveNumberDetectionService(
          numberDetectionService: numberDetectionService,
          digitYolo: digitYolo,
-       );
+       ),
+       _realtimeCropProcessor =
+           realtimeCropProcessor ?? PersistentSignCropWorker();
 
   final NumberDetectionService _numberDetectionService;
+  final RealtimeSignCropProcessor _realtimeCropProcessor;
 
   static NumberDetectionService _resolveNumberDetectionService({
     NumberDetectionService? numberDetectionService,
@@ -467,16 +557,17 @@ class SignNumberPipelineService {
     int? expectedFrameHeight,
     int? rotationDegrees,
   }) async {
-    final taskResult = await compute(
-      _processRealtimeFrameTask,
-      RealtimeFrameTaskData(
-        frameBytes: frameBytes,
-        detectionResults: detectionResults,
-        expectedFrameWidth: expectedFrameWidth,
-        expectedFrameHeight: expectedFrameHeight,
-        rotationDegrees: rotationDegrees,
-      ),
+    final selectedSign = _selectBestNumberSign(detectionResults);
+    if (selectedSign == null) return const SignNumberAnalysis();
+
+    final taskData = _createRealtimeFrameTaskData(
+      frameBytes: frameBytes,
+      selectedSign: selectedSign,
+      expectedFrameWidth: expectedFrameWidth,
+      expectedFrameHeight: expectedFrameHeight,
+      rotationDegrees: rotationDegrees,
     );
+    final taskResult = await _realtimeCropProcessor.process(taskData);
 
     if (taskResult.tightCropBytes == null) {
       return const SignNumberAnalysis();
@@ -489,7 +580,7 @@ class SignNumberPipelineService {
       return SignNumberAnalysis(
         cropBytes: taskResult.tightCropBytes,
         number: tightReading.number,
-        selectedSign: taskResult.selectedSign,
+        selectedSign: selectedSign,
       );
     }
 
@@ -516,15 +607,14 @@ class SignNumberPipelineService {
       return SignNumberAnalysis(
         cropBytes: selectedBytes,
         number: preferred.number,
-        selectedSign: taskResult.selectedSign,
+        selectedSign: selectedSign,
       );
     }
 
-    final altResult = await compute(
-      _processRealtimeFrameTask,
-      RealtimeFrameTaskData(
+    final altResult = await _realtimeCropProcessor.process(
+      _createRealtimeFrameTaskData(
         frameBytes: frameBytes,
-        detectionResults: detectionResults,
+        selectedSign: selectedSign,
         expectedFrameWidth: expectedFrameWidth,
         expectedFrameHeight: expectedFrameHeight,
         runAlternative: true,
@@ -542,7 +632,7 @@ class SignNumberPipelineService {
       return SignNumberAnalysis(
         cropBytes: altResult.tightCropBytes,
         number: altTightReading.number,
-        selectedSign: altResult.selectedSign,
+        selectedSign: selectedSign,
       );
     }
 
@@ -565,9 +655,11 @@ class SignNumberPipelineService {
     return SignNumberAnalysis(
       cropBytes: altSelectedBytes,
       number: altPreferred.number,
-      selectedSign: altResult.selectedSign,
+      selectedSign: selectedSign,
     );
   }
+
+  Future<void> dispose() => _realtimeCropProcessor.dispose();
 
   Future<SignNumberAnalysis> analyzeSingleImage({
     required Uint8List frameBytes,
@@ -671,6 +763,46 @@ class SignNumberPipelineService {
         ? wide
         : tight;
   }
+}
+
+YOLOResult? _selectBestNumberSign(List<YOLOResult> detectionResults) {
+  final signResults =
+      detectionResults
+          .where((result) => result.className == 'sign_number')
+          .toList()
+        ..sort((a, b) => b.confidence.compareTo(a.confidence));
+  return signResults.isEmpty ? null : signResults.first;
+}
+
+RealtimeFrameTaskData _createRealtimeFrameTaskData({
+  required Uint8List frameBytes,
+  required YOLOResult selectedSign,
+  int? expectedFrameWidth,
+  int? expectedFrameHeight,
+  int? rotationDegrees,
+  bool runAlternative = false,
+}) {
+  final normalizedRect = selectedSign.normalizedBox;
+  final normalizedIsValid =
+      normalizedRect.left >= 0 &&
+      normalizedRect.top >= 0 &&
+      normalizedRect.right > normalizedRect.left &&
+      normalizedRect.bottom > normalizedRect.top &&
+      normalizedRect.right <= 1.01 &&
+      normalizedRect.bottom <= 1.01;
+  final rect = normalizedIsValid ? normalizedRect : selectedSign.boundingBox;
+
+  return RealtimeFrameTaskData(
+    frameBytes: frameBytes,
+    left: rect.left,
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    expectedFrameWidth: expectedFrameWidth,
+    expectedFrameHeight: expectedFrameHeight,
+    rotationDegrees: rotationDegrees,
+    runAlternative: runAlternative,
+  );
 }
 
 class _DigitCandidate {

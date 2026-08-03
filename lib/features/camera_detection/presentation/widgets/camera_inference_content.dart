@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/controllers/camera_inference_controller.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
+const Size cameraAnalysisResolution = Size(1280, 960);
+const int cameraInferenceFrequency = 15;
+const int cameraResultMaxFps = 10;
+
 /// Main content widget that handles the camera view and loading states
 class CameraInferenceContent extends StatefulWidget {
   const CameraInferenceContent({
@@ -89,11 +93,14 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
         controller: controller.yoloController,
         modelPath: modelPath,
         task: _task,
+        useGpu: true,
         streamingConfig: const YOLOStreamingConfig.custom(
+          // Required only for the second-stage number crop. The Dart queue
+          // discards these bytes immediately for frames without sign_number.
           includeOriginalImage: true,
-          maxFPS: 8,
-          inferenceFrequency: 10,
-          analysisResolution: Size(1280, 960),
+          maxFPS: cameraResultMaxFps,
+          inferenceFrequency: cameraInferenceFrequency,
+          analysisResolution: cameraAnalysisResolution,
         ),
         onStreamingData: (data) => unawaited(controller.onStreamingData(data)),
         onZoomChanged: controller.onZoomChanged,
@@ -129,67 +136,75 @@ class _CameraPreparingState extends StatelessWidget {
 
     return ColoredBox(
       color: const Color(0xFF090909),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 320),
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 88,
-                  height: 88,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white24, width: 2),
-                  ),
-                  child: const Icon(
-                    Icons.center_focus_strong_rounded,
-                    color: Colors.white,
-                    size: 38,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  isLoading ? 'กำลังโหลดระบบตรวจจับ' : 'กำลังเตรียมระบบตรวจจับ',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  message.isEmpty
-                      ? 'กล้องจะเริ่มทำงานอัตโนมัติเมื่อโมเดลพร้อม'
-                      : message,
-                  textAlign: TextAlign.center,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white60,
-                    fontSize: 13,
-                    height: 1.45,
-                  ),
-                ),
-                if (hasProgress) ...[
-                  const SizedBox(height: 20),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(99),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      minHeight: 4,
-                      backgroundColor: Colors.white12,
-                      color: const Color(0xFF63E681),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxHeight < 240;
+
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 320),
+              child: Padding(
+                padding: EdgeInsets.all(compact ? 12 : 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: compact ? 48 : 64,
+                      height: compact ? 48 : 64,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white24, width: 2),
+                      ),
+                      child: Icon(
+                        Icons.center_focus_strong_rounded,
+                        color: Colors.white,
+                        size: compact ? 24 : 30,
+                      ),
                     ),
-                  ),
-                ],
-              ],
+                    SizedBox(height: compact ? 8 : 14),
+                    Text(
+                      isLoading
+                          ? 'กำลังโหลดระบบตรวจจับ'
+                          : 'กำลังเตรียมระบบตรวจจับ',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: compact ? 16 : 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    SizedBox(height: compact ? 4 : 6),
+                    Text(
+                      message.isEmpty
+                          ? 'กล้องจะเริ่มทำงานอัตโนมัติเมื่อโมเดลพร้อม'
+                          : message,
+                      textAlign: TextAlign.center,
+                      maxLines: compact ? 2 : 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white60,
+                        fontSize: compact ? 11 : 13,
+                        height: compact ? 1.25 : 1.45,
+                      ),
+                    ),
+                    if (hasProgress) ...[
+                      SizedBox(height: compact ? 8 : 12),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(99),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          minHeight: 4,
+                          backgroundColor: Colors.white12,
+                          color: const Color(0xFF63E681),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 import 'dart:developer';
 import 'dart:typed_data';
@@ -29,7 +30,13 @@ class RealtimeNumberInferenceEngine {
   bool _isDetecting = false;
   bool _isDisposed = false;
 
-  set service(SignNumberPipelineService? value) => _service = value;
+  set service(SignNumberPipelineService? value) {
+    final previous = _service;
+    _service = value;
+    if (previous != null && !identical(previous, value)) {
+      unawaited(previous.dispose());
+    }
+  }
 
   bool get isDetecting => _isDetecting;
   List<RealtimeInferenceDiagnostic> get diagnostics =>
@@ -142,6 +149,9 @@ class RealtimeNumberInferenceEngine {
   void dispose() {
     _isDisposed = true;
     _stabilizer.reset();
+    final service = _service;
+    _service = null;
+    if (service != null) unawaited(service.dispose());
   }
 }
 
