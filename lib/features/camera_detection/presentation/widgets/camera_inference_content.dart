@@ -87,6 +87,32 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
   Widget build(BuildContext context) {
     final modelPath = _modelPath;
     final controller = widget.controller;
+
+    // 1. เพิ่มเงื่อนไข: หากกล้องปิดอยู่ ให้แสดงหน้าจอสีดำ/Placeholder แทนการ Render YOLOView
+    if (!controller.isCameraEnabled) {
+      return Container(
+        color: Colors.black,
+        child: const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.videocam_off_rounded, color: Colors.white54, size: 48),
+              SizedBox(height: 12),
+              Text(
+                'กล้องปิดอยู่',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 2. หากกล้องเปิดอยู่ ให้ Render YOLOView ตามปกติ
     if (modelPath != null) {
       return YOLOView(
         key: ValueKey('yolo_view_${widget.rebuildKey}'),
@@ -95,8 +121,6 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
         task: _task,
         useGpu: true,
         streamingConfig: const YOLOStreamingConfig.custom(
-          // Required only for the second-stage number crop. The Dart queue
-          // discards these bytes immediately for frames without sign_number.
           includeOriginalImage: true,
           maxFPS: cameraResultMaxFps,
           inferenceFrequency: cameraInferenceFrequency,

@@ -268,7 +268,7 @@ class _CountdownBadge extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               countdown == null ? 'ไม่พบตัวเลข' : 'วินาที',
-              style: TextStyle(
+              style: const TextStyle(
                 color: Color(0xFF9F3A3A),
                 fontSize: 11,
                 fontWeight: FontWeight.w800,

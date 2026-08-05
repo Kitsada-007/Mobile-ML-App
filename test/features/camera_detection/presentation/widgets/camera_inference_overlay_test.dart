@@ -137,7 +137,7 @@ void main() {
     expect(decoration.color, Colors.white);
     expect(find.byKey(const Key('cameraDetectionPanelPosition')), findsNothing);
     expect(find.text('ผลการตรวจจับ'), findsOneWidget);
-    expect(find.text('กำลังสแกนหาป้ายจราจรและสัญญาณไฟ...'), findsOneWidget);
+    expect(find.text('กำลังตรวจจับ'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -153,18 +153,15 @@ void main() {
             detectedNumber: null,
             isLandscape: false,
             isPipelineStale: false,
+            statusText: 'กำลังตรวจจับ',
           ),
         ),
       ),
     );
 
-    expect(find.byKey(const Key('realtimePipelineStatus')), findsOneWidget);
-    expect(find.textContaining('P50'), findsNothing);
-    expect(find.textContaining('P95'), findsNothing);
-    expect(find.textContaining('P99'), findsNothing);
-    expect(find.textContaining('DROP'), findsNothing);
-    expect(find.textContaining('TRACK'), findsNothing);
-    expect(find.text('X'), findsOneWidget);
+    expect(find.text('กำลังตรวจจับ'), findsOneWidget);
+    expect(find.textContaining('CONF'), findsNothing);
+    expect(find.textContaining('class'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -181,6 +178,7 @@ void main() {
                 alertMessages: ['พบสัญญาณไฟนับถอยหลัง'],
                 detectedNumber: '12',
                 isLandscape: false,
+                statusText: 'กำลังตรวจจับ',
               ),
             ],
           ),
@@ -207,6 +205,7 @@ void main() {
                 alertMessages: ['พบสัญญาณไฟนับถอยหลัง'],
                 detectedNumber: '3',
                 isLandscape: false,
+                statusText: 'กำลังตรวจจับ',
               ),
             ],
           ),
@@ -228,6 +227,7 @@ void main() {
                 alertMessages: ['พบสัญญาณไฟนับถอยหลัง'],
                 detectedNumber: '5',
                 isLandscape: false,
+                statusText: 'กำลังตรวจจับ',
               ),
             ],
           ),

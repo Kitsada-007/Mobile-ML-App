@@ -149,9 +149,8 @@ class _CameraInferencePageState extends State<CameraInferencePage> {
                                             ? Icons.videocam_rounded
                                             : Icons.videocam_off_rounded,
                                       ),
-                                      onPressed: () => unawaited(
-                                        _controller.toggleCamera(),
-                                      ),
+                                      onPressed: () =>
+                                          unawaited(_controller.toggleCamera()),
                                     ),
                                   ),
                                 ),

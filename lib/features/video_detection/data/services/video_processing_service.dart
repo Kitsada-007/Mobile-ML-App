@@ -1,63 +1,73 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:trffic_ilght_app/core/services/inference/countdown_reading_stabilizer.dart';
+import 'package:trffic_ilght_app/features/video_detection/data/services/video_frame_analysis_service.dart';
+import 'package:trffic_ilght_app/features/video_detection/data/services/video_label_formatter.dart';
 import 'package:ultralytics_yolo/yolo.dart';
 
+/// Single frame analysis result
+class FrameAnalysisResult {
+  const FrameAnalysisResult({required this.detections, this.detectedNumber});
+
+  final List<YOLOResult> detections;
+  final String? detectedNumber;
+}
+
+/// Result data from realtime video processing pipeline.
+class VideoProcessingResult {
+  const VideoProcessingResult({
+    required this.finalVideoPath,
+    required this.frameResults,
+    required this.detectedClasses,
+    required this.detectedNumbers,
+    this.targetFps = 5,
+  });
+
+  final String finalVideoPath;
+  final Map<int, FrameAnalysisResult> frameResults;
+  final Set<String> detectedClasses;
+  final Set<String> detectedNumbers;
+  final int targetFps;
+}
+
+/// Service for video detection pipeline:
+/// Extracts frames -> Analyzes dual-stage YOLO per frame -> Builds realtime frame overlay map.
 class VideoProcessingService {
-  Future<String?> processVideo({
-    required String inputVideoPath,
-    required YOLO yolo,
-    required Function(double progress, String message) onProgress,
+  Future<VideoProcessingResult> processVideo({
+    required File videoFile,
+    required VideoFrameAnalysisService frameAnalysisService,
+    required CountdownReadingStabilizer countdownStabilizer,
+    required void Function(double progressValue, String progressText)
+    onProgress,
+    int targetFps = 5,
+    int sampleEveryNFrames = 5,
   }) async {
+    final directory = await getTemporaryDirectory();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final String inputFolder = '${directory.path}/yolo_frames_in_$timestamp';
+
+    final detectedClasses = <String>{};
+    final detectedNumbers = <String>{};
+    final frameResults = <int, FrameAnalysisResult>{};
+
+    final inputDir = Directory(inputFolder);
+    if (await inputDir.exists()) {
+      await inputDir.delete(recursive: true);
+    }
+    await inputDir.create(recursive: true);
+
     try {
-      final directory = await getTemporaryDirectory();
+      // 1. Extract frames from video using FFmpeg
+      onProgress(0.0, 'กำลังสกัดเฟรมจากวิดีโอ ($targetFps FPS)...');
 
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final String inputFolder = '${directory.path}/yolo_frames_in_$timestamp';
-      final String outputFolder =
-          '${directory.path}/yolo_frames_out_$timestamp';
-      final String finalVideoPath =
-          '${directory.path}/result_video_$timestamp.mp4';
-
-      final inputDir = Directory(inputFolder);
-      final outputDir = Directory(outputFolder);
-
-      if (await inputDir.exists()) {
-        await inputDir.delete(recursive: true);
-      }
-      if (await outputDir.exists()) {
-        await outputDir.delete(recursive: true);
-      }
-
-      await inputDir.create(recursive: true);
-      await outputDir.create(recursive: true);
-
-      onProgress(0.0, 'กำลังเตรียมไฟล์วิดีโอ...');
-
-      String originalFps = '30';
-
-      final infoSession = await FFprobeKit.getMediaInformation(inputVideoPath);
-      final info = infoSession.getMediaInformation();
-
-      if (info != null) {
-        final streams = info.getStreams();
-        for (final stream in streams) {
-          if (stream.getType() == 'video') {
-            originalFps = stream.getRealFrameRate() ?? '30';
-            break;
-          }
-        }
-      }
-
-      onProgress(0.02, 'กำลังสกัดเฟรมจากวิดีโอ...');
-
-      final extractCmd =
-          '-i "${inputVideoPath.replaceAll('"', '\\"')}" '
-          '-vf "scale=640:-1" '
+      final String extractCmd =
+          '-threads 0 '
+          '-i "${videoFile.path}" '
+          '-vf "fps=$targetFps,scale=640:-1:flags=fast_bilinear" '
           '-q:v 5 '
           '-y "$inputFolder/frame_%05d.jpg"';
 
@@ -65,80 +75,86 @@ class VideoProcessingService {
       final extractReturnCode = await extractSession.getReturnCode();
 
       if (!ReturnCode.isSuccess(extractReturnCode)) {
-        debugPrint('Extract frames failed');
-        return null;
+        throw Exception('Failed to extract frames from video.');
       }
 
-      final List<FileSystemEntity> frameFiles = await inputDir.list().toList()
+      final List<FileSystemEntity> frameFiles = inputDir.listSync()
         ..sort((a, b) => a.path.compareTo(b.path));
 
-      final imageFrames = frameFiles.whereType<File>().toList();
-
-      if (imageFrames.isEmpty) {
-        debugPrint('No frames extracted');
-        return null;
+      final int totalFrames = frameFiles.length;
+      if (totalFrames == 0) {
+        throw Exception('No frames were extracted from video.');
       }
 
-      final int totalFrames = imageFrames.length;
+      // 2. Process frames via dual-stage pipeline
+      int currentFrame = 0;
+      for (final fileEntity in frameFiles) {
+        if (fileEntity is! File) continue;
 
-      for (int i = 0; i < totalFrames; i++) {
-        final file = imageFrames[i];
-        //  ไม่ต้องเอา ทุก fps 10
-        final progress = (i + 1) / totalFrames;
-        onProgress(progress, 'กำลังประมวลผล ${i + 1} / $totalFrames เฟรม');
+        final progressValue = currentFrame / totalFrames;
+        onProgress(
+          progressValue,
+          'กำลังวิเคราะห์เฟรม $currentFrame / $totalFrames',
+        );
+
+        final bool shouldPredict = sampleEveryNFrames <= 1 ||
+            ((currentFrame + 1) % sampleEveryNFrames == 0);
+
+        if (!shouldPredict) {
+          if (await fileEntity.exists()) {
+            await fileEntity.delete();
+          }
+          currentFrame++;
+          continue;
+        }
 
         try {
-          final bytes = await file.readAsBytes();
-          final result = await yolo.predict(bytes);
-          final Uint8List? annotatedBytes =
-              result['annotatedImage'] as Uint8List?;
+          final bytes = await fileEntity.readAsBytes();
+          final result = await frameAnalysisService.analyze(bytes);
 
-          final String fileName = file.uri.pathSegments.last;
-          final File outFile = File('$outputFolder/$fileName');
-
-          if (annotatedBytes != null && annotatedBytes.isNotEmpty) {
-            await outFile.writeAsBytes(annotatedBytes);
-          } else {
-            // ถ้า YOLO ไม่คืนภาพ annotate ให้ใช้เฟรมเดิมแทน
-            await outFile.writeAsBytes(bytes);
+          if (result.detections.isNotEmpty) {
+            for (final detection in result.detections) {
+              detectedClasses.add(videoFormalThaiName(detection.className));
+            }
           }
-        } catch (e) {
-          debugPrint('Frame processing error at ${file.path}: $e');
 
-          // ถ้าเฟรมนี้พัง ให้ copy เฟรมเดิมไปแทน
-          final bytes = await file.readAsBytes();
-          final String fileName = file.uri.pathSegments.last;
-          final File outFile = File('$outputFolder/$fileName');
-          await outFile.writeAsBytes(bytes);
+          final detectedNumber = countdownStabilizer.add(result.detectedNumber);
+          if (detectedNumber != null && detectedNumber.isNotEmpty) {
+            detectedNumbers.add(detectedNumber);
+          }
+
+          frameResults[currentFrame] = FrameAnalysisResult(
+            detections: result.detections,
+            detectedNumber: detectedNumber,
+          );
+        } catch (frameError) {
+          debugPrint('Error predicting frame $currentFrame: $frameError');
+        } finally {
+          currentFrame++;
+          if (await fileEntity.exists()) {
+            await fileEntity.delete();
+          }
         }
       }
 
-      onProgress(0.95, 'กำลังรวมวิดีโอกลับพร้อมเสียง...');
+      onProgress(1.0, 'วิเคราะห์วิดีโอเรียบร้อย พร้อมเล่นแบบ Real-time');
 
-      final stitchCmd =
-          '-framerate $originalFps '
-          '-i "$outputFolder/frame_%05d.jpg" '
-          '-i "${inputVideoPath.replaceAll('"', '\\"')}" '
-          '-c:v libx264 '
-          '-pix_fmt yuv420p '
-          '-c:a copy '
-          '-map 0:v:0 '
-          '-map 1:a:0? '
-          '-y "$finalVideoPath"';
-
-      final stitchSession = await FFmpegKit.execute(stitchCmd);
-      final stitchReturnCode = await stitchSession.getReturnCode();
-
-      if (ReturnCode.isSuccess(stitchReturnCode)) {
-        onProgress(1.0, 'ประมวลผลเสร็จสมบูรณ์');
-        return finalVideoPath;
-      } else {
-        debugPrint('Stitch video failed');
-        return null;
+      return VideoProcessingResult(
+        finalVideoPath: videoFile.path,
+        frameResults: frameResults,
+        detectedClasses: detectedClasses,
+        detectedNumbers: detectedNumbers,
+        targetFps: targetFps,
+      );
+    } finally {
+      // Clean up temporary input folder
+      try {
+        if (await inputDir.exists()) {
+          await inputDir.delete(recursive: true);
+        }
+      } catch (cleanupError) {
+        debugPrint('Failed to clean up temporary folder: $cleanupError');
       }
-    } catch (e) {
-      debugPrint('VideoProcessingService Error: $e');
-      return null;
     }
   }
 }

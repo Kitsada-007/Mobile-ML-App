@@ -32,6 +32,8 @@ String? acceptCountdownReading(String? reading) {
 
 const double realtimeSignConfidenceThreshold = 0.25;
 
+enum TrafficSignalVerdict { go, stop, caution, unknown }
+
 double nativeRealtimeConfidenceThreshold(double selectedThreshold) =>
     selectedThreshold < realtimeSignConfidenceThreshold
     ? selectedThreshold
@@ -140,8 +142,10 @@ class CameraInferenceController extends ChangeNotifier {
 
   String get detectionStatus {
     if (!_isCameraEnabled) return 'กล้องปิดอยู่';
-    if (_isModelLoading) return _loadingMessage.isEmpty ? 'กำลังโหลดโมเดล' : _loadingMessage;
-    if (_modelPath == null) return _loadingMessage.isEmpty ? 'ไม่พบโมเดล' : _loadingMessage;
+    if (_isModelLoading)
+      return _loadingMessage.isEmpty ? 'กำลังโหลดโมเดล' : _loadingMessage;
+    if (_modelPath == null)
+      return _loadingMessage.isEmpty ? 'ไม่พบโมเดล' : _loadingMessage;
     if (_isRealtimePipelineStale) return 'กล้องไม่พร้อมหรือกำลังรอสัญญาณภาพ';
     if (_lastDetectionConfidence != null &&
         _lastDetectionConfidence! < _confidenceThreshold) {
@@ -350,7 +354,8 @@ class CameraInferenceController extends ChangeNotifier {
       }
       notifyListeners();
     } catch (error) {
-      _loadingMessage = 'ไม่สามารถ${nextEnabled ? 'เปิด' : 'ปิด'}กล้องได้: $error';
+      _loadingMessage =
+          'ไม่สามารถ${nextEnabled ? 'เปิด' : 'ปิด'}กล้องได้: $error';
       notifyListeners();
     }
   }
@@ -464,21 +469,30 @@ class CameraInferenceController extends ChangeNotifier {
     _detectedNumber = reading;
     final value = int.tryParse(reading);
     if (value != null && value >= 1) {
+      final activeLight = _trafficLightStateStabilizer.confirmedClassName;
       if (shouldPrepareToGo(value)) {
         if (!_hasSpokenGetReady) {
           _hasSpokenGetReady = true;
           _lastSpokenNumber = reading;
-          unawaited(_voiceService.speakNumber(reading));
+          if (activeLight != 'green_light_circle') {
+            unawaited(
+              _voiceService.speakNumber(reading, activeLightClass: activeLight),
+            );
+          }
         }
       } else if (value <= 9) {
         if (_lastSpokenNumber != reading) {
           _lastSpokenNumber = reading;
-          unawaited(_voiceService.speakNumber(reading));
+          unawaited(
+            _voiceService.speakNumber(reading, activeLightClass: activeLight),
+          );
         }
       } else if (!_hasSpokenInitialNumber) {
         _hasSpokenInitialNumber = true;
         _lastSpokenNumber = reading;
-        unawaited(_voiceService.speakNumber(reading));
+        unawaited(
+          _voiceService.speakNumber(reading, activeLightClass: activeLight),
+        );
       }
     }
     notifyListeners();
@@ -507,9 +521,9 @@ class CameraInferenceController extends ChangeNotifier {
     final observationTime = timestamp ?? _clock();
     _lastDetectionConfidence = results.isEmpty
         ? null
-        : results.map((result) => result.confidence).reduce(
-            (max, confidence) => confidence > max ? confidence : max,
-          );
+        : results
+              .map((result) => result.confidence)
+              .reduce((max, confidence) => confidence > max ? confidence : max);
 
     final signNumberDetectedInThisFrame = results.any(
       (result) =>
@@ -617,7 +631,13 @@ class CameraInferenceController extends ChangeNotifier {
           if (lastSeen == null ||
               now.difference(lastSeen).inMilliseconds > 1500) {
             if (!_hasSpokenGetReady && _detectedNumber != null) {
-              unawaited(_voiceService.speakNumber(_detectedNumber!));
+              unawaited(
+                _voiceService.speakNumber(
+                  _detectedNumber!,
+                  activeLightClass:
+                      _trafficLightStateStabilizer.confirmedClassName,
+                ),
+              );
             }
             _resetSignState();
           }
@@ -639,7 +659,13 @@ class CameraInferenceController extends ChangeNotifier {
         if (lastSeen == null ||
             now.difference(lastSeen).inMilliseconds > 1500) {
           if (!_hasSpokenGetReady && _detectedNumber != null) {
-            unawaited(_voiceService.speakNumber(_detectedNumber!));
+            unawaited(
+              _voiceService.speakNumber(
+                _detectedNumber!,
+                activeLightClass:
+                    _trafficLightStateStabilizer.confirmedClassName,
+              ),
+            );
           }
           _resetSignState();
         }

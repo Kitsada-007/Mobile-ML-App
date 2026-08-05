@@ -52,7 +52,7 @@ class TrafficVoiceService {
     await _tts.speak(message);
   }
 
-  Future<void> speakNumber(String number) async {
+  Future<void> speakNumber(String number, {String? activeLightClass}) async {
     if (!_isEnabled) return;
     final prefs = await SharedPreferences.getInstance();
     final isVoiceEnabled = prefs.getBool('isVoiceEnabled') ?? true;
@@ -62,7 +62,9 @@ class TrafficVoiceService {
     if (val == null) return;
 
     if (shouldPrepareToGo(val)) {
-      await speak("เตรียมตัวไป");
+      if (activeLightClass != 'green_light_circle') {
+        await speak("เตรียมตัวไป");
+      }
     } else {
       final word = convertToThaiWords(val);
       await speak(word);
