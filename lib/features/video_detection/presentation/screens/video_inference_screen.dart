@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -15,14 +14,14 @@ import 'package:trffic_ilght_app/shared/models/model_types.dart';
 import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/empty_state_section.dart';
 import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/full_screen_video.dart';
 import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/result_image.dart';
-import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/video_inference_action.dart';
-import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/video_processing.dart';
 import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/video_result_section.dart';
-import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/video_selected_video.dart';
+import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/video_upload_section.dart';
 import 'package:trffic_ilght_app/core/services/inference/countdown_reading_stabilizer.dart';
 import 'package:trffic_ilght_app/core/services/model_management/model_manager.dart';
 import 'package:trffic_ilght_app/core/services/inference/sign_number_pipeline_service.dart';
 import 'package:trffic_ilght_app/features/video_detection/data/services/video_frame_analysis_service.dart';
+import 'package:trffic_ilght_app/features/video_detection/data/services/video_input_validator.dart';
+import 'package:trffic_ilght_app/features/video_detection/data/services/video_label_formatter.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 import 'package:video_player/video_player.dart';
 
@@ -44,6 +43,7 @@ class VideoInferenceScreen extends StatefulWidget {
 
 class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
   final ImagePicker _picker = ImagePicker();
+  final VideoInputValidator _videoValidator = VideoInputValidator();
 
   // เพิ่ม Set สำหรับเก็บชื่อ Class ที่ตรวจพบแบบไม่ซ้ำกัน
   final Set<String> _detectedClasses = {};
@@ -62,6 +62,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
   late final ModelManager _modelManager;
 
   VideoPlayerController? _videoController;
+  VideoPlayerController? _selectedPreviewController;
   File? _videoFile;
 
   bool _processing = false;
@@ -80,6 +81,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
     unawaited(_trafficYolo?.dispose());
     unawaited(_numberYolo?.dispose());
     _videoController?.dispose();
+    _selectedPreviewController?.dispose();
     super.dispose();
   }
 
@@ -92,26 +94,44 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
     final bool hasImageResult = _annotatedImage != null || _imageBytes != null;
 
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: colorScheme.surface,
         elevation: 0,
         centerTitle: true,
-        title: Text(
-          'Video Inference',
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
+        leading: IconButton(
+          tooltip: 'เมนู',
+          icon: const Icon(Icons.menu_rounded),
+          onPressed: () => Navigator.maybePop(context),
         ),
-        foregroundColor:
-            theme.appBarTheme.foregroundColor ?? colorScheme.onSurface,
+        title: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'ตรวจจับจากวิดีโอ',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+            SizedBox(height: 2),
+            Text(
+              'Video Traffic Light Detection',
+              style: TextStyle(fontSize: 10, color: Color(0xFF6B7280)),
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'การแจ้งเตือน',
+            icon: const Icon(Icons.notifications_none_rounded),
+            onPressed: () {},
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(
           children: [
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
                 children: [
                   if (!_areModelsReady)
                     Padding(
@@ -139,13 +159,9 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                         margin: const EdgeInsets.only(top: 16),
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHighest.withValues(
-                            alpha: 0.5,
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: colorScheme.primary.withValues(alpha: 0.3),
-                          ),
+                          color: colorScheme.surface,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: const Color(0xFFE5E7EB)),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -154,14 +170,14 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                               children: [
                                 Icon(
                                   Icons.analytics_outlined,
-                                  color: colorScheme.primary,
+                                  color: const Color(0xFF16A05D),
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
                                   "วัตถุที่ตรวจพบในวิดีโอ:",
                                   style: theme.textTheme.titleMedium?.copyWith(
                                     fontWeight: FontWeight.bold,
-                                    color: colorScheme.primary,
+                                    color: const Color(0xFF111827),
                                   ),
                                 ),
                               ],
@@ -220,92 +236,26 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                       imageBytes: _annotatedImage ?? _imageBytes!,
                     )
                   else if (!_processing)
-                    const EmptyStateSection(),
+                    EmptyStateSection(),
 
                   const SizedBox(height: 12),
 
-                  if (_videoFile != null && !_processing)
-                    SelectedVideoCard(
-                      fileName: _videoFile!.path.split('/').last,
-                    ),
-
-                  if (_processing) ...[
-                    const SizedBox(height: 12),
-                    ProcessingCard(
-                      progressValue: _progressValue,
-                      progressText: _progressText,
-                    ),
-                  ],
-
-                  const SizedBox(height: 16),
-                  Text(
-                    "อัปโหลดวิดีโอได้ไม่เกิน 50 MB\nและความยาวไม่เกิน 15 วินาที",
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: colorScheme.onSurface.withValues(alpha: 0.7),
-                      fontWeight: FontWeight.w500,
-                    ),
+                  VideoUploadSection(
+                    processing: _processing,
+                    videoFile: _videoFile,
+                    previewController: _selectedPreviewController,
+                    progressValue: _progressValue,
+                    progressText: _progressText,
+                    onPickVideo: _pickVideo,
+                    onRunInference: _predictVideo,
                   ),
                 ],
-              ),
-            ),
-
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                boxShadow: [
-                  BoxShadow(
-                    color: theme.shadowColor.withValues(alpha: 0.12),
-                    blurRadius: 10,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: SafeArea(
-                top: false,
-                child: InferenceActionBar(
-                  processing: _processing,
-                  videoFile: _videoFile,
-                  onPickVideo: _pickVideo,
-                  onRunInference: _predictVideo,
-                ),
               ),
             ),
           ],
         ),
       ),
     );
-  }
-
-  // ฟังก์ชันสำหรับแปลชื่อ Class จาก Model เป็นภาษาไทยทางการ
-  String _getFormalThaiName(String className) {
-    switch (className) {
-      case 'dont_go_straight_arrow':
-        return "ป้ายห้ามตรงไป";
-      case 'dont_turn_left':
-        return "ป้ายห้ามเลี้ยวซ้าย";
-      case 'dont_turn_right':
-        return "ป้ายห้ามเลี้ยวขวา";
-      case 'go_straight_arrow':
-        return "ป้ายบังคับให้ตรงไป";
-      case 'green_light_circle':
-        return "สัญญาณไฟจราจรสีเขียว";
-      case 'off_light':
-        return "สัญญาณไฟจราจรขัดข้อง";
-      case 'red_light_circle':
-        return "สัญญาณไฟจราจรสีแดง";
-      case 'sign_number':
-        return "สัญญาณไฟนับถอยหลัง";
-      case 'turn_left':
-        return "สัญญาณไฟเลี้ยวซ้าย";
-      case 'turn_right':
-        return "สัญญาณไฟเลี้ยวขวา";
-      case 'yellow_light':
-        return "สัญญาณไฟจราจรสีเหลือง";
-      default:
-        return className; // ถ้าไม่มีในลิสต์ ให้แสดงชื่อดั้งเดิมไปก่อน
-    }
   }
 
   void _openFullScreen() {
@@ -390,43 +340,29 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
     }
   }
 
-  Future<bool> _validateVideo(File videoFile) async {
-    final int sizeInBytes = await videoFile.length();
-    final double sizeInMb = sizeInBytes / (1024 * 1024);
-
-    if (sizeInMb > 50.0) {
-      _showSnackBar(
-        "ไฟล์วิดีโอใหญ่เกินไป (${sizeInMb.toStringAsFixed(1)} MB) กรุณาเลือกไฟล์ไม่เกิน 50 MB",
-      );
-      return false;
-    }
-
-    final infoSession = await FFprobeKit.getMediaInformation(videoFile.path);
-    final info = infoSession.getMediaInformation();
-
-    if (info != null && info.getDuration() != null) {
-      final double durationInSeconds =
-          double.tryParse(info.getDuration()!) ?? 0.0;
-      if (durationInSeconds > 15.0) {
-        _showSnackBar(
-          "วิดีโอยาวเกินไป (${durationInSeconds.toStringAsFixed(1)} วิ) กรุณาเลือกวิดีโอไม่เกิน 15 วินาที",
-        );
-        return false;
-      }
-    }
-
-    return true;
-  }
-
   Future<void> _pickVideo() async {
     final file = await _picker.pickVideo(source: ImageSource.gallery);
     if (file == null) return;
     final File selectedFile = File(file.path);
-    final bool isValid = await _validateVideo(selectedFile);
-    if (!isValid) return;
+    final validation = await _videoValidator.validate(selectedFile);
+    if (!validation.isValid) {
+      _showSnackBar(validation.errorMessage!);
+      return;
+    }
+    final previewController = VideoPlayerController.file(selectedFile);
+    var previewReady = false;
+    try {
+      await previewController.initialize();
+      await previewController.seekTo(Duration.zero);
+      previewReady = true;
+    } catch (_) {
+      await previewController.dispose();
+    }
+    await _selectedPreviewController?.dispose();
     _videoController?.dispose();
     setState(() {
       _videoFile = selectedFile;
+      _selectedPreviewController = previewReady ? previewController : null;
       _videoController = null;
       _annotatedImage = null;
       _detectedClasses.clear(); // เคลียร์ผลลัพธ์เดิมเมื่อเลือกวิดีโอใหม่
@@ -486,12 +422,14 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
       _showSnackBar('Error: $e');
     } finally {
       try {
-        final outDir = Directory(outputFolder);
-        if (await outDir.exists()) {
-          await outDir.delete(recursive: true);
+        for (final path in [inputFolder, outputFolder]) {
+          final dir = Directory(path);
+          if (await dir.exists()) {
+            await dir.delete(recursive: true);
+          }
         }
       } catch (cleanupError) {
-        debugPrint('Failed to clean up output folder: $cleanupError');
+        debugPrint('Failed to clean up temporary folders: $cleanupError');
       }
 
       if (mounted) {
@@ -525,7 +463,6 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
     final String extractCmd =
         '-threads 0 '
         '-i "${_videoFile!.path}" '
-        '-t 15 '
         '-vf "fps=$targetFps,scale=640:-1:flags=fast_bilinear" '
         '-q:v 15 '
         '-y "$inputFolder/frame_%05d.jpg"';
@@ -556,7 +493,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
         final result = await frameAnalysisService.analyze(bytes);
 
         for (final detection in result.detections) {
-          _detectedClasses.add(_getFormalThaiName(detection.className));
+          _detectedClasses.add(videoFormalThaiName(detection.className));
         }
         final detectedNumber = _countdownStabilizer.add(result.detectedNumber);
         if (detectedNumber != null && detectedNumber.isNotEmpty) {
@@ -593,7 +530,6 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
         '-framerate $targetFps '
         '-i "$outputFolder/frame_%05d.jpg" '
         '-i "${_videoFile!.path}" '
-        '-t 15 '
         '-c:v libx264 '
         '-preset ultrafast '
         '-pix_fmt yuv420p '

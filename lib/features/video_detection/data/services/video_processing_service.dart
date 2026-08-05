@@ -83,7 +83,7 @@ class VideoProcessingService {
 
       for (int i = 0; i < totalFrames; i++) {
         final file = imageFrames[i];
-
+        //  ไม่ต้องเอา ทุก fps 10
         final progress = (i + 1) / totalFrames;
         onProgress(progress, 'กำลังประมวลผล ${i + 1} / $totalFrames เฟรม');
 

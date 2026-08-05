@@ -16,17 +16,18 @@ class ResultVideoSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          "Result Video",
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          'วิดีโอผลการวิเคราะห์',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 10),
         Card(
           elevation: 0,
-          color: Colors.white,
+          color: colorScheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
@@ -51,7 +52,7 @@ class ResultVideoSection extends StatelessWidget {
                           controller,
                           allowScrubbing: true,
                           colors: const VideoProgressColors(
-                            playedColor: Colors.blueAccent,
+                            playedColor: Color(0xFF16A05D),
                             bufferedColor: Colors.white38,
                             backgroundColor: Colors.transparent,
                           ),
@@ -90,7 +91,7 @@ class ResultVideoSection extends StatelessWidget {
             ),
             label: Text(controller.value.isPlaying ? 'Pause' : 'Play'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blueAccent,
+              backgroundColor: const Color(0xFF16A05D),
               foregroundColor: Colors.white,
               minimumSize: const Size(140, 48),
               shape: RoundedRectangleBorder(

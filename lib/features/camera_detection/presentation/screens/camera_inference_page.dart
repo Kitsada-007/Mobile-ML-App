@@ -1,5 +1,7 @@
 // Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/controllers/camera_inference_controller.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_detection_panel.dart';
@@ -126,6 +128,34 @@ class _CameraInferencePageState extends State<CameraInferencePage> {
                                   ),
                                 ),
                                 Positioned(
+                                  top: 10,
+                                  right: 10,
+                                  child: Semantics(
+                                    button: true,
+                                    label: _controller.isCameraEnabled
+                                        ? 'ปิดกล้อง'
+                                        : 'เปิดกล้อง',
+                                    child: IconButton.filled(
+                                      key: const Key('cameraPowerButton'),
+                                      tooltip: _controller.isCameraEnabled
+                                          ? 'ปิดกล้อง'
+                                          : 'เปิดกล้อง',
+                                      style: IconButton.styleFrom(
+                                        backgroundColor: Colors.black54,
+                                        foregroundColor: Colors.white,
+                                      ),
+                                      icon: Icon(
+                                        _controller.isCameraEnabled
+                                            ? Icons.videocam_rounded
+                                            : Icons.videocam_off_rounded,
+                                      ),
+                                      onPressed: () => unawaited(
+                                        _controller.toggleCamera(),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
                                   left: 14,
                                   right: 14,
                                   bottom: 14,
@@ -146,15 +176,9 @@ class _CameraInferencePageState extends State<CameraInferencePage> {
                         detectedNumber: _controller.detectedNumber,
                         isLandscape: isLandscape,
                         isPipelineStale: _controller.isRealtimePipelineStale,
-                        latencyP50:
-                            _controller.pipelineSnapshot.endToEndLatencyP50,
-                        latencyP95:
-                            _controller.pipelineSnapshot.endToEndLatencyP95,
-                        latencyP99:
-                            _controller.pipelineSnapshot.endToEndLatencyP99,
-                        droppedFrameCount:
-                            _controller.pipelineSnapshot.droppedFrameCount,
-                        trackingId: _controller.activeTrafficLightTrackingId,
+                        statusText: _controller.detectionStatus,
+                        lastDetectionConfidence:
+                            _controller.lastDetectionConfidence,
                       ),
                     ],
                   ),

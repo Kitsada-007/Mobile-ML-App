@@ -65,6 +65,7 @@ class CameraInferenceController extends ChangeNotifier {
   double _currentZoomLevel = 1.0;
   LensFacing _lensFacing = LensFacing.back;
   bool _isFrontCamera = false;
+  bool _isCameraEnabled = true;
 
   final _yoloController = YOLOViewController();
   final TrafficVoiceService _voiceService = TrafficVoiceService();
@@ -99,6 +100,7 @@ class CameraInferenceController extends ChangeNotifier {
 
   List<String> _detectedFormalNames = [];
   List<String> _detectedAlertMessages = [];
+  double? _lastDetectionConfidence;
 
   int get detectionCount => _detectionCount;
   double get currentFps => _currentFps;
@@ -113,6 +115,7 @@ class CameraInferenceController extends ChangeNotifier {
   double get downloadProgress => _downloadProgress;
   double get currentZoomLevel => _currentZoomLevel;
   bool get isFrontCamera => _isFrontCamera;
+  bool get isCameraEnabled => _isCameraEnabled;
   LensFacing get lensFacing => _lensFacing;
   YOLOViewController get yoloController => _yoloController;
 
@@ -133,6 +136,19 @@ class CameraInferenceController extends ChangeNotifier {
   // Getter สำหรับ List ภาษาไทย
   List<String> get detectedFormalNames => _detectedFormalNames;
   List<String> get detectedAlertMessages => _detectedAlertMessages;
+  double? get lastDetectionConfidence => _lastDetectionConfidence;
+
+  String get detectionStatus {
+    if (!_isCameraEnabled) return 'กล้องปิดอยู่';
+    if (_isModelLoading) return _loadingMessage.isEmpty ? 'กำลังโหลดโมเดล' : _loadingMessage;
+    if (_modelPath == null) return _loadingMessage.isEmpty ? 'ไม่พบโมเดล' : _loadingMessage;
+    if (_isRealtimePipelineStale) return 'กล้องไม่พร้อมหรือกำลังรอสัญญาณภาพ';
+    if (_lastDetectionConfidence != null &&
+        _lastDetectionConfidence! < _confidenceThreshold) {
+      return 'ความมั่นใจต่ำ';
+    }
+    return 'กำลังตรวจจับ';
+  }
 
   CameraInferenceController({
     @visibleForTesting SignNumberPipelineService? signNumberPipelineService,
@@ -212,7 +228,9 @@ class CameraInferenceController extends ChangeNotifier {
         await digitYolo.dispose();
         return;
       }
+      final oldDigitYolo = _digitYolo;
       _digitYolo = digitYolo;
+      await oldDigitYolo?.dispose();
 
       final numberDetectionService = NumberDetectionService(
         numberYolo: _digitYolo!,
@@ -306,7 +324,7 @@ class CameraInferenceController extends ChangeNotifier {
   }
 
   Future<void> onStreamingData(Map<String, dynamic> data) {
-    if (_isDisposed) return Future.value();
+    if (_isDisposed || !_isCameraEnabled) return Future.value();
 
     final packet = RealtimeFramePacket.fromMap(
       data,
@@ -316,8 +334,29 @@ class CameraInferenceController extends ChangeNotifier {
     return _streamQueue.submit(packet);
   }
 
+  Future<void> toggleCamera() async {
+    if (_isDisposed || _modelPath == null) return;
+    final nextEnabled = !_isCameraEnabled;
+    try {
+      if (nextEnabled) {
+        await _yoloController.resume();
+      } else {
+        await _yoloController.pause();
+      }
+      _isCameraEnabled = nextEnabled;
+      if (!nextEnabled) {
+        _clearRealtimeResults();
+        _isRealtimePipelineStale = true;
+      }
+      notifyListeners();
+    } catch (error) {
+      _loadingMessage = 'ไม่สามารถ${nextEnabled ? 'เปิด' : 'ปิด'}กล้องได้: $error';
+      notifyListeners();
+    }
+  }
+
   Future<void> _processStreamPacket(RealtimeFramePacket packet) async {
-    if (_isDisposed) return;
+    if (_isDisposed || !_isCameraEnabled) return;
 
     final processingStartedAt = _clock();
     final decision = _frameFreshnessGuard.evaluate(
@@ -466,6 +505,11 @@ class CameraInferenceController extends ChangeNotifier {
 
     bool shouldNotify = false;
     final observationTime = timestamp ?? _clock();
+    _lastDetectionConfidence = results.isEmpty
+        ? null
+        : results.map((result) => result.confidence).reduce(
+            (max, confidence) => confidence > max ? confidence : max,
+          );
 
     final signNumberDetectedInThisFrame = results.any(
       (result) =>
@@ -498,6 +542,9 @@ class CameraInferenceController extends ChangeNotifier {
     );
 
     final confirmedTrafficLight = trafficLightUpdate.confirmedClassName;
+    // The user-facing result shows only the class that wins stabilization.
+    // Raw observations remain available to the detector and voice pipeline.
+    final displayTrafficLight = confirmedTrafficLight;
     if (trafficLightUpdate.stateChanged && confirmedTrafficLight != null) {
       unawaited(
         _voiceService.processDetection(
@@ -519,10 +566,10 @@ class CameraInferenceController extends ChangeNotifier {
       List<String> tempAlerts = [];
 
       for (var result in results) {
-        final minimumConfidence = realtimeDetectionConfidenceThreshold(
-          result.className,
-          _confidenceThreshold,
-        );
+        // The native stream emits all classes from 0.25 so the UI should show
+        // the same detections. Confirmation and voice keep the selected
+        // threshold below.
+        const minimumConfidence = realtimeSignConfidenceThreshold;
         if (result.confidence < minimumConfidence) continue;
         if (isTrafficLightStateClass(result.className)) continue;
 
@@ -533,12 +580,13 @@ class CameraInferenceController extends ChangeNotifier {
         final thaiAlertMsg = _voiceService.getThaiMessage(result.className);
 
         // เก็บลง List เฉพาะชื่อที่ไม่ซ้ำกันในเฟรมเดียว
-        if (!tempFormalNames.contains(thaiFormalName)) {
+        if (displayTrafficLight == null && tempFormalNames.isEmpty) {
           tempFormalNames.add(thaiFormalName);
           tempAlerts.add(thaiAlertMsg);
         }
 
-        if (result.className != 'sign_number') {
+        if (result.className != 'sign_number' &&
+            result.confidence >= _confidenceThreshold) {
           unawaited(
             _voiceService.processDetection(
               result.className,
@@ -552,7 +600,7 @@ class CameraInferenceController extends ChangeNotifier {
       }
 
       _appendConfirmedTrafficLight(
-        confirmedTrafficLight,
+        displayTrafficLight,
         formalNames: tempFormalNames,
         alertMessages: tempAlerts,
       );
@@ -600,7 +648,7 @@ class CameraInferenceController extends ChangeNotifier {
       final tempFormalNames = <String>[];
       final tempAlerts = <String>[];
       _appendConfirmedTrafficLight(
-        confirmedTrafficLight,
+        displayTrafficLight,
         formalNames: tempFormalNames,
         alertMessages: tempAlerts,
       );

@@ -141,7 +141,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('detection panel reports realtime pipeline health', (
+  testWidgets('detection panel hides developer pipeline metrics', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -153,23 +153,18 @@ void main() {
             detectedNumber: null,
             isLandscape: false,
             isPipelineStale: false,
-            latencyP50: Duration(milliseconds: 42),
-            latencyP95: Duration(milliseconds: 88),
-            latencyP99: Duration(milliseconds: 120),
-            droppedFrameCount: 3,
-            trackingId: 7,
           ),
         ),
       ),
     );
 
     expect(find.byKey(const Key('realtimePipelineStatus')), findsOneWidget);
-    expect(find.text('LIVE'), findsOneWidget);
-    expect(find.text('P50 42 ms'), findsOneWidget);
-    expect(find.text('P95 88 ms'), findsOneWidget);
-    expect(find.text('P99 120 ms'), findsOneWidget);
-    expect(find.text('DROP 3'), findsOneWidget);
-    expect(find.text('TRACK #7'), findsOneWidget);
+    expect(find.textContaining('P50'), findsNothing);
+    expect(find.textContaining('P95'), findsNothing);
+    expect(find.textContaining('P99'), findsNothing);
+    expect(find.textContaining('DROP'), findsNothing);
+    expect(find.textContaining('TRACK'), findsNothing);
+    expect(find.text('X'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

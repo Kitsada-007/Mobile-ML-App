@@ -10,11 +10,8 @@ class CameraDetectionPanel extends StatelessWidget {
     required this.detectedNumber,
     required this.isLandscape,
     this.isPipelineStale = true,
-    this.latencyP50 = Duration.zero,
-    this.latencyP95 = Duration.zero,
-    this.latencyP99 = Duration.zero,
-    this.droppedFrameCount = 0,
-    this.trackingId,
+    this.statusText = 'กำลังตรวจจับ',
+    this.lastDetectionConfidence,
   });
 
   final List<String> formalNames;
@@ -22,11 +19,8 @@ class CameraDetectionPanel extends StatelessWidget {
   final String? detectedNumber;
   final bool isLandscape;
   final bool isPipelineStale;
-  final Duration latencyP50;
-  final Duration latencyP95;
-  final Duration latencyP99;
-  final int droppedFrameCount;
-  final int? trackingId;
+  final String statusText;
+  final double? lastDetectionConfidence;
 
   @override
   Widget build(BuildContext context) {
@@ -64,11 +58,8 @@ class CameraDetectionPanel extends StatelessWidget {
             const SizedBox(height: 12),
             _RealtimePipelineStatus(
               isStale: isPipelineStale,
-              latencyP50: latencyP50,
-              latencyP95: latencyP95,
-              latencyP99: latencyP99,
-              droppedFrameCount: droppedFrameCount,
-              trackingId: trackingId,
+              statusText: statusText,
+              lastDetectionConfidence: lastDetectionConfidence,
             ),
             Divider(
               color: isDark ? Colors.white12 : const Color(0xFFE7E9ED),
@@ -79,10 +70,8 @@ class CameraDetectionPanel extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (countdown != null) ...[
-                    _CountdownBadge(countdown: countdown),
-                    const SizedBox(width: 12),
-                  ],
+                  _CountdownBadge(countdown: countdown),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: formalNames.isEmpty
                         ? const _ScanningMessage()
@@ -117,19 +106,13 @@ class CameraDetectionPanel extends StatelessWidget {
 class _RealtimePipelineStatus extends StatelessWidget {
   const _RealtimePipelineStatus({
     required this.isStale,
-    required this.latencyP50,
-    required this.latencyP95,
-    required this.latencyP99,
-    required this.droppedFrameCount,
-    required this.trackingId,
+    required this.statusText,
+    required this.lastDetectionConfidence,
   });
 
   final bool isStale;
-  final Duration latencyP50;
-  final Duration latencyP95;
-  final Duration latencyP99;
-  final int droppedFrameCount;
-  final int? trackingId;
+  final String statusText;
+  final double? lastDetectionConfidence;
 
   @override
   Widget build(BuildContext context) {
@@ -148,30 +131,16 @@ class _RealtimePipelineStatus extends StatelessWidget {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           _PipelineMetricChip(
-            label: isStale ? 'STALE' : 'LIVE',
+            label: statusText,
             foregroundColor: statusColor,
             backgroundColor: statusColor.withValues(alpha: 0.12),
           ),
-          _PipelineMetricChip(
-            label: 'P50 ${latencyP50.inMilliseconds} ms',
-            foregroundColor: colorScheme.onSurfaceVariant,
-          ),
-          _PipelineMetricChip(
-            label: 'P95 ${latencyP95.inMilliseconds} ms',
-            foregroundColor: colorScheme.onSurfaceVariant,
-          ),
-          _PipelineMetricChip(
-            label: 'P99 ${latencyP99.inMilliseconds} ms',
-            foregroundColor: colorScheme.onSurfaceVariant,
-          ),
-          _PipelineMetricChip(
-            label: 'DROP $droppedFrameCount',
-            foregroundColor: colorScheme.onSurfaceVariant,
-          ),
-          if (trackingId != null)
+          if (lastDetectionConfidence != null)
             _PipelineMetricChip(
-              label: 'TRACK #$trackingId',
-              foregroundColor: colorScheme.onSurfaceVariant,
+              label: 'CONF ${(lastDetectionConfidence! * 100).round()}%',
+              foregroundColor: lastDetectionConfidence! < 0.5
+                  ? Colors.orange.shade800
+                  : colorScheme.onSurfaceVariant,
             ),
         ],
       ),
@@ -266,12 +235,14 @@ class _PanelHeader extends StatelessWidget {
 class _CountdownBadge extends StatelessWidget {
   const _CountdownBadge({required this.countdown});
 
-  final int countdown;
+  final int? countdown;
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'ตัวเลขนับถอยหลัง $countdown วินาที',
+      label: countdown == null
+          ? 'ไม่พบตัวเลขนับถอยหลัง'
+          : 'ตัวเลขนับถอยหลัง $countdown วินาที',
       child: Container(
         width: 86,
         height: 86,
@@ -284,7 +255,7 @@ class _CountdownBadge extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              '$countdown',
+              countdown?.toString() ?? 'X',
               maxLines: 1,
               style: const TextStyle(
                 color: Color(0xFFE63D3D),
@@ -295,8 +266,8 @@ class _CountdownBadge extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
-              'วินาที',
+            Text(
+              countdown == null ? 'ไม่พบตัวเลข' : 'วินาที',
               style: TextStyle(
                 color: Color(0xFF9F3A3A),
                 fontSize: 11,

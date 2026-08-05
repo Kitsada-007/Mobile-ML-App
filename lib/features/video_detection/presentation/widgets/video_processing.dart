@@ -12,9 +12,10 @@ class ProcessingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Card(
       elevation: 0,
-      color: Colors.white,
+      color: colorScheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -45,8 +46,8 @@ class ProcessingCard extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: progressValue > 0 ? progressValue : null,
                 minHeight: 10,
-                backgroundColor: Colors.grey.shade200,
-                color: Colors.blueAccent,
+                backgroundColor: colorScheme.surfaceContainerHighest,
+                color: colorScheme.primary,
               ),
             ),
             const SizedBox(height: 10),
@@ -57,7 +58,7 @@ class ProcessingCard extends StatelessWidget {
                     ? "${(progressValue * 100).toStringAsFixed(1)}%"
                     : "กำลังประมวลผล...",
                 style: TextStyle(
-                  color: Colors.grey.shade600,
+                  color: colorScheme.onSurfaceVariant,
                   fontWeight: FontWeight.w500,
                 ),
               ),

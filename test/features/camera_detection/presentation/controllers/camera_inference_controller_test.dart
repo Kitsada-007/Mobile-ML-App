@@ -354,15 +354,30 @@ void main() {
     controller.dispose();
   });
 
-  test('traffic light state is exposed only after confirmation', () async {
+  test('UI exposes only the traffic-light class that wins voting', () async {
     final controller = CameraInferenceController();
     final redLight = _trafficLightDetection('red_light_circle');
 
     await controller.onDetectionResults([redLight]);
     expect(controller.confirmedTrafficLightClassName, isNull);
+    expect(controller.detectedFormalNames, isEmpty);
 
     await controller.onDetectionResults([redLight]);
     expect(controller.confirmedTrafficLightClassName, 'red_light_circle');
+    expect(controller.detectedFormalNames, hasLength(1));
+    controller.dispose();
+  });
+
+  test('unconfirmed low-confidence traffic light is hidden from the UI', () async {
+    final controller = CameraInferenceController();
+    final redLight = _trafficLightDetection(
+      'red_light_circle',
+      confidence: 0.30,
+    );
+
+    await controller.onDetectionResults([redLight]);
+
+    expect(controller.detectedFormalNames, isEmpty);
     controller.dispose();
   });
 

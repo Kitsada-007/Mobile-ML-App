@@ -1,11 +1,14 @@
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trffic_ilght_app/core/utils/thai_number_helper.dart';
+import 'package:trffic_ilght_app/core/services/voice/detection_announcement_gate.dart';
 
 class TrafficVoiceService {
   final FlutterTts _tts = FlutterTts();
 
   DateTime _lastSpeakTime = DateTime.now();
+  final DetectionAnnouncementGate _announcementGate =
+      DetectionAnnouncementGate();
 
   bool _isEnabled = true;
 
@@ -88,10 +91,19 @@ class TrafficVoiceService {
     final now = DateTime.now();
     // ถ้ามี sign_number อยู่ในภาพเดียวกัน ขยาย cooldown เสียงเตือนไฟจราจรจาก 3 วินาที เป็น 8 วินาที เพื่อไม่ให้พูดถี่เกินไป
     final cooldown = isSignActive ? 8 : 3;
-    if (announceImmediately ||
-        now.difference(_lastSpeakTime).inSeconds >= cooldown) {
-      await speak(message);
+    if (!announceImmediately &&
+        now.difference(_lastSpeakTime).inSeconds < cooldown) {
+      return;
     }
+    if (!_announcementGate.shouldAnnounce(
+      className,
+      now,
+      requiredFrames: announceImmediately ? 1 : 2,
+    )) {
+      return;
+    }
+    _announcementGate.record(className, now);
+    await speak(message);
   }
 
   // สำหรับแสดงชื่อป้ายทางการบนหน้าจอ

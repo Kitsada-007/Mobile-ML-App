@@ -408,6 +408,7 @@ class _SingleImageScreenState extends State<SingleImageScreen> {
   void dispose() {
     unawaited(_trafficYolo?.dispose());
     unawaited(_digitYolo?.dispose());
+    unawaited(_signNumberService?.dispose());
 
     _signNumberService = null;
 

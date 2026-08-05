@@ -4,10 +4,10 @@ abstract final class AppTheme {
   static final ThemeData light = ThemeData(
     useMaterial3: true,
     colorScheme: ColorScheme.fromSeed(
-      seedColor: const Color(0xFF3D5AFE),
+      seedColor: const Color(0xFF16A05D),
       brightness: Brightness.light,
     ),
-    scaffoldBackgroundColor: const Color(0xFFF8F9FA),
+    scaffoldBackgroundColor: Colors.white,
     appBarTheme: const AppBarTheme(
       centerTitle: false,
       elevation: 0,
@@ -18,7 +18,7 @@ abstract final class AppTheme {
   static final ThemeData dark = ThemeData(
     useMaterial3: true,
     colorScheme: ColorScheme.fromSeed(
-      seedColor: const Color(0xFF3D5AFE),
+      seedColor: const Color(0xFF16A05D),
       brightness: Brightness.dark,
     ),
     appBarTheme: const AppBarTheme(

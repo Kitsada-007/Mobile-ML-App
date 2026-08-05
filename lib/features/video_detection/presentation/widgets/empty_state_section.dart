@@ -5,12 +5,13 @@ class EmptyStateSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Card(
       elevation: 0,
-      color: Colors.white,
+      color: colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: BorderSide(color: Colors.grey.shade300),
+        side: BorderSide(color: colorScheme.outlineVariant),
       ),
       child: SizedBox(
         height: 260,
@@ -23,13 +24,13 @@ class EmptyStateSection extends StatelessWidget {
                 Icon(
                   Icons.video_call_rounded,
                   size: 64,
-                  color: Colors.grey.shade400,
+                  color: colorScheme.onSurfaceVariant,
                 ),
                 const SizedBox(height: 14),
                 Text(
                   "No video selected",
                   style: TextStyle(
-                    color: Colors.grey.shade700,
+                    color: colorScheme.onSurface,
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
                   ),
@@ -38,7 +39,10 @@ class EmptyStateSection extends StatelessWidget {
                 Text(
                   "Please choose a video and run inference.",
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey.shade500, fontSize: 14),
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 14,
+                  ),
                 ),
               ],
             ),
