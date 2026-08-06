@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:trffic_ilght_app/core/services/inference/countdown_reading_stabilizer.dart';
 import 'package:trffic_ilght_app/core/services/inference/sign_number_pipeline_service.dart';
+import 'package:trffic_ilght_app/core/services/inference/signal_interpreter.dart';
 import 'package:trffic_ilght_app/core/services/model_management/model_manager.dart';
 import 'package:trffic_ilght_app/features/video_detection/data/services/video_frame_analysis_service.dart';
 import 'package:trffic_ilght_app/features/video_detection/data/services/video_input_validator.dart';
@@ -33,6 +34,7 @@ class VideoInferenceController extends ChangeNotifier {
     ModelManager? modelManager,
     VideoProcessingService? videoProcessingService,
     TrafficVoiceService? voiceService,
+    this.targetChecksPerSecond = 4,
   }) : _picker = picker ?? ImagePicker(),
        _videoValidator = videoValidator ?? const VideoInputValidator(),
        _modelManager = modelManager ?? ModelManager(),
@@ -45,6 +47,7 @@ class VideoInferenceController extends ChangeNotifier {
   final ModelManager _modelManager;
   final VideoProcessingService _videoProcessingService;
   final TrafficVoiceService _voiceService;
+  final int targetChecksPerSecond;
   final CountdownReadingStabilizer _countdownStabilizer =
       CountdownReadingStabilizer();
 
@@ -56,6 +59,10 @@ class VideoInferenceController extends ChangeNotifier {
 
   List<YOLOResult> _currentFrameDetections = [];
   String? _currentDetectedNumber;
+  DriverSignalResult _currentDriverSignalResult = const DriverSignalResult(
+    message: '',
+    action: SignalAction.none,
+  );
   List<String> _currentFormalNames = [];
   List<String> _currentAlertMessages = [];
   double? _lastDetectionConfidence;
@@ -89,6 +96,8 @@ class VideoInferenceController extends ChangeNotifier {
   Set<String> get detectedNumbers => Set.unmodifiable(_detectedNumbers);
   List<YOLOResult> get currentFrameDetections => _currentFrameDetections;
   String? get currentDetectedNumber => _currentDetectedNumber;
+  DriverSignalResult get currentDriverSignalResult =>
+      _currentDriverSignalResult;
   List<String> get currentFormalNames => List.unmodifiable(_currentFormalNames);
   List<String> get currentAlertMessages =>
       List.unmodifiable(_currentAlertMessages);
@@ -101,6 +110,19 @@ class VideoInferenceController extends ChangeNotifier {
       _selectedPreviewController;
   File? get videoFile => _videoFile;
   String? get snackBarMessage => _snackBarMessage;
+
+  bool get isVoiceEnabled => _voiceService.isEnabled;
+
+  String? _lastSpokenVideoClass;
+  String? _lastSpokenVideoNumber;
+
+  void toggleVoice() {
+    _voiceService.setEnabled(!_voiceService.isEnabled);
+    if (!_voiceService.isEnabled) {
+      unawaited(_voiceService.stop());
+    }
+    notifyListeners();
+  }
 
   void clearSnackBarMessage() {
     _snackBarMessage = null;
@@ -210,6 +232,10 @@ class VideoInferenceController extends ChangeNotifier {
     _frameResults.clear();
     _currentFrameDetections.clear();
     _currentDetectedNumber = null;
+    _currentDriverSignalResult = const DriverSignalResult(
+      message: '',
+      action: SignalAction.none,
+    );
     _currentFormalNames.clear();
     _currentAlertMessages.clear();
     _lastDetectionConfidence = null;
@@ -237,6 +263,10 @@ class VideoInferenceController extends ChangeNotifier {
     _frameResults.clear();
     _currentFrameDetections.clear();
     _currentDetectedNumber = null;
+    _currentDriverSignalResult = const DriverSignalResult(
+      message: '',
+      action: SignalAction.none,
+    );
     _currentFormalNames.clear();
     _currentAlertMessages.clear();
     _lastDetectionConfidence = null;
@@ -272,6 +302,9 @@ class VideoInferenceController extends ChangeNotifier {
       await _videoController!.initialize();
       await _videoController!.setLooping(true);
 
+      await _selectedPreviewController?.dispose();
+      _selectedPreviewController = null;
+
       _videoController!.addListener(_onVideoPositionChanged);
       await _videoController!.play();
 
@@ -298,6 +331,10 @@ class VideoInferenceController extends ChangeNotifier {
     final frameIndex = (position.inMilliseconds * _targetFps / 1000).floor();
 
     if (frameIndex != _lastFrameIndex) {
+      if (frameIndex < _lastFrameIndex) {
+        _lastSpokenVideoClass = null;
+        _lastSpokenVideoNumber = null;
+      }
       _lastFrameIndex = frameIndex;
       final frameResult = _frameResults[frameIndex];
       if (frameResult != null) {
@@ -307,8 +344,12 @@ class VideoInferenceController extends ChangeNotifier {
           frameResult.detections,
           frameResult.detectedNumber,
         );
-        notifyListeners();
+      } else {
+        _currentFrameDetections = [];
+        _currentDetectedNumber = null;
+        _updateCurrentFrameAnalysis([], null);
       }
+      notifyListeners();
     }
   }
 
@@ -316,6 +357,11 @@ class VideoInferenceController extends ChangeNotifier {
     List<YOLOResult> detections,
     String? detectedNumber,
   ) {
+    _currentDriverSignalResult = SignalInterpreter.interpret(
+      detections,
+      countdownNumberText: detectedNumber,
+    );
+
     if (detections.isEmpty &&
         (detectedNumber == null || detectedNumber.isEmpty)) {
       _currentFormalNames = [];
@@ -351,13 +397,50 @@ class VideoInferenceController extends ChangeNotifier {
     _currentFormalNames = tempFormalNames;
     _currentAlertMessages = tempAlertMessages;
     _lastDetectionConfidence = maxConf > 0 ? maxConf : null;
+
+    if (_videoController != null &&
+        _videoController!.value.isPlaying &&
+        _voiceService.isEnabled) {
+      if (sorted.isNotEmpty) {
+        final topClass = sorted.first.className;
+        final topConf = sorted.first.confidence;
+        if (topClass != _lastSpokenVideoClass) {
+          _lastSpokenVideoClass = topClass;
+          unawaited(_voiceService.processDetection(
+            topClass,
+            topConf,
+            isSignActive: true,
+            announceImmediately: true,
+          ));
+        }
+      } else {
+        _lastSpokenVideoClass = null;
+      }
+
+      if (detectedNumber != null && detectedNumber.isNotEmpty) {
+        if (detectedNumber != _lastSpokenVideoNumber) {
+          _lastSpokenVideoNumber = detectedNumber;
+          final activeLight =
+              sorted.isNotEmpty ? sorted.first.className : null;
+          unawaited(_voiceService.speakNumber(
+            detectedNumber,
+            activeLightClass: activeLight,
+          ));
+        }
+      } else {
+        _lastSpokenVideoNumber = null;
+      }
+    }
   }
 
   void togglePlayPause() {
     if (_videoController == null) return;
     if (_videoController!.value.isPlaying) {
       _videoController!.pause();
+      unawaited(_voiceService.stop());
     } else {
+      _lastSpokenVideoClass = null;
+      _lastSpokenVideoNumber = null;
       _videoController!.play();
     }
     notifyListeners();
@@ -368,6 +451,7 @@ class VideoInferenceController extends ChangeNotifier {
       _videoController!.removeListener(_onVideoPositionChanged);
       _videoController!.dispose();
       _videoController = null;
+      unawaited(_voiceService.stop());
     }
   }
 
@@ -381,6 +465,7 @@ class VideoInferenceController extends ChangeNotifier {
     _isDisposed = true;
     unawaited(_trafficYolo?.dispose());
     unawaited(_numberYolo?.dispose());
+    unawaited(_voiceService.stop());
     _clearVideoController();
     _selectedPreviewController?.dispose();
     super.dispose();

@@ -1,13 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:get/get_core/src/get_main.dart';
-import 'package:get/get_navigation/src/extension_navigation.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_detection_panel.dart';
 import 'package:trffic_ilght_app/features/video_detection/presentation/controllers/video_inference_controller.dart';
 import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/full_screen_video.dart';
 import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/video_result_section.dart';
-
-export 'package:trffic_ilght_app/features/video_detection/presentation/controllers/video_inference_controller.dart'
-    show createVideoYolo;
 
 /// Screen widget for Video Detection UI.
 /// Contains pure UI rendering and delegates business logic to [VideoInferenceController].
@@ -31,13 +26,12 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
 
   void _onControllerNotification() {
     if (!mounted) return;
-    final message = _controller.snackBarMessage;
-    if (message != null) {
+    if (_controller.snackBarMessage != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+        SnackBar(content: Text(_controller.snackBarMessage!)),
       );
-      _controller.clearSnackBarMessage();
     }
+    setState(() {});
   }
 
   @override
@@ -50,9 +44,14 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
   void _openFullScreen() {
     if (_controller.videoController == null) return;
 
-    Get.to(
-      () => FullScreenVideoPage(controller: _controller.videoController!),
-    )?.then((_) {
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FullScreenVideoPage(
+          controller: _controller.videoController!,
+        ),
+      ),
+    ).then((_) {
       if (mounted) setState(() {});
     });
   }
@@ -151,8 +150,10 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                           controller: _controller.videoController!,
                           detections: _controller.currentFrameDetections,
                           detectedNumber: _controller.currentDetectedNumber,
+                          isVoiceEnabled: _controller.isVoiceEnabled,
                           onOpenFullScreen: _openFullScreen,
                           onTogglePlayPause: _controller.togglePlayPause,
+                          onToggleVoice: _controller.toggleVoice,
                           onPickNewVideo: _controller.pickVideo,
                         ),
                       ] else if (_controller.isProcessing) ...[
@@ -176,6 +177,8 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                         formalNames: _controller.currentFormalNames,
                         alertMessages: _controller.currentAlertMessages,
                         detectedNumber: _controller.currentDetectedNumber,
+                        driverSignalResult:
+                            _controller.currentDriverSignalResult,
                         isLandscape: isLandscape,
                         isPipelineStale:
                             !_controller.isProcessing &&

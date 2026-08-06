@@ -4,6 +4,8 @@ import 'package:trffic_ilght_app/core/utils/thai_number_helper.dart';
 import 'package:trffic_ilght_app/core/services/voice/detection_announcement_gate.dart';
 
 class TrafficVoiceService {
+  static const double minVoiceConfidence = 0.40;
+
   final FlutterTts _tts = FlutterTts();
 
   DateTime _lastSpeakTime = DateTime.now();
@@ -11,22 +13,71 @@ class TrafficVoiceService {
       DetectionAnnouncementGate();
 
   bool _isEnabled = true;
+  bool _isSpeaking = false;
+  String? _lastSpokenMessage;
+
+  double _volume = 1.0;
+  double _speed = 0.5;
+  double _pitch = 1.0;
 
   TrafficVoiceService() {
     _initTts();
   }
 
   Future<void> _initTts() async {
+    await reloadSettings();
+
     await _tts.setLanguage("th-TH");
-    await _tts.setSpeechRate(0.6);
-    await _tts.setPitch(1.0);
+    await _tts.setSpeechRate(_speed);
+    await _tts.setPitch(_pitch);
+    await _tts.setVolume(_volume);
     await _tts.awaitSpeakCompletion(true);
+
+    try {
+      await _tts.setIosAudioCategory(
+        IosTextToSpeechAudioCategory.playback,
+        [
+          IosTextToSpeechAudioCategoryOptions.defaultToSpeaker,
+          IosTextToSpeechAudioCategoryOptions.mixWithOthers,
+        ],
+      );
+    } catch (_) {}
+
+    _tts.setStartHandler(() {
+      _isSpeaking = true;
+    });
+
+    _tts.setCompletionHandler(() {
+      _isSpeaking = false;
+    });
+
+    _tts.setCancelHandler(() {
+      _isSpeaking = false;
+    });
+
+    _tts.setErrorHandler((_) {
+      _isSpeaking = false;
+    });
   }
 
-  void setEnabled(bool value) {
+  Future<void> reloadSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _isEnabled = prefs.getBool('isVoiceEnabled') ?? true;
+      _volume = prefs.getDouble('ttsVolume') ?? 1.0;
+      _speed = prefs.getDouble('ttsSpeed') ?? 0.5;
+      _pitch = prefs.getDouble('ttsPitch') ?? 1.0;
+    } catch (_) {}
+  }
+
+  Future<void> setEnabled(bool value) async {
     _isEnabled = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isVoiceEnabled', value);
+    } catch (_) {}
     if (!value) {
-      _tts.stop();
+      await stop();
     }
   }
 
@@ -36,27 +87,37 @@ class TrafficVoiceService {
     if (!_isEnabled) return;
     if (message.isEmpty) return;
 
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final double volume = prefs.getDouble('ttsVolume') ?? 1.0;
-      final double speed = prefs.getDouble('ttsSpeed') ?? 0.6;
-      final double pitch = prefs.getDouble('ttsPitch') ?? 1.0;
+    // ป้องกันไม่ให้ส่งคำสั่งซ้ำกรณีที่กำลังออกเสียงข้อความเดียวกัน
+    if (_isSpeaking && _lastSpokenMessage == message) {
+      return;
+    }
 
-      await _tts.setVolume(volume);
-      await _tts.setSpeechRate(speed);
-      await _tts.setPitch(pitch);
+    // หากกำลังออกเสียงข้อความอื่นอยู่ ให้รออย่างน้อย 1.5 วินาที ก่อนขัดจังหวะ
+    if (_isSpeaking &&
+        DateTime.now().difference(_lastSpeakTime).inMilliseconds < 1500) {
+      return;
+    }
+
+    try {
+      await _tts.setVolume(_volume);
+      await _tts.setSpeechRate(_speed);
+      await _tts.setPitch(_pitch);
     } catch (_) {}
 
     _lastSpeakTime = DateTime.now();
-    await _tts.stop();
-    await _tts.speak(message);
+    _lastSpokenMessage = message;
+    _isSpeaking = true;
+
+    try {
+      await _tts.stop();
+      await _tts.speak(message);
+    } catch (_) {
+      _isSpeaking = false;
+    }
   }
 
   Future<void> speakNumber(String number, {String? activeLightClass}) async {
     if (!_isEnabled) return;
-    final prefs = await SharedPreferences.getInstance();
-    final isVoiceEnabled = prefs.getBool('isVoiceEnabled') ?? true;
-    if (!isVoiceEnabled) return;
 
     final int? val = int.tryParse(number);
     if (val == null) return;
@@ -79,19 +140,16 @@ class TrafficVoiceService {
     bool announceImmediately = false,
   }) async {
     if (!_isEnabled) return;
-    if (confidence < 0.40) return;
+    if (confidence < minVoiceConfidence) return;
 
-    // หากพูด "เตรียมตัวไป" แล้ว ไม่ต้องร้องเตือน "ไฟแดง หยุดรถ" หรือสัญญาณไฟอีกในรอบนี้
+    // หากพูด "เตรียมตัวไป" แล้ว ไม่ต้องร้องเตือนอีกในรอบนี้
     if (hasSpokenGetReady) return;
 
-    final prefs = await SharedPreferences.getInstance();
-    final isVoiceEnabled = prefs.getBool('isVoiceEnabled') ?? true;
-    if (!isVoiceEnabled) return;
     final String message = getThaiMessage(className);
     if (message.isEmpty) return;
 
     final now = DateTime.now();
-    // ถ้ามี sign_number อยู่ในภาพเดียวกัน ขยาย cooldown เสียงเตือนไฟจราจรจาก 3 วินาที เป็น 8 วินาที เพื่อไม่ให้พูดถี่เกินไป
+    // ถ้ามี sign_number อยู่ในภาพเดียวกัน ขยาย cooldown เสียงเตือนไฟจราจรจาก 3 วินาที เป็น 8 วินาที
     final cooldown = isSignActive ? 8 : 3;
     if (!announceImmediately &&
         now.difference(_lastSpeakTime).inSeconds < cooldown) {
@@ -169,6 +227,8 @@ class TrafficVoiceService {
   }
 
   Future<void> stop() async {
+    _isSpeaking = false;
+    _lastSpokenMessage = null;
     await _tts.stop();
   }
 }

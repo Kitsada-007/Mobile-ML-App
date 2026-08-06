@@ -327,6 +327,7 @@ class CameraInferenceController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // รับ output model
   Future<void> onStreamingData(Map<String, dynamic> data) {
     if (_isDisposed || !_isCameraEnabled) return Future.value();
 

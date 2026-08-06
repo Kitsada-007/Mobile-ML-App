@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:trffic_ilght_app/core/services/inference/signal_interpreter.dart';
 import 'package:trffic_ilght_app/core/utils/thai_number_helper.dart';
 
-/// Live traffic-sign results displayed below the camera preview.
+/// Live traffic-sign results displayed below the camera/video preview.
 class CameraDetectionPanel extends StatelessWidget {
   const CameraDetectionPanel({
     super.key,
@@ -9,6 +10,7 @@ class CameraDetectionPanel extends StatelessWidget {
     required this.alertMessages,
     required this.detectedNumber,
     required this.isLandscape,
+    this.driverSignalResult,
     this.isPipelineStale = true,
     this.statusText = 'กำลังตรวจจับ',
     this.lastDetectionConfidence,
@@ -18,6 +20,7 @@ class CameraDetectionPanel extends StatelessWidget {
   final List<String> alertMessages;
   final String? detectedNumber;
   final bool isLandscape;
+  final DriverSignalResult? driverSignalResult;
   final bool isPipelineStale;
   final String statusText;
   final double? lastDetectionConfidence;
@@ -26,6 +29,8 @@ class CameraDetectionPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final countdown = int.tryParse(detectedNumber ?? '');
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final hasDriverMessage = driverSignalResult != null &&
+        driverSignalResult!.message.isNotEmpty;
 
     return DecoratedBox(
       key: const Key('cameraDetectionPanel'),
@@ -73,31 +78,126 @@ class CameraDetectionPanel extends StatelessWidget {
                   _CountdownBadge(countdown: countdown),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: formalNames.isEmpty
-                        ? const _ScanningMessage()
-                        : Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              for (
-                                var index = 0;
-                                index < formalNames.length;
-                                index++
-                              )
-                                _DetectionMessage(
-                                  className: formalNames[index],
-                                  alertMessage: index < alertMessages.length
-                                      ? alertMessages[index]
-                                      : '',
-                                  detectedNumber: detectedNumber,
-                                ),
-                            ],
-                          ),
+                    child: hasDriverMessage
+                        ? _DriverSignalMessage(result: driverSignalResult!)
+                        : formalNames.isEmpty
+                            ? const _ScanningMessage()
+                            : Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  for (
+                                    var index = 0;
+                                    index < formalNames.length;
+                                    index++
+                                  )
+                                    _DetectionMessage(
+                                      className: formalNames[index],
+                                      alertMessage:
+                                          index < alertMessages.length
+                                              ? alertMessages[index]
+                                              : '',
+                                      detectedNumber: detectedNumber,
+                                    ),
+                                ],
+                              ),
                   ),
                 ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _DriverSignalMessage extends StatelessWidget {
+  const _DriverSignalMessage({required this.result});
+
+  final DriverSignalResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final (barColor, actionIcon, actionLabel) = switch (result.action) {
+      SignalAction.go => (
+        const Color(0xFF34C759),
+        Icons.check_circle_rounded,
+        'ไปได้',
+      ),
+      SignalAction.stop => (
+        const Color(0xFFFF3B30),
+        Icons.back_hand_rounded,
+        'หยุดรอ',
+      ),
+      SignalAction.caution => (
+        const Color(0xFFFF9500),
+        Icons.warning_amber_rounded,
+        'ระวัง',
+      ),
+      SignalAction.none => (
+        Colors.grey,
+        Icons.info_outline_rounded,
+        '',
+      ),
+    };
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            width: 5,
+            decoration: BoxDecoration(
+              color: barColor,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                result.message,
+                style: TextStyle(
+                  color: colorScheme.onSurface,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  height: 1.3,
+                ),
+              ),
+            ),
+          ),
+          if (actionLabel.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: barColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: barColor.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(actionIcon, size: 16, color: barColor),
+                    const SizedBox(width: 4),
+                    Text(
+                      actionLabel,
+                      style: TextStyle(
+                        color: barColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -246,6 +346,7 @@ class _CountdownBadge extends StatelessWidget {
       child: Container(
         width: 86,
         height: 86,
+        padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
           color: const Color(0xFFFFEEEE),
           borderRadius: BorderRadius.circular(18),
@@ -254,24 +355,31 @@ class _CountdownBadge extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(
-              countdown?.toString() ?? 'X',
-              maxLines: 1,
-              style: const TextStyle(
-                color: Color(0xFFE63D3D),
-                fontSize: 38,
-                height: 0.95,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -1.5,
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                countdown?.toString() ?? 'X',
+                maxLines: 1,
+                style: const TextStyle(
+                  color: Color(0xFFE63D3D),
+                  fontSize: 36,
+                  height: 1.0,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -1.5,
+                ),
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              countdown == null ? 'ไม่พบตัวเลข' : 'วินาที',
-              style: const TextStyle(
-                color: Color(0xFF9F3A3A),
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
+            const SizedBox(height: 2),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                countdown == null ? 'ไม่พบตัวเลข' : 'วินาที',
+                maxLines: 1,
+                style: const TextStyle(
+                  color: Color(0xFF9F3A3A),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
           ],

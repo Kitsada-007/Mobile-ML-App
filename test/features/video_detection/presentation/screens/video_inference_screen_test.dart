@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:trffic_ilght_app/features/video_detection/presentation/screens/video_inference_screen.dart';
+import 'package:trffic_ilght_app/features/video_detection/presentation/controllers/video_inference_controller.dart';
 
 void main() {
   test('video traffic and number models use separate native instances', () {

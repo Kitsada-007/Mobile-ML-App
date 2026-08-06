@@ -7,8 +7,10 @@ class ResultVideoSection extends StatelessWidget {
   final VideoPlayerController controller;
   final List<YOLOResult> detections;
   final String? detectedNumber;
+  final bool isVoiceEnabled;
   final VoidCallback onOpenFullScreen;
   final VoidCallback onTogglePlayPause;
+  final VoidCallback? onToggleVoice;
   final VoidCallback? onPickNewVideo;
 
   const ResultVideoSection({
@@ -16,8 +18,10 @@ class ResultVideoSection extends StatelessWidget {
     required this.controller,
     this.detections = const [],
     this.detectedNumber,
+    this.isVoiceEnabled = true,
     required this.onOpenFullScreen,
     required this.onTogglePlayPause,
+    this.onToggleVoice,
     this.onPickNewVideo,
   });
 
@@ -48,10 +52,7 @@ class ResultVideoSection extends StatelessWidget {
             fit: StackFit.expand,
             alignment: Alignment.bottomCenter,
             children: [
-              Container(
-                color: Colors.black,
-                child: VideoPlayer(controller),
-              ),
+              Container(color: Colors.black, child: VideoPlayer(controller)),
               // Real-time Bounding Box Overlay
               Positioned.fill(
                 child: VideoBoundingBoxOverlay(
@@ -80,10 +81,11 @@ class ResultVideoSection extends StatelessWidget {
                 left: 14,
                 child: _VideoLiveBadge(
                   isPlaying: controller.value.isPlaying,
-                  hasDetections: detections.isNotEmpty || detectedNumber != null,
+                  hasDetections:
+                      detections.isNotEmpty || detectedNumber != null,
                 ),
               ),
-              // Action Controls (Play/Pause, Fullscreen, Change Video)
+              // Action Controls (Play/Pause, Sound Toggle, Fullscreen, Change Video)
               Positioned(
                 top: 10,
                 right: 10,
@@ -105,9 +107,28 @@ class ResultVideoSection extends StatelessWidget {
                       ),
                       onPressed: onTogglePlayPause,
                     ),
-                    const SizedBox(width: 8),
+                    if (onToggleVoice != null) ...[
+                      const SizedBox(width: 8),
+                      IconButton.filled(
+                        tooltip: isVoiceEnabled
+                            ? 'ปิดเสียงการแจ้งเตือน'
+                            : 'เปิดเสียงการแจ้งเตือน',
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.black54,
+                          foregroundColor: isVoiceEnabled
+                              ? const Color(0xFF34C759)
+                              : Colors.white60,
+                        ),
+                        icon: Icon(
+                          isVoiceEnabled
+                              ? Icons.volume_up_rounded
+                              : Icons.volume_off_rounded,
+                        ),
+                        onPressed: onToggleVoice,
+                      ),
+                    ],
                     IconButton.filled(
-                      tooltip: 'เต็มจอ',
+                      tooltip: 'แสดงเต็มจอ',
                       style: IconButton.styleFrom(
                         backgroundColor: Colors.black54,
                         foregroundColor: Colors.white,
@@ -139,10 +160,7 @@ class ResultVideoSection extends StatelessWidget {
 }
 
 class _VideoLiveBadge extends StatelessWidget {
-  const _VideoLiveBadge({
-    required this.isPlaying,
-    required this.hasDetections,
-  });
+  const _VideoLiveBadge({required this.isPlaying, required this.hasDetections});
 
   final bool isPlaying;
   final bool hasDetections;
@@ -164,7 +182,9 @@ class _VideoLiveBadge extends StatelessWidget {
               width: 9,
               height: 9,
               decoration: BoxDecoration(
-                color: isPlaying ? const Color(0xFF34C759) : Colors.orangeAccent,
+                color: isPlaying
+                    ? const Color(0xFF34C759)
+                    : Colors.orangeAccent,
                 shape: BoxShape.circle,
               ),
             ),
@@ -173,8 +193,8 @@ class _VideoLiveBadge extends StatelessWidget {
               hasDetections
                   ? 'ตรวจจับแล้ว'
                   : isPlaying
-                      ? 'กำลังตรวจจับ'
-                      : 'พักวิดีโอ',
+                  ? 'กำลังตรวจจับ'
+                  : 'พักวิดีโอ',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 13,

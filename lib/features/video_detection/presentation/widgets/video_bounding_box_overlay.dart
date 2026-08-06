@@ -28,8 +28,8 @@ class VideoBoundingBoxOverlay extends StatelessWidget {
         ),
         if (detectedNumber != null && detectedNumber!.isNotEmpty)
           Positioned(
-            top: 12,
-            right: 12,
+            bottom: 16,
+            left: 14,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(

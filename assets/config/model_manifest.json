@@ -4,11 +4,11 @@
     "minimumAppVersion": "1.1.2",
     "models": {
       "traffic": {
-        "version": "1.2.0",
-        "fileName": "traffic_model_v1_2_0.tflite",
-        "url": "https://github.com/Kitsada-007/Mobile-ML-App/releases/download/model-v1.2.0/traffic_model_v1_2_0.tflite",
-        "sha256": "5cfc735324e56af2e51e15dc08788531d7a8b7c329b1f7ac5118b7dd85817999",
-        "sizeBytes": 5370617
+        "version": "1.2.1",
+        "fileName": "traffic_model_v1_2_1.tflite",
+        "url": "https://github.com/Kitsada-007/Mobile-ML-App/releases/download/model-v1.2.1/traffic_model_v1_2_1.tflite",
+        "sha256": "ed1f3771d7bf640e6a4dd1668da658275400570664549aece89cdcac8b3f1a1c",
+        "sizeBytes": 10635628
       },
       "number": {
         "version": "1.2.1",
