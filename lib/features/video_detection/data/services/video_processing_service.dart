@@ -16,24 +16,7 @@ import 'package:ultralytics_yolo/yolo.dart';
 // VideoInferenceController เป็นผู้เรียกใช้ตีความแบบ real-time ต่อเฟรมเอง
 // (ผ่าน TrafficVoiceService ที่มีทั้ง formal name และ alert message)
 // service ชั้นนี้มีหน้าที่แค่ extract + predict + stabilize เลขนับถอยหลัง
-// แล้วส่ง raw detections กลับไปให้ controller ตีความเท่านั้น
-
-// =============================================================================
-// HELPER FUNCTIONS
-// =============================================================================
-
-/// คำนวณช่วงห่างของเฟรมที่ต้องสุ่ม (sampling interval)
-/// จากค่า FPS ของวิดีโอต้นฉบับ และจำนวนครั้งที่ต้องการตรวจต่อวินาที
-/// เช่น sourceFps=30, targetChecksPerSecond=4 -> interval = 30/4 ≈ 8 (ตรวจทุก 8 เฟรม)
-int calculateSampleInterval({
-  required int sourceFps,
-  required int targetChecksPerSecond,
-}) {
-  if (sourceFps <= 0 || targetChecksPerSecond <= 0) return 1; // กันหารด้วยศูนย์
-  final interval = (sourceFps / targetChecksPerSecond).round();
-  return interval > 0 ? interval : 1; // อย่างน้อย 1 (ตรวจทุกเฟรม)
-}
-
+// แล้วส่ง raw detections กลับไปให้ controller ตีความเท่านั้
 // =============================================================================
 // DATA MODELS
 // =============================================================================
@@ -48,14 +31,13 @@ class FrameAnalysisResult {
 }
 
 /// Result data from realtime video processing pipeline.
-/// รวมผลลัพธ์ทั้งหมดของการประมวลผลวิดีโอ 1 ไฟล์
 class VideoProcessingResult {
   const VideoProcessingResult({
-    required this.finalVideoPath, // path วิดีโอผลลัพธ์ (annotate แล้ว)
-    required this.frameResults, // ผลรายเฟรม (key = index เฟรม)
-    required this.detectedClasses, // ชุดคลาสที่ตรวจพบทั้งไฟล์
-    required this.detectedNumbers, // ชุดตัวเลขนับถอยหลังที่พบทั้งไฟล์
-    this.targetFps = 5, // อัตราตรวจจับต่อวินาทีที่ใช้จริง
+    required this.finalVideoPath,
+    required this.frameResults,
+    required this.detectedClasses,
+    required this.detectedNumbers,
+    this.targetFps = 5,
   });
 
   final String finalVideoPath;
@@ -80,6 +62,7 @@ class VideoProcessingService {
     required CountdownReadingStabilizer countdownStabilizer,
     required void Function(double progressValue, String progressText)
     onProgress,
+    bool Function()? isCancelled,
     // targetFps คือจำนวนครั้งที่ต้องการตรวจจับต่อวินาทีจริง ๆ
     // (ไม่ใช่ fps ของวิดีโอต้นฉบับ) — ffmpeg extract ที่ค่านี้ตรง ๆ เลย
     // ไม่มีชั้น sampling ซ้อนอีกชั้นเหมือนเวอร์ชันก่อนหน้า
@@ -94,6 +77,7 @@ class VideoProcessingService {
     log(directory.toString());
     final detectedClasses = <String>{};
     final detectedNumbers = <String>{};
+
     final frameResults = <int, FrameAnalysisResult>{};
 
     final inputDir = Directory(inputFolder);
@@ -116,6 +100,11 @@ class VideoProcessingService {
 
       final extractSession = await FFmpegKit.execute(extractCmd);
       final extractReturnCode = await extractSession.getReturnCode();
+
+      if (isCancelled?.call() == true) {
+        debugPrint('Video processing cancelled during frame extraction.');
+        throw Exception('Video processing cancelled.');
+      }
 
       if (!ReturnCode.isSuccess(extractReturnCode)) {
         throw Exception('Failed to extract frames from video.');
@@ -145,6 +134,10 @@ class VideoProcessingService {
 
       int currentFrame = 0;
       for (final fileEntity in frameFiles) {
+        if (isCancelled?.call() == true) {
+          debugPrint('Video processing cancelled at frame $currentFrame.');
+          break;
+        }
         if (fileEntity is! File) continue;
 
         final displayFrame = currentFrame + 1;
@@ -174,6 +167,7 @@ class VideoProcessingService {
             lastAcceptedNumber = stabilizedNumber;
             holdFrameCount = maxHoldFrames;
             finalNumber = stabilizedNumber;
+            log(stabilizedNumber.toString());
             detectedNumbers.add(stabilizedNumber);
           } else if (holdFrameCount > 0 && lastAcceptedNumber != null) {
             holdFrameCount--;

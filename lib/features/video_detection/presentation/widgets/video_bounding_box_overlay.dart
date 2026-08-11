@@ -6,64 +6,19 @@ class VideoBoundingBoxOverlay extends StatelessWidget {
   const VideoBoundingBoxOverlay({
     super.key,
     required this.detections,
-    this.detectedNumber,
     required this.videoSize,
   });
 
   final List<YOLOResult> detections; // ผลการตรวจจับของเฟรมปัจจุบัน
-  final String? detectedNumber; // ตัวเลขนับถอยหลังที่ตรวจจับได้ (ถ้ามี)
   final Size videoSize; // ขนาดของวิดีโอ (ใช้แปลงพิกัด)
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // ชั้นที่ 1: วาดกล่อง bounding box ด้วย CustomPaint
-        Positioned.fill(
-          child: CustomPaint(
-            painter: _BoundingBoxPainter(
-              detections: detections,
-              videoSize: videoSize,
-            ),
-          ),
-        ),
-        // ชั้นที่ 2: แสดงป้าย "ถอยหลัง: <เลข>" ที่มุมล่างซ้าย ถ้ามีตัวเลข
-        if (detectedNumber != null && detectedNumber!.isNotEmpty)
-          Positioned(
-            bottom: 16,
-            left: 14,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xB3000000), // พื้นดำโปร่งแสง
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: const Color(0xFF16A05D),
-                  width: 2,
-                ), // กรอบสีเขียว
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.timer_outlined,
-                    color: Color(0xFF16A05D),
-                    size: 20,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'ถอยหลัง: $detectedNumber',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-      ],
+    return CustomPaint(
+      painter: _BoundingBoxPainter(
+        detections: detections,
+        videoSize: videoSize,
+      ),
     );
   }
 }

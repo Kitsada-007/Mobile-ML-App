@@ -126,8 +126,6 @@ class TrafficVoiceService {
         return "ระวัง สัญญาณไฟเสีย";
       case 'red_light_circle':
         return "ไฟแดง หยุดรถ";
-      case 'sign_number':
-        return "พบสัญญาณไฟนับถอยหลัง";
       case 'turn_left':
         return "เลี้ยวซ้ายได้";
       case 'turn_right':

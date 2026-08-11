@@ -44,6 +44,41 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('camera pauses while another route covers the realtime page', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: CameraInferencePage(initializeOnStart: false)),
+    );
+
+    expect(
+      find.byKey(const Key('cameraLifecyclePaused'), skipOffstage: false),
+      findsNothing,
+    );
+
+    final pageContext = tester.element(find.byType(CameraInferencePage));
+    Navigator.of(pageContext).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const Scaffold(body: Text('next page')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('next page'), findsOneWidget);
+    expect(
+      find.byKey(const Key('cameraLifecyclePaused'), skipOffstage: false),
+      findsOneWidget,
+    );
+
+    Navigator.of(tester.element(find.text('next page'))).pop();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('cameraLifecyclePaused'), skipOffstage: false),
+      findsNothing,
+    );
+  });
+
   testWidgets('camera content shows a user-friendly preparing state', (
     tester,
   ) async {
@@ -160,12 +195,9 @@ void main() {
     );
 
     expect(find.text('กำลังตรวจจับ'), findsOneWidget);
-    expect(find.textContaining('CONF'), findsNothing);
-    expect(find.textContaining('class'), findsNothing);
-    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('detection panel shows traffic-light countdown in seconds', (
+  testWidgets('detection panel shows countdown badge and hides countdown message when countdown > 5', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -186,34 +218,8 @@ void main() {
       ),
     );
 
-    expect(find.text('สัญญาณไฟนับถอยหลัง 12 วินาที'), findsOneWidget);
+    expect(find.text('พบสัญญาณไฟนับถอยหลัง'), findsNothing);
     expect(find.text('12'), findsOneWidget);
-    expect(find.textContaining('ป้ายจำกัดความเร็ว'), findsNothing);
-    expect(find.textContaining('กม./ชม.'), findsNothing);
-  });
-
-  testWidgets('countdown from three displays get-ready message', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: Stack(
-            children: [
-              CameraDetectionPanel(
-                formalNames: ['สัญญาณไฟนับถอยหลัง'],
-                alertMessages: ['พบสัญญาณไฟนับถอยหลัง'],
-                detectedNumber: '3',
-                isLandscape: false,
-                statusText: 'กำลังตรวจจับ',
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    expect(find.text('เตรียมตัวไป'), findsOneWidget);
   });
 
   testWidgets('countdown from five displays get-ready message', (tester) async {

@@ -124,28 +124,12 @@ class _AppDrawer extends StatelessWidget {
               onTap: () => Navigator.of(context).pop(),
             ),
             // ---------- เมนู: Single Image Test (ทดสอบตรวจจับภาพเดียว - Developer tool) ----------
-            ListTile(
-              leading: const Icon(Icons.image_search_rounded),
-              title: const Text('Single Image Test'),
-              subtitle: const Text('Developer test tool'),
-              iconColor: Colors.white70,
-              textColor: Colors.white,
-              subtitleTextStyle: const TextStyle(color: Colors.white38),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-              onTap: () {
-                // เก็บ navigator ไว้ก่อน เพื่อให้ pop (ปิด Drawer) แล้วค่อย push หน้าใหม่ไปแทน
-                final navigator = Navigator.of(context);
-                navigator.pop(); // ปิด Drawer ก่อน
-                navigator.push(
-                  AppRoutes.imageDetection(),
-                ); // ไปยังหน้า Single Image Test
-              },
-            ),
+
             // ---------- เมนู: Video Test (ทดสอบตรวจจับวิดีโอ - Developer tool) ----------
             ListTile(
               leading: const Icon(Icons.video_file_rounded),
-              title: const Text('Video Test'),
-              subtitle: const Text('Developer test tool'),
+              title: const Text('Video Detection'),
+
               iconColor: Colors.white70,
               textColor: Colors.white,
               subtitleTextStyle: const TextStyle(color: Colors.white38),
@@ -185,7 +169,7 @@ class _AppDrawer extends StatelessWidget {
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Detection system ready',
+                      'Detection system',
                       maxLines: 1,
                       overflow: TextOverflow
                           .ellipsis, // ถ้าเกินความกว้างให้ตัดด้วย ...

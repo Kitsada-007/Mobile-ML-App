@@ -68,5 +68,14 @@ void main() {
       controller.toggleVoice();
       expect(controller.isVoiceEnabled, true);
     });
+
+    test('clears snackBarMessage when clearSnackBarMessage is called', () {
+      final controller = VideoInferenceController(
+        voiceService: FakeTrafficVoiceService(),
+      );
+      controller.clearSnackBarMessage();
+      expect(controller.snackBarMessage, isNull);
+    });
   });
 }
+

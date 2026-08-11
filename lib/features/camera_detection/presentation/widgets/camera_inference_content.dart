@@ -33,6 +33,7 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
   bool _isModelLoading = false; // กำลังโหลดโมเดลไหม
   String _loadingMessage = ''; // ข้อความโหลด
   double _downloadProgress = 0; // ความคืบหน้าการโหลด
+  bool _isCameraActive = true;
 
   @override
   void initState() {
@@ -59,6 +60,7 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
     _isModelLoading = widget.controller.isModelLoading;
     _loadingMessage = widget.controller.loadingMessage;
     _downloadProgress = widget.controller.downloadProgress;
+    _isCameraActive = widget.controller.isCameraActive;
   }
 
   /// เมื่อ controller แจ้งเตือน: rebuild เฉพาะเมื่อสถานะโหลดโมเดลเปลี่ยน
@@ -68,12 +70,14 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
     final nextIsModelLoading = widget.controller.isModelLoading;
     final nextLoadingMessage = widget.controller.loadingMessage;
     final nextDownloadProgress = widget.controller.downloadProgress;
+    final nextIsCameraActive = widget.controller.isCameraActive;
     // ถ้าไม่มีอะไรเปลี่ยน -> ไม่ต้อง rebuild (กันสะดุ้ง)
     if (nextModelPath == _modelPath &&
         nextTask == _task &&
         nextIsModelLoading == _isModelLoading &&
         nextLoadingMessage == _loadingMessage &&
-        nextDownloadProgress == _downloadProgress) {
+        nextDownloadProgress == _downloadProgress &&
+        nextIsCameraActive == _isCameraActive) {
       return;
     }
 
@@ -83,6 +87,7 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
       _isModelLoading = nextIsModelLoading;
       _loadingMessage = nextLoadingMessage;
       _downloadProgress = nextDownloadProgress;
+      _isCameraActive = nextIsCameraActive;
     });
   }
 
@@ -97,19 +102,27 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
     final modelPath = _modelPath;
     final controller = widget.controller;
 
-    // 1. เพิ่มเงื่อนไข: หากกล้องปิดอยู่ ให้แสดงหน้าจอสีดำ/Placeholder แทนการ Render YOLOView
-    if (!controller.isCameraEnabled) {
+    // ไม่สร้าง YOLOView ขณะ route/app ถูกพัก เพื่อให้ native camera ถูกปล่อยจริง
+    if (!_isCameraActive) {
+      final isLifecyclePaused = controller.isCameraEnabled;
       return Container(
+        key: Key(
+          isLifecyclePaused ? 'cameraLifecyclePaused' : 'cameraDisabled',
+        ),
         color: Colors.black,
-        child: const Center(
+        child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.videocam_off_rounded, color: Colors.white54, size: 48),
-              SizedBox(height: 12),
+              const Icon(
+                Icons.videocam_off_rounded,
+                color: Colors.white54,
+                size: 48,
+              ),
+              const SizedBox(height: 12),
               Text(
-                'กล้องปิดอยู่',
-                style: TextStyle(
+                isLifecyclePaused ? 'กล้องหยุดชั่วคราว' : 'กล้องปิดอยู่',
+                style: const TextStyle(
                   color: Colors.white54,
                   fontSize: 16,
                   fontWeight: FontWeight.bold,

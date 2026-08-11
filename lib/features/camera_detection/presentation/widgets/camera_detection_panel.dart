@@ -37,6 +37,12 @@ class CameraDetectionPanel extends StatelessWidget {
         driverSignalResult != null &&
         driverSignalResult!.message.isNotEmpty; // มีข้อความคำสั่งคนขับไหม
 
+    final displayItems = _buildDisplayItems(
+      formalNames: formalNames,
+      alertMessages: alertMessages,
+      countdown: countdown,
+    );
+
     return DecoratedBox(
       key: const Key('cameraDetectionPanel'),
       decoration: BoxDecoration(
@@ -90,23 +96,16 @@ class CameraDetectionPanel extends StatelessWidget {
                     child: hasDriverMessage
                         // มีคำสั่งคนขับ -> แสดงข้อความจาก SignalInterpreter
                         ? _DriverSignalMessage(result: driverSignalResult!)
-                        : formalNames.isEmpty
+                        : displayItems.isEmpty
                         ? const _ScanningMessage() // ยังไม่มีอะไร -> กำลังสแกน
                         : Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               // แสดงข้อความตรวจจับทุกคลาสที่พบ
-                              for (
-                                var index = 0;
-                                index < formalNames.length;
-                                index++
-                              )
+                              for (final item in displayItems)
                                 _DetectionMessage(
-                                  className: formalNames[index],
-                                  alertMessage: index < alertMessages.length
-                                      ? alertMessages[index]
-                                      : '',
-                                  detectedNumber: detectedNumber,
+                                  className: item.$1,
+                                  alertMessage: item.$2,
                                 ),
                             ],
                           ),
@@ -456,27 +455,15 @@ class _DetectionMessage extends StatelessWidget {
   const _DetectionMessage({
     required this.className, // ชื่อภาษาไทยของคลาส
     required this.alertMessage, // ข้อความแจ้งเตือน
-    required this.detectedNumber, // ตัวเลข (สำหรับกรณีสัญญาณนับถอยหลัง)
   });
 
   final String className;
   final String alertMessage;
-  final String? detectedNumber;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final countdown = int.tryParse(detectedNumber ?? '');
-    // กรณีเป็นสัญญาณนับถอยหลังที่มีตัวเลข -> แปลงข้อความเป็น "เตรียมตัวไป" หรือบอกวินาที
-    final isCountdownSignal =
-        className == 'สัญญาณไฟนับถอยหลัง' && countdown != null;
-    final message = isCountdownSignal
-        ? shouldPrepareToGo(countdown)
-              ? 'เตรียมตัวไป'
-              : 'สัญญาณไฟนับถอยหลัง $countdown วินาที'
-        : alertMessage.isNotEmpty
-        ? alertMessage
-        : className;
+    final message = alertMessage.isNotEmpty ? alertMessage : className;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -524,4 +511,27 @@ class _DetectionMessage extends StatelessWidget {
     }
     return Colors.blueAccent;
   }
+}
+
+List<(String className, String alertMessage)> _buildDisplayItems({
+  required List<String> formalNames,
+  required List<String> alertMessages,
+  required int? countdown,
+}) {
+  final displayItems = <(String className, String alertMessage)>[];
+  for (var index = 0; index < formalNames.length; index++) {
+    final name = formalNames[index];
+    final alert = index < alertMessages.length ? alertMessages[index] : '';
+    final isCountdownSignal =
+        name == 'สัญญาณไฟนับถอยหลัง' || name == 'sign_number';
+
+    if (isCountdownSignal) {
+      if (countdown != null && shouldPrepareToGo(countdown)) {
+        displayItems.add((name, 'เตรียมตัวไป'));
+      }
+    } else {
+      displayItems.add((name, alert));
+    }
+  }
+  return displayItems;
 }

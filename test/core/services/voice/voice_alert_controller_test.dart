@@ -72,6 +72,20 @@ void main() {
     expect(spoken, ['red_light_circle', 'red_light_circle']);
   });
 
+  test('never announces the sign_number ROI class', () async {
+    final spoken = <String>[];
+    final controller = VoiceAlertController(
+      speakClassName: (className) async => spoken.add(className),
+    );
+
+    final selected = await controller.handleEvents([
+      event('sign_number', DateTime(2026)),
+    ]);
+
+    expect(selected, isNull);
+    expect(spoken, isEmpty);
+  });
+
   test('does not overlap speech and ignores lost events', () async {
     final releaseSpeech = Completer<void>();
     final spoken = <String>[];
@@ -102,4 +116,31 @@ void main() {
     expect(lost, isNull);
     expect(spoken, ['red_light_circle']);
   });
+
+  test(
+    'countdown message cannot overlap a yellow-light announcement',
+    () async {
+      final releaseSpeech = Completer<void>();
+      final spoken = <String>[];
+      final controller = VoiceAlertController(
+        speakClassName: (className) async {
+          spoken.add(className);
+          await releaseSpeech.future;
+        },
+      );
+
+      final yellowSpeech = controller.handleEvents([
+        event('yellow_light', DateTime(2026)),
+      ]);
+      await Future<void>.delayed(Duration.zero);
+      final didSpeakCountdown = await controller.speakMessageIfIdle(() async {
+        spoken.add('countdown');
+      });
+      releaseSpeech.complete();
+      await yellowSpeech;
+
+      expect(didSpeakCountdown, isFalse);
+      expect(spoken, ['yellow_light']);
+    },
+  );
 }

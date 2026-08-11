@@ -1,5 +1,19 @@
-enum DetectionGroup { trafficLight, turnSignal, sign, countdown, other }
+/// กลุ่มของประเภทวัตถุที่ตรวจจับได้ (แยกตามลักษณะการทำงานและการควบคุมเสียงแจ้งเตือน)
+enum DetectionGroup {
+  /// สัญญาณไฟจราจรหลัก (ไฟแดง, ไฟเหลือง, ไฟเขียว, ไฟดับ)
+  trafficLight,
 
+  /// สัญญาณไฟเลี้ยว (เลี้ยวซ้าย, เลี้ยวขวา)
+  turnSignal,
+
+  /// ป้ายจราจรและป้ายบังคับต่างๆ
+  sign,
+
+  /// วัตถุประเภทอื่นๆ
+  other,
+}
+
+/// กฎและเงื่อนไขการกรองความเสถียร (Stabilization Rule) สำหรับวัตถุแต่ละประเภท
 final class DetectionRule {
   const DetectionRule({
     required this.historySize,
@@ -11,16 +25,29 @@ final class DetectionRule {
     this.minimumContinuousDuration,
   });
 
+  /// จำนวนเฟรมย้อนหลังที่ใช้สะสมประวัติผลการตรวจจับ
   final int historySize;
+
+  /// จำนวนโหวตขั้นต่ำที่ต้องได้รับเพื่อให้ถือว่าวัตถุเสถียร (Stable)
   final int requiredVotes;
+
+  /// ระยะเวลาผ่อนผันเมื่อวัตถุหายไปจากเฟรม ก่อนที่จะตัดสินว่าวัตถุหลุดจากจอ (Lost)
   final Duration missingGracePeriod;
+
+  /// ระยะเวลาหน่วง (Cooldown) สำหรับการส่งเสียงแจ้งเตือนซ้ำ
   final Duration voiceCooldown;
+
+  /// ลำดับความสำคัญของวัตถุ (ตัวเลขน้อย = ความสำคัญสูงกว่า)
   final int priority;
+
+  /// จำนวนเฟรมต่อเนื่องขั้นต่ำที่ต้องตรวจเจอ (ใช้สำหรับกรณีพิเศษ เช่น สัญญาณไฟดับ off_light)
   final int? minimumConsecutiveFrames;
+
+  /// ระยะเวลาต่อเนื่องขั้นต่ำที่ต้องตรวจเจอ (ใช้สำหรับกรณีพิเศษ เช่น สัญญาณไฟดับ off_light)
   final Duration? minimumContinuousDuration;
 }
 
-/// รวมค่าคอนฟิก tracking, smoothing และเสียงไว้ที่เดียว
+/// คลาสการตั้งค่าคอนฟิกสำหรับการกรองความเสถียร (Stabilization), การติดตามวัตถุ (Tracking) และเสียงแจ้งเตือน (Voice Alerts)
 final class DetectionAlertConfig {
   const DetectionAlertConfig({
     this.minimumTrackingIou = 0.2,
@@ -39,12 +66,9 @@ final class DetectionAlertConfig {
     this.signRequiredVotes = 3,
     this.signMissingGracePeriod = const Duration(milliseconds: 1500),
     this.signVoiceCooldown = const Duration(seconds: 8),
-    this.countdownHistorySize = 3,
-    this.countdownRequiredVotes = 3,
-    this.countdownMissingGracePeriod = const Duration(milliseconds: 1500),
-    this.countdownVoiceCooldown = const Duration(seconds: 10),
   });
 
+  /// คลาสวัตถุประเภทสัญญาณไฟจราจรหลัก
   static const trafficLightClasses = <String>{
     'red_light_circle',
     'yellow_light',
@@ -52,8 +76,10 @@ final class DetectionAlertConfig {
     'off_light',
   };
 
+  /// คลาสวัตถุประเภทสัญญาณไฟเลี้ยว
   static const turnSignalClasses = <String>{'turn_left', 'turn_right'};
 
+  /// คลาสวัตถุประเภทป้ายจราจรบังคับ
   static const signClasses = <String>{
     'dont_go_straight_arrow',
     'dont_turn_left',
@@ -61,9 +87,16 @@ final class DetectionAlertConfig {
     'go_straight_arrow',
   };
 
+  /// คลาสวัตถุพิเศษที่ใช้สำหรับตัดซูมอ่านตัวเลขเท่านั้น (ROI - Region of Interest) โดยไม่ต้องเข้ากระบวนการโหวตความเสถียร
+  static const roiOnlyClasses = <String>{'sign_number'};
+
+  /// ค่า IoU ขั้นต่ำสำหรับจับคู่วัตถุระหว่างเฟรม (Object Tracking)
   final double minimumTrackingIou;
+
+  /// ค่าความเชื่อมั่นขั้นต่ำ (Confidence Score Threshold) ของการตรวจจับ
   final double minimumConfidence;
 
+  // --- คอนฟิกสัญญาณไฟจราจร (Traffic Light) ---
   final int trafficHistorySize;
   final int trafficRequiredVotes;
   final Duration trafficMissingGracePeriod;
@@ -71,21 +104,19 @@ final class DetectionAlertConfig {
   final int offLightMinimumFrames;
   final Duration offLightMinimumDuration;
 
+  // --- คอนฟิกสัญญาณไฟเลี้ยว (Turn Signal) ---
   final int turnHistorySize;
   final int turnRequiredVotes;
   final Duration turnMissingGracePeriod;
   final Duration turnVoiceCooldown;
 
+  // --- คอนฟิกป้ายจราจร (Traffic Sign) ---
   final int signHistorySize;
   final int signRequiredVotes;
   final Duration signMissingGracePeriod;
   final Duration signVoiceCooldown;
 
-  final int countdownHistorySize;
-  final int countdownRequiredVotes;
-  final Duration countdownMissingGracePeriod;
-  final Duration countdownVoiceCooldown;
-
+  /// หาหมวดหมู่ (DetectionGroup) ของวัตถุตามชื่อคลาส
   DetectionGroup groupFor(String className) {
     if (trafficLightClasses.contains(className)) {
       return DetectionGroup.trafficLight;
@@ -94,10 +125,18 @@ final class DetectionAlertConfig {
       return DetectionGroup.turnSignal;
     }
     if (signClasses.contains(className)) return DetectionGroup.sign;
-    if (className == 'sign_number') return DetectionGroup.countdown;
     return DetectionGroup.other;
   }
 
+  /// ตรวจสอบว่าคลาสนี้เข้าร่วมการประมวลผลความเสถียร (Stable Detection) หรือไม่
+  bool participatesInStableDetection(String className) =>
+      !roiOnlyClasses.contains(className);
+
+  /// ตรวจสอบว่าคลาสนี้ส่งเสียงแจ้งเตือนได้หรือไม่
+  bool participatesInVoiceAlerts(String className) =>
+      participatesInStableDetection(className);
+
+  /// ดึงกฎการประมวลผล (DetectionRule) สำหรับชื่อคลาสที่ระบุ
   DetectionRule ruleFor(String className) {
     return switch (groupFor(className)) {
       DetectionGroup.trafficLight => DetectionRule(
@@ -127,13 +166,6 @@ final class DetectionAlertConfig {
         voiceCooldown: signVoiceCooldown,
         priority: _priorityFor(className),
       ),
-      DetectionGroup.countdown => DetectionRule(
-        historySize: countdownHistorySize,
-        requiredVotes: countdownRequiredVotes,
-        missingGracePeriod: countdownMissingGracePeriod,
-        voiceCooldown: countdownVoiceCooldown,
-        priority: _priorityFor(className),
-      ),
       DetectionGroup.other => DetectionRule(
         historySize: signHistorySize,
         requiredVotes: signRequiredVotes,
@@ -144,6 +176,7 @@ final class DetectionAlertConfig {
     };
   }
 
+  /// คำนวณขนาดบัฟเฟอร์ประวัติสูงสุดสำหรับกลุ่มวัตถุนั้นๆ
   int maximumHistorySizeFor(DetectionGroup group) {
     if (group == DetectionGroup.trafficLight) {
       return offLightMinimumFrames > trafficHistorySize
@@ -153,22 +186,22 @@ final class DetectionAlertConfig {
     return switch (group) {
       DetectionGroup.turnSignal => turnHistorySize,
       DetectionGroup.sign || DetectionGroup.other => signHistorySize,
-      DetectionGroup.countdown => countdownHistorySize,
       DetectionGroup.trafficLight => trafficHistorySize,
     };
   }
 
+  /// กำหนดลำดับความสำคัญของคลาส (ตัวเลขน้อย = สำคัญมากที่สุด)
   int _priorityFor(String className) {
     return switch (className) {
-      'off_light' => 0,
-      'red_light_circle' => 1,
-      'yellow_light' => 2,
-      'green_light_circle' => 3,
-      'turn_left' || 'turn_right' => 4,
-      'dont_go_straight_arrow' || 'dont_turn_left' || 'dont_turn_right' => 5,
-      'go_straight_arrow' => 6,
-      'sign_number' => 7,
-      _ => 8,
+      'off_light' => 0,            // สัญญาณไฟขัดข้องสำคัญสูงสุด
+      'red_light_circle' => 1,     // สัญญาณไฟแดง
+      'yellow_light' => 2,        // สัญญาณไฟเหลือง
+      'green_light_circle' => 3,   // สัญญาณไฟเขียว
+      'turn_left' || 'turn_right' => 4, // ไฟเลี้ยว
+      'dont_go_straight_arrow' || 'dont_turn_left' || 'dont_turn_right' => 5, // ป้ายห้าม
+      'go_straight_arrow' => 6,   // ป้ายตรงไป
+      _ => 7,                      // อื่นๆ
     };
   }
 }
+

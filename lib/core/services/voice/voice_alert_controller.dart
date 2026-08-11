@@ -25,8 +25,9 @@ final class VoiceAlertController {
         events
             .where(
               (event) =>
-                  event.type == DetectionEventType.detected ||
-                  event.type == DetectionEventType.changed,
+                  config.participatesInVoiceAlerts(event.detection.className) &&
+                  (event.type == DetectionEventType.detected ||
+                      event.type == DetectionEventType.changed),
             )
             .toList()
           ..sort(
@@ -46,14 +47,20 @@ final class VoiceAlertController {
       return null;
     }
 
+    final didSpeak = await speakMessageIfIdle(() => _speakClassName(className));
+    if (!didSpeak) return null;
+    _lastSpokenAtByClass[className] = selected.timestamp;
+    return selected;
+  }
+
+  Future<bool> speakMessageIfIdle(Future<void> Function() speaker) async {
+    if (_isSpeaking) return false;
+
     final generation = _sessionGeneration;
     _isSpeaking = true;
     try {
-      await _speakClassName(className);
-      if (generation == _sessionGeneration) {
-        _lastSpokenAtByClass[className] = selected.timestamp;
-      }
-      return selected;
+      await speaker();
+      return generation == _sessionGeneration;
     } finally {
       if (generation == _sessionGeneration) _isSpeaking = false;
     }

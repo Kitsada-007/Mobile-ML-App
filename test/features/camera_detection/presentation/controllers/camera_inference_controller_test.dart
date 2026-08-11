@@ -228,7 +228,7 @@ void main() {
       });
 
       expect(digitYolo.predictCallCount, 2);
-      expect(controller.detectedNumber, isNull);
+      expect(controller.detectedNumber, '12');
 
       await controller.onStreamingData({
         'frameNumber': 3,

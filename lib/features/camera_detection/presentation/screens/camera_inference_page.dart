@@ -26,13 +26,17 @@ class CameraInferencePage extends StatefulWidget {
   State<CameraInferencePage> createState() => _CameraInferencePageState();
 }
 
-class _CameraInferencePageState extends State<CameraInferencePage> {
+class _CameraInferencePageState extends State<CameraInferencePage>
+    with WidgetsBindingObserver {
   late final CameraInferenceController _controller; // controller หลัก
   int _rebuildKey = 0; // ตัว key ที่เพิ่มขึ้นเพื่อบังคับ rebuild YOLOView
+  bool? _isRouteCurrent;
+  bool _isAppResumed = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _controller = CameraInferenceController();
     // เริ่มต้นระบบทั้งหมด (โหลดโมเดล ฯลฯ) — จับ error แสดง dialog แทน
     if (widget.initializeOnStart) {
@@ -47,9 +51,12 @@ class _CameraInferencePageState extends State<CameraInferencePage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // ถ้าหน้านี้เป็นหน้าปัจจุบันของ route -> rebuild YOLOView (ผ่านการเพิ่ม rebuildKey)
-    final route = ModalRoute.of(context);
-    if (route?.isCurrent == true) {
+    final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+    if (_isRouteCurrent == isCurrent) return;
+
+    _isRouteCurrent = isCurrent;
+    _syncCameraLifecycle();
+    if (isCurrent) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           setState(() => _rebuildKey++);
@@ -59,7 +66,23 @@ class _CameraInferencePageState extends State<CameraInferencePage> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _isAppResumed = state == AppLifecycleState.resumed;
+    _syncCameraLifecycle();
+  }
+
+  /// กล้องทำงานเฉพาะตอนแอปอยู่ foreground และ route นี้อยู่ด้านบนสุด
+  void _syncCameraLifecycle() {
+    if ((_isRouteCurrent ?? true) && _isAppResumed) {
+      unawaited(_controller.resumeCamera());
+    } else {
+      unawaited(_controller.pauseCamera());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.dispose(); // ปล่อย controller (โมเดล/กล้อง/เสียง)
     super.dispose();
   }

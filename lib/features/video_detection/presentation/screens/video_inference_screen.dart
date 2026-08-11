@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart'; // ชุด UI หลักของ Flutter
-import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_detection_panel.dart'; // แผงแสดงผลการตรวจจับ (ใช้ร่วมกับหน้าหนัง)
+import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/video_detection_panel.dart'; // แผงแสดงผลการตรวจจับวิดีโอ (เฉพาะฝั่ง Video)
 import 'package:trffic_ilght_app/features/video_detection/presentation/controllers/video_inference_controller.dart'; // Controller ฝั่ง Business logic
 import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/video_result_section.dart'; // วิดเจ็ตแสดงผลวิดีโอ + overlay
 
@@ -30,13 +30,14 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
     if (!mounted) {
       return; // ถ้า widget ถูกถอดออกจาก tree แล้ว ไม่ทำงาน (กัน error)
     }
-    // ถ้ามีข้อความ SnackBar ให้แสดงเป็น SnackBar
-    if (_controller.snackBarMessage != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_controller.snackBarMessage!)));
+    // ถ้ามีข้อความ SnackBar ให้แสดงเป็น SnackBar แล้วล้างออกทันทีเพื่อไม่ให้แสดงซ้ำ
+    final message = _controller.snackBarMessage;
+    if (message != null) {
+      _controller.clearSnackBarMessage();
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
     }
-    setState(() {}); // rebuild UI เพื่อให้แสดงสถานะล่าสุด
   }
 
   @override
@@ -67,11 +68,13 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                 _controller.videoController != null &&
                 _controller.videoController!.value.isInitialized;
 
-            // ใช้ SingleChildScrollView ให้เลื่อนดูได้เมื่อเนื้อหายาว (หมุนจอ)
+            final String? fileName =
+                _controller.videoFile?.path.split(RegExp(r'[/\\]')).last;
+
             return SingleChildScrollView(
               key: const Key('videoDetectionScrollView'),
               padding: EdgeInsets.fromLTRB(
-                isLandscape ? 24 : 16, // ขอบตามแนวนอน/แนวตั้ง
+                isLandscape ? 24 : 16,
                 8,
                 isLandscape ? 24 : 16,
                 24,
@@ -80,61 +83,14 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(
                     maxWidth: 720,
-                  ), // จำกัดความกว้างให้งามบนจอใหญ่
+                  ),
                   child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.stretch, // ให้ลูกทุกตัวกว้างเต็ม
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // ---------- Header Row (ย้อนกลับ + ชื่อหน้า + เลือกวิดีโอ) ----------
-                      Row(
-                        children: [
-                          // ปุ่มย้อนกลับ (มี Semantics เพื่อ Accessibility)
-                          Semantics(
-                            button: true,
-                            label: 'ย้อนกลับ',
-                            child: IconButton(
-                              icon: const Icon(
-                                Icons.arrow_back_ios_new_rounded,
-                              ),
-                              onPressed: () => Navigator.maybePop(context),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          // ชื่อหน้า + คำอธิบายสั้น
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'ตรวจจับจากวิดีโอ',
-                                  style: TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                Text(
-                                  'Video Traffic Light Detection',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xFF6B7280),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          // ปุ่มเลือกวิดีโอ (ปิดการใช้งานตอนกำลังประมวลผล)
-                          IconButton(
-                            tooltip: 'เลือกวิดีโอ',
-                            icon: const Icon(Icons.video_library_rounded),
-                            onPressed: _controller.isProcessing
-                                ? null
-                                : _controller.pickVideo,
-                          ),
-                        ],
-                      ),
+                      // ---------- Header Row (ย้อนกลับ + ชื่อหน้า) ----------
+                      const _VideoInferenceHeader(),
                       const SizedBox(height: 16),
 
-                      // แสดงแถบโหลดแบบเส้น ถ้าโมเดลยังโหลดไม่เสร็จ
                       if (!_controller.areModelsReady)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 12),
@@ -148,27 +104,23 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                         ),
 
                       // ---------- การ์ดหลัก: แสดงตามสถานะ 3 แบบ ----------
-                      // 1. มีผลลัพธ์วิดีโอ -> แสดงวิดีโอ + overlay + ปุ่มควบคุม
                       if (hasVideoResult) ...[
                         ResultVideoSection(
                           controller: _controller.videoController!,
                           detections: _controller.currentFrameDetections,
-                          detectedNumber: _controller.currentDetectedNumber,
                           isVoiceEnabled: _controller.isVoiceEnabled,
-
                           onTogglePlayPause: _controller.togglePlayPause,
                           onToggleVoice: _controller.toggleVoice,
                           onPickNewVideo: _controller.pickVideo,
+                          fileName: fileName,
                         ),
                       ] else if (_controller.isProcessing) ...[
-                        // 2. กำลังประมวลผล -> แสดงการ์ดความคืบหน้า
                         _VideoProcessingCard(
                           progressValue: _controller.progressValue,
                           progressText: _controller.progressText,
                           isLandscape: isLandscape,
                         ),
                       ] else ...[
-                        // 3. ยังไม่ได้เลือกวิดีโอ -> แสดงการ์ดชวนให้เลือกวิดีโอ
                         _VideoPickerPlaceholderCard(
                           areModelsReady: _controller.areModelsReady,
                           onPickVideo: _controller.pickVideo,
@@ -178,20 +130,18 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
 
                       const SizedBox(height: 20),
 
-                      // ---------- แผงผลลัพธ์การตรวจจับ (เหมือนหน้า Camera) ----------
-                      CameraDetectionPanel(
+                      // ---------- แผงผลลัพธ์การตรวจจับวิดีโอ (เฉพาะฝั่ง Video) ----------
+                      VideoDetectionPanel(
                         formalNames: _controller.currentFormalNames,
                         alertMessages: _controller.currentAlertMessages,
                         detectedNumber: _controller.currentDetectedNumber,
                         driverSignalResult:
                             _controller.currentDriverSignalResult,
                         isLandscape: isLandscape,
-                        // isPipelineStale: จริงเมื่อไม่ได้ประมวลผล และยังไม่มีผลตรวจจับในเฟรม
                         isPipelineStale:
                             !_controller.isProcessing &&
                             _controller.currentFrameDetections.isEmpty &&
                             _controller.currentDetectedNumber == null,
-                        // กำหนดข้อความสถานะตามสถานะปัจจุบันของวิดีโอ
                         statusText: hasVideoResult
                             ? (_controller.videoController!.value.isPlaying
                                   ? 'กำลังตรวจจับแบบเรียลไทม์'
@@ -210,6 +160,81 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
           },
         ),
       ),
+    );
+  }
+}
+
+/// ส่วนหัว (Header) ของหน้าตรวจจับวิดีโอ
+class _VideoInferenceHeader extends StatelessWidget {
+  const _VideoInferenceHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Row(
+      key: const Key('videoPageHeader'),
+      children: [
+        Semantics(
+          button: true,
+          label: 'ย้อนกลับ',
+          child: IconButton(
+            tooltip: 'ย้อนกลับ',
+            icon: const Icon(Icons.arrow_back_rounded),
+            color: colorScheme.onSurface,
+            iconSize: 28,
+            constraints: const BoxConstraints.tightFor(width: 48, height: 48),
+            onPressed: () => Navigator.maybePop(context),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Semantics(
+            header: true,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'ตรวจจับจากวิดีโอ',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: colorScheme.onSurface,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Video Traffic Light Detection',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 48,
+          height: 48,
+          child: Center(
+            child: Icon(
+              Icons.video_camera_back_outlined,
+              color: colorScheme.onSurface,
+              semanticLabel: 'โหมดตรวจจับวิดีโอ',
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -339,7 +364,7 @@ class _VideoPickerPlaceholderCard extends StatelessWidget {
                 child: Center(
                   child: Icon(
                     Icons.video_library_rounded,
-                    size: 72,
+                    size: 64,
                     color: Colors.white24,
                   ),
                 ),
@@ -352,7 +377,7 @@ class _VideoPickerPlaceholderCard extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Text(
-                        'ตรวจจับจากไฟล์วิดีโอ (Real-Time)',
+                        'ตรวจจับจากไฟล์วิดีโอ',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: Colors.white,
@@ -362,29 +387,46 @@ class _VideoPickerPlaceholderCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 6),
                       const Text(
-                        'เลือกวิดีโอจากคลังเพื่อเริ่มการตรวจจับสัญญาณไฟสดบนวิดีโอ',
+                        'เลือกวิดีโอเพื่อตรวจจับป้ายและสัญญาณไฟจราจร',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          height: 1.3,
+                        ),
                       ),
                       const SizedBox(height: 20),
                       // ปุ่มเลือกวิดีโอ (disabled ถ้าโมเดลยังไม่พร้อม)
-                      FilledButton.icon(
-                        onPressed: areModelsReady ? onPickVideo : null,
-                        icon: const Icon(Icons.video_library_outlined),
-                        label: Text(
-                          areModelsReady
-                              ? 'เลือกวิดีโอจากคลัง'
-                              : 'กำลังโหลดโมเดล...',
-                        ),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF16A05D),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                      Semantics(
+                        button: true,
+                        label: areModelsReady
+                            ? 'เลือกวิดีโอจากคลัง'
+                            : 'กำลังโหลดโมเดล...',
+                        child: FilledButton.icon(
+                          onPressed: areModelsReady ? onPickVideo : null,
+                          icon: const Icon(
+                            Icons.video_library_outlined,
+                            size: 20,
                           ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 14,
+                          label: Text(
+                            areModelsReady
+                                ? 'เลือกวิดีโอจากคลัง'
+                                : 'กำลังโหลดโมเดล...',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFF0B9A5A),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 14,
+                            ),
                           ),
                         ),
                       ),

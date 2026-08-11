@@ -83,6 +83,7 @@ class CameraInferenceController extends ChangeNotifier {
   LensFacing _lensFacing = LensFacing.back; // กล้องหลังเป็นค่าเริ่มต้น
   bool _isFrontCamera = false; // เปิดกล้องหน้ากล้องหรือไม่
   bool _isCameraEnabled = true; // กล้องเปิดอยู่หรือไม่
+  bool _isCameraSuspended = false; // กล้องถูกพักตามแอป/route lifecycle หรือไม่
 
   final _yoloController = YOLOViewController(); // ควบคุม view กล้องของ YOLO
   late final TrafficVoiceService _voiceService; // เสียงประกาศ
@@ -136,6 +137,7 @@ class CameraInferenceController extends ChangeNotifier {
   double get currentZoomLevel => _currentZoomLevel;
   bool get isFrontCamera => _isFrontCamera;
   bool get isCameraEnabled => _isCameraEnabled;
+  bool get isCameraActive => _isCameraEnabled && !_isCameraSuspended;
   LensFacing get lensFacing => _lensFacing;
   YOLOViewController get yoloController => _yoloController;
 
@@ -375,7 +377,7 @@ class CameraInferenceController extends ChangeNotifier {
 
   // รับ output model: ฟังก์ชันที่ YOLOView เรียกเมื่อมีผลเฟรมสตรีมสดจากกล้อง
   Future<void> onStreamingData(Map<String, dynamic> data) {
-    if (_isDisposed || !_isCameraEnabled) {
+    if (_isDisposed || !isCameraActive) {
       return Future.value(); // กล้องปิด -> ข้าม
     }
 
@@ -394,7 +396,9 @@ class CameraInferenceController extends ChangeNotifier {
     final nextEnabled = !_isCameraEnabled;
     try {
       if (nextEnabled) {
-        await _yoloController.resume(); // เปิดกล้อง
+        if (!_isCameraSuspended) {
+          await _yoloController.resume(); // เปิดกล้อง
+        }
       } else {
         await _yoloController.pause(); // ปิดกล้อง
       }
@@ -409,9 +413,33 @@ class CameraInferenceController extends ChangeNotifier {
     }
   }
 
+  /// หยุดกล้องเมื่อหน้าไม่แสดง โดยไม่เปลี่ยนค่าปุ่มเปิด/ปิดที่ผู้ใช้เลือกไว้
+  Future<void> pauseCamera() async {
+    if (_isDisposed || _isCameraSuspended) return;
+
+    _isCameraSuspended = true;
+    _resetDetectionSession();
+    _resetRealtimePipeline();
+    notifyListeners();
+    await _yoloController.pause();
+  }
+
+  /// เปิดกล้องต่อเมื่อกลับมาที่หน้าเดิม เฉพาะกรณีที่ผู้ใช้ไม่ได้ปิดกล้องไว้
+  Future<void> resumeCamera() async {
+    if (_isDisposed || !_isCameraSuspended) return;
+
+    _isCameraSuspended = false;
+    _resetDetectionSession();
+    _resetRealtimePipeline();
+    notifyListeners();
+    if (_isCameraEnabled) {
+      await _yoloController.resume();
+    }
+  }
+
   /// ประมวลผลเฟรม 1 แพ็กเก็ตจากคิว (เรียกแบบ serial โดย LatestFrameQueue)
   Future<void> _processStreamPacket(RealtimeFramePacket packet) async {
-    if (_isDisposed || !_isCameraEnabled) return;
+    if (_isDisposed || !isCameraActive) return;
 
     final processingStartedAt = _clock();
     // ขั้นตอนที่ 1: ตรวจความสด/ลำดับของเฟรมผ่าน FreshnessGuard
@@ -464,8 +492,7 @@ class CameraInferenceController extends ChangeNotifier {
     if (packet.ageAt(completedAt) > _maximumFrameAge) {
       _isRealtimePipelineStale = true;
       _clearRealtimeResults();
-    } else if (stabilizedReading != null &&
-        _detectionStabilizer.hasStableClass('sign_number')) {
+    } else if (stabilizedReading != null) {
       _applyDetectedNumber(stabilizedReading); // มีตัวเลข stable -> แสดงใน UI
     }
     notifyListeners();
@@ -552,7 +579,7 @@ class CameraInferenceController extends ChangeNotifier {
     List<YOLOResult> results, {
     DateTime? timestamp,
   }) async {
-    if (_isDisposed) return;
+    if (_isDisposed || !isCameraActive) return;
 
     var shouldNotify = false;
     final observationTime = timestamp ?? _clock();
@@ -585,8 +612,6 @@ class CameraInferenceController extends ChangeNotifier {
     )) {
       _detectedNumber = null;
       _numberInferenceEngine.resetCycle();
-    } else if (!_detectionStabilizer.hasStableClass('sign_number')) {
-      _detectedNumber = null;
     }
 
     final formalNames = <String>[];

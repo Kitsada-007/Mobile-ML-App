@@ -19,6 +19,7 @@ import 'package:video_player/video_player.dart'; // เล่นวิดีโ�
 
 import 'package:trffic_ilght_app/core/services/voice/traffic_voice_service.dart'; // บริการเสียงประกาศภาษาไทย
 import 'package:trffic_ilght_app/core/services/voice/voice_alert_controller.dart';
+import 'package:trffic_ilght_app/core/services/voice/countdown_alert_controller.dart';
 
 /// ฟังก์ชัน factory สำหรับสร้างโมเดล YOLO ใช้กับวิดีโอ
 /// - ทำเครื่องหมาย @visibleForTesting เพื่อให้ทดสอบได้จากภายนอก package
@@ -46,6 +47,7 @@ class VideoInferenceController extends ChangeNotifier {
     TrafficVoiceService? voiceService, // บริการเสียง
     @visibleForTesting DetectionStabilizer? detectionStabilizer,
     @visibleForTesting VoiceAlertController? voiceAlertController,
+    @visibleForTesting CountdownAlertController? countdownAlertController,
     this.targetChecksPerSecond = 4, // จำนวนตรวจเช็คต่อวินาที (default 4)
   }) : _picker = picker ?? ImagePicker(), // ถ้าไม่ส่งค่าใช้ default (สร้างใหม่)
        _videoValidator = videoValidator ?? const VideoInputValidator(),
@@ -61,6 +63,8 @@ class VideoInferenceController extends ChangeNotifier {
           config: _detectionConfig,
           speakClassName: _speakStableClass,
         );
+    _countdownAlertController =
+        countdownAlertController ?? CountdownAlertController();
   }
 
   // ---- Dependencies (services ที่ใช้งาน) ----
@@ -74,6 +78,7 @@ class VideoInferenceController extends ChangeNotifier {
   static const DetectionAlertConfig _detectionConfig = DetectionAlertConfig();
   late final DetectionStabilizer _detectionStabilizer;
   late final VoiceAlertController _voiceAlertController;
+  late final CountdownAlertController _countdownAlertController;
   // ตัวกันความสั่นไหวของตัวเลขนับถอยหลัง (ไม่ให้เลขเด้งขึ้น/ลงบ่อย)
   final CountdownReadingStabilizer _countdownStabilizer =
       CountdownReadingStabilizer();
@@ -90,6 +95,7 @@ class VideoInferenceController extends ChangeNotifier {
   List<YOLOResult> _currentFrameDetections = []; // ผลตรวจจับของเฟรมที่แสดงอยู่
   String?
   _currentDetectedNumber; // ตัวเลขที่ตรวจพบในเฟรมปัจจุบัน (เช่น 5, 4, 3)
+  String? _currentCountdownUiMessage;
   // ผลการแปลความหมายสัญญาณไฟ -> คำสั่งคนขับของเฟรมปัจจุบัน (เริ่มต้น: ไม่มี action)
   DriverSignalResult _currentDriverSignalResult = const DriverSignalResult(
     message: '',
@@ -135,6 +141,7 @@ class VideoInferenceController extends ChangeNotifier {
   Set<String> get detectedNumbers => Set.unmodifiable(_detectedNumbers);
   List<YOLOResult> get currentFrameDetections => _currentFrameDetections;
   String? get currentDetectedNumber => _currentDetectedNumber;
+  String? get currentCountdownUiMessage => _currentCountdownUiMessage;
   DriverSignalResult get currentDriverSignalResult =>
       _currentDriverSignalResult;
   List<String> get currentFormalNames => List.unmodifiable(_currentFormalNames);
@@ -332,6 +339,7 @@ class VideoInferenceController extends ChangeNotifier {
         videoFile: _videoFile!,
         frameAnalysisService: _videoFrameAnalysisService!,
         countdownStabilizer: _countdownStabilizer,
+        isCancelled: () => _isDisposed,
         onProgress: (progressValue, progressText) {
           if (!_isDisposed) {
             _progressValue = progressValue;
@@ -340,6 +348,8 @@ class VideoInferenceController extends ChangeNotifier {
           }
         },
       );
+
+      if (_isDisposed) return;
 
       // ---- บันทึกผลการประมวลผล ----
       _detectedClasses.addAll(result.detectedClasses);
@@ -354,6 +364,7 @@ class VideoInferenceController extends ChangeNotifier {
         File(result.finalVideoPath),
       );
       await _videoController!.initialize();
+      if (_isDisposed) return;
       await _videoController!.setLooping(true);
 
       // ปล่อย preview เก่าออก (ไม่ต้องใช้แล้ว)
@@ -364,7 +375,9 @@ class VideoInferenceController extends ChangeNotifier {
       _videoController!.addListener(_onVideoPositionChanged);
       await _videoController!.play();
 
-      notifyListeners();
+      if (!_isDisposed) {
+        notifyListeners();
+      }
     } catch (e) {
       debugPrint('Error processing video: $e');
       _notifyMessage('Error: $e');
@@ -431,8 +444,12 @@ class VideoInferenceController extends ChangeNotifier {
     String? rawDetectedNumber, {
     required DateTime timestamp,
   }) {
+    final stableInput = detections.where(
+      (detection) =>
+          _detectionConfig.participatesInStableDetection(detection.className),
+    );
     final update = _detectionStabilizer.update(
-      detections,
+      stableInput,
       timestamp: timestamp,
     );
     final stableDetections = List<StableDetection>.from(update.stableDetections)
@@ -448,14 +465,29 @@ class VideoInferenceController extends ChangeNotifier {
     final stableYoloDetections = stableDetections
         .map((detection) => detection.toYoloResult())
         .toList(growable: false);
-    final hasStableCountdown = stableDetections.any(
+    final hasSignNumber = detections.any(
       (detection) => detection.className == 'sign_number',
     );
-    _currentDetectedNumber = hasStableCountdown ? rawDetectedNumber : null;
+    _currentDetectedNumber = hasSignNumber ? rawDetectedNumber : null;
+
+    String? stableTrafficLightClassName;
+    for (final detection in stableDetections) {
+      if (CountdownAlertController.supportedTrafficLightClasses.contains(
+        detection.className,
+      )) {
+        stableTrafficLightClassName = detection.className;
+        break;
+      }
+    }
+    final countdownUpdate = _countdownAlertController.update(
+      isSignDetected: hasSignNumber,
+      detectedNumber: _currentDetectedNumber,
+      stableTrafficLightClassName: stableTrafficLightClassName,
+    );
+    _currentCountdownUiMessage = countdownUpdate.uiMessage;
 
     _currentDriverSignalResult = SignalInterpreter.interpret(
       stableYoloDetections,
-      countdownNumberText: _currentDetectedNumber,
     );
 
     final formalNames = <String>[];
@@ -474,10 +506,20 @@ class VideoInferenceController extends ChangeNotifier {
               .map((detection) => detection.confidence)
               .reduce((first, second) => first > second ? first : second);
 
-    if (_videoController != null &&
+    final shouldAnnounce =
+        _videoController != null &&
         _videoController!.value.isPlaying &&
-        _voiceService.isEnabled) {
+        _voiceService.isEnabled;
+    if (shouldAnnounce) {
       unawaited(_voiceAlertController.handleEvents(update.events));
+      final countdownEvent = countdownUpdate.event;
+      if (countdownEvent != null) {
+        unawaited(
+          _voiceAlertController.speakMessageIfIdle(
+            () => _voiceService.speak(countdownEvent.voiceMessage),
+          ),
+        );
+      }
     }
   }
 
@@ -493,9 +535,11 @@ class VideoInferenceController extends ChangeNotifier {
   void _resetDetectionSession({bool stopVoice = true}) {
     _detectionStabilizer.reset();
     _voiceAlertController.reset();
+    _countdownAlertController.reset();
     _countdownStabilizer.reset();
     _lastFrameIndex = -1;
     _currentDetectedNumber = null;
+    _currentCountdownUiMessage = null;
     _currentDriverSignalResult = const DriverSignalResult(
       message: '',
       action: SignalAction.none,

@@ -4,8 +4,19 @@ import 'dart:ui';
 import 'package:trffic_ilght_app/core/services/detection/detection_alert_config.dart';
 import 'package:ultralytics_yolo/yolo.dart';
 
-enum DetectionEventType { detected, changed, lost }
+/// ประเภทของเหตุการณ์เกี่ยวกับการตรวจจับวัตถุ (Detection Event Type)
+enum DetectionEventType {
+  /// ตรวจพบวัตถุเสถียรชิ้นใหม่ (New Detection)
+  detected,
 
+  /// สถานะ/ชนิดของวัตถุเดิมเปลี่ยนไป (Class Changed) เช่น ไฟเขียวเปลี่ยนเป็นไฟเหลือง
+  changed,
+
+  /// วัตถุหลุดออกจากเฟรม/หายไปเกินระยะเวลาผ่อนผัน (Detection Lost)
+  lost,
+}
+
+/// คลาสเก็บข้อมูลวัตถุที่ผ่านการกรองความเสถียรแล้ว (Stable Detection)
 final class StableDetection {
   const StableDetection({
     required this.trackId,
@@ -16,13 +27,25 @@ final class StableDetection {
     this.classIndex = 0,
   });
 
+  /// รหัสติดตามวัตถุแบบไม่ซ้ำกัน (Track ID)
   final int trackId;
+
+  /// ดัชนีคลาส
   final int classIndex;
+
+  /// ชื่อคลาสของวัตถุที่เสถียรแล้ว
   final String className;
+
+  /// ค่าความเชื่อมั่นเฉลี่ยจากการโหวต
   final double confidence;
+
+  /// พิกัดกรอบวัตถุแบบพิกเซลจริง (Pixel Bounding Box)
   final Rect boundingBox;
+
+  /// พิกัดกรอบวัตถุแบบนอร์มัลไลซ์ 0.0 - 1.0 (Normalized Bounding Box)
   final Rect normalizedBox;
 
+  /// แปลงเป็นวัตถุ YOLOResult สำหรับนำไปใช้วาดกรอบ overlay หรือประมวลผลต่อ
   YOLOResult toYoloResult() => YOLOResult(
     classIndex: classIndex,
     className: className,
@@ -32,6 +55,7 @@ final class StableDetection {
   );
 }
 
+/// เหตุการณ์การตรวจจับที่เกิดขึ้นในแต่ละเฟรม (Detection Event)
 final class DetectionEvent {
   const DetectionEvent({
     required this.type,
@@ -39,21 +63,31 @@ final class DetectionEvent {
     required this.timestamp,
   });
 
+  /// ประเภทเหตุการณ์ (detected, changed, lost)
   final DetectionEventType type;
+
+  /// ข้อมูลวัตถุเสถียรที่เกี่ยวข้อง
   final StableDetection detection;
+
+  /// เวลาที่เกิดเหตุการณ์
   final DateTime timestamp;
 }
 
+/// ผลลัพธ์จากการประมวลผลความเสถียรในเฟรมล่าสุด
 final class DetectionStabilizerUpdate {
   const DetectionStabilizerUpdate({
     required this.stableDetections,
     required this.events,
   });
 
+  /// รายการวัตถุที่เสถียรทั้งหมดในปัจจุบัน
   final List<StableDetection> stableDetections;
+
+  /// รายการเหตุการณ์ที่เกิดขึ้นใหม่ในเฟรมนี้ (เช่น ตรวจเจอใหม่, เปลี่ยนคลาส, หายไป)
   final List<DetectionEvent> events;
 }
 
+/// บันทึกการสังเกตวัตถุในแต่ละเฟรม (Single Detection Observation)
 final class DetectionObservation {
   const DetectionObservation({
     required this.className,
@@ -61,11 +95,17 @@ final class DetectionObservation {
     required this.timestamp,
   });
 
+  /// ชื่อคลาสที่ตรวจพบในเฟรมนั้น
   final String className;
+
+  /// ค่าความเชื่อมั่นในเฟรมนั้น
   final double confidence;
+
+  /// เวลาที่ตรวจพบ
   final DateTime timestamp;
 }
 
+/// คลาสเก็บสถานะการติดตามวัตถุ 1 ชิ้นย้อนหลังหลายๆ เฟรม (Tracked Object State)
 final class TrackedDetectionState {
   TrackedDetectionState._({
     required this.trackId,
@@ -75,43 +115,78 @@ final class TrackedDetectionState {
   }) : _lastDetection = initialDetection,
        _lastSeenAt = timestamp;
 
+  /// รหัสติดตามวัตถุ
   final int trackId;
+
+  /// กลุ่มประเภทวัตถุ (DetectionGroup)
   final DetectionGroup group;
+
+  /// บัฟเฟอร์ประวัติการสังเกตย้อนหลัง (Queue)
   final Queue<DetectionObservation> _history = Queue();
+
+  /// ข้อมูลการตรวจพบดิบครั้งล่าสุด
   YOLOResult _lastDetection;
+
+  /// เวลาล่าสุดที่พบวัตถุชิ้นนี้
   DateTime _lastSeenAt;
+
+  /// ชื่อคลาสที่ได้รับการยืนยันว่าเสถียรแล้ว (null หากยังไม่ผ่านเกณฑ์โหวต)
   String? _stableClassName;
 
+  /// รายการประวัติการสังเกตวัตถุย้อนหลังแบบ Read-only
   List<DetectionObservation> get history => List.unmodifiable(_history);
+
+  /// เวลาล่าสุดที่พบวัตถุ
   DateTime get lastSeenAt => _lastSeenAt;
+
+  /// ชื่อคลาสที่เสถียร
   String? get stableClassName => _stableClassName;
 }
 
+/// ระบบจัดการความเสถียรของผลการตรวจจับ (Detection Stabilizer)
+/// 
+/// ทำหน้าที่:
+/// 1. ติดตามวัตถุระหว่างเฟรมโดยใช้พิกัดตำแหน่ง (IoU - Intersection over Union Tracking)
+/// 2. กรองสัญญาณรบกวน (Flickering/Noise) โดยใช้ระบบโหวตประวัติย้อนหลัง (Majority Voting)
+/// 3. จัดการระยะเวลาผ่อนผันเมื่อวัตถุหายไปชั่วคราว (Grace Period Expiration)
+/// 4. ส่งออกเหตุการณ์ (DetectionEvent) เมื่อตรวจพบใหม่, เปลี่ยนคลาส หรือวัตถุหลุดจากจอ
 final class DetectionStabilizer {
   DetectionStabilizer({this.config = const DetectionAlertConfig()});
 
+  /// คอนฟิกสำหรับการกรองและติดตามวัตถุ
   final DetectionAlertConfig config;
+
+  /// ตารางเก็บรายการวัตถุที่กำลังติดตามอยู่ (Key: trackId)
   final Map<int, TrackedDetectionState> _tracks = {};
+
+  /// ตัวสร้างรหัสติดตามถัดไป
   int _nextTrackId = 1;
 
+  /// ดึงรายการวัตถุที่กำลังติดตามอยู่ทั้งหมด
   List<TrackedDetectionState> get tracks => List.unmodifiable(_tracks.values);
 
+  /// ดึงรายการวัตถุที่ผ่านเกณฑ์ความเสถียรทั้งหมดในปัจจุบัน
   List<StableDetection> get stableDetections => _tracks.values
       .where((track) => track._stableClassName != null)
       .map(_stableDetectionFor)
       .toList(growable: false);
 
+  /// อัปเดตผลการตรวจจับดิบจากเฟรมใหม่ และประมวลผลความเสถียร
   DetectionStabilizerUpdate update(
     Iterable<YOLOResult> rawDetections, {
     required DateTime timestamp,
   }) {
     final events = <DetectionEvent>[];
+
+    // 1. ตรวจสอบและตัดวัตถุที่หายไปนานเกินระยะเวลาผ่อนผัน (Grace Period Expiration)
     _expireTracks(timestamp, events);
 
+    // 2. กรองเฉพาะวัตถุที่ตรงตามเงื่อนไข (ความเชื่อมั่นผานเกณฑ์ และขนาดกรอบสมบูรณ์)
     final detections =
         rawDetections
             .where(
               (detection) =>
+                  config.participatesInStableDetection(detection.className) &&
                   detection.confidence.isFinite &&
                   detection.confidence >= config.minimumConfidence &&
                   _trackingBox(detection).width > 0 &&
@@ -121,6 +196,7 @@ final class DetectionStabilizer {
           ..sort((a, b) => b.confidence.compareTo(a.confidence));
     final matchedTrackIds = <int>{};
 
+    // 3. จับคู่วัตถุใหม่เข้ากับ Track เดิม (IoU Matching) หรือสร้าง Track ใหม่
     for (final detection in detections) {
       final group = config.groupFor(detection.className);
       final track = _bestTrackFor(
@@ -131,7 +207,11 @@ final class DetectionStabilizer {
       final selectedTrack =
           track ?? _createTrack(detection, group: group, timestamp: timestamp);
       matchedTrackIds.add(selectedTrack.trackId);
+
+      // บันทึกประวัติการสังเกตลงใน Track
       _addObservation(selectedTrack, detection, timestamp);
+
+      // ประมวลผลโหวตตัดสินคลาสที่เสถียร
       final event = _evaluateStableClass(selectedTrack, timestamp);
       if (event != null) events.add(event);
     }
@@ -142,14 +222,17 @@ final class DetectionStabilizer {
     );
   }
 
+  /// ตรวจสอบว่ามีวัตถุคลาสนี้ที่เสถียรอยู่ในเฟรมหรือไม่
   bool hasStableClass(String className) =>
       stableDetections.any((detection) => detection.className == className);
 
+  /// ล้างข้อมูลการติดตามทั้งหมด (Reset State)
   void reset() {
     _tracks.clear();
     _nextTrackId = 1;
   }
 
+  /// สร้าง Track ใหม่สำหรับวัตถุชิ้นใหม่
   TrackedDetectionState _createTrack(
     YOLOResult detection, {
     required DetectionGroup group,
@@ -165,6 +248,7 @@ final class DetectionStabilizer {
     return track;
   }
 
+  /// หา Track เดิมที่ตรงกับตำแหน่งวัตถุในเฟรมนี้มากที่สุด (อิงตามค่า IoU สูงสุด)
   TrackedDetectionState? _bestTrackFor(
     YOLOResult detection, {
     required DetectionGroup group,
@@ -188,6 +272,7 @@ final class DetectionStabilizer {
     return bestTrack;
   }
 
+  /// เพิ่มข้อมูลสังเกตวัตถุใหม่ลงในคิวประวัติย้อนหลังของ Track นั้นๆ
   void _addObservation(
     TrackedDetectionState track,
     YOLOResult detection,
@@ -208,6 +293,7 @@ final class DetectionStabilizer {
     }
   }
 
+  /// ประมวลผลตัดสินคลาสที่เสถียรสำหรับ Track และสร้างเหตุการณ์ (DetectionEvent) หากมีการเปลี่ยนแปลง
   DetectionEvent? _evaluateStableClass(
     TrackedDetectionState track,
     DateTime timestamp,
@@ -226,10 +312,13 @@ final class DetectionStabilizer {
     );
   }
 
+  /// คำนวณหาคลาสที่ชนะการโหวตจากประวัติย้อนหลัง (Majority Voting)
   String? _winningClass(TrackedDetectionState track) {
     if (track._history.isEmpty) return null;
     final latestClass = track._history.last.className;
     final rule = config.ruleFor(latestClass);
+
+    // ดึงประวัติย้อนหลังตามจำนวน historySize ของคลาส
     final recent = track._history.length <= rule.historySize
         ? track._history.toList(growable: false)
         : track._history
@@ -251,6 +340,7 @@ final class DetectionStabilizer {
       );
     }
 
+    // เรียงลำดับคลาสตามจำนวนโหวต (และตามคะแนนความเชื่อมั่นรวมในกรณีโหวตเท่ากัน)
     final ranked = voteCounts.keys.toList()
       ..sort((first, second) {
         final countOrder = voteCounts[second]!.compareTo(voteCounts[first]!);
@@ -259,13 +349,18 @@ final class DetectionStabilizer {
       });
     final candidate = ranked.first;
     final candidateRule = config.ruleFor(candidate);
+
+    // ตรวจสอบว่าโหวตถึงเกณฑ์ขั้นต่ำ (requiredVotes) หรือไม่
     if (voteCounts[candidate]! < candidateRule.requiredVotes) return null;
+
+    // ตรวจสอบเกณฑ์การตรวจพบต่อเนื่อง (กรณีพิเศษ เช่น off_light)
     if (!_passesContinuousConfirmation(track, candidate, candidateRule)) {
       return null;
     }
     return candidate;
   }
 
+  /// ตรวจสอบว่าคลาสผู้สมัครผ่านเกณฑ์การตรวจพบต่อเนื่องย้อนหลัง (Continuous Confirmation) หรือไม่
   bool _passesContinuousConfirmation(
     TrackedDetectionState track,
     String candidate,
@@ -290,6 +385,7 @@ final class DetectionStabilizer {
     return frameRequirementPassed || durationRequirementPassed;
   }
 
+  /// ตรวจสอบ Track ที่หมดอายุ (ไม่พบวัตถุเกินระยะเวลาผ่อนผัน missingGracePeriod) และส่งออกเหตุการณ์ lost
   void _expireTracks(DateTime timestamp, List<DetectionEvent> events) {
     final expiredIds = <int>[];
     for (final track in _tracks.values) {
@@ -315,6 +411,7 @@ final class DetectionStabilizer {
     }
   }
 
+  /// สร้างวัตถุ StableDetection จาก TrackedDetectionState ที่กำหนด
   StableDetection _stableDetectionFor(TrackedDetectionState track) {
     final stableClass = track._stableClassName!;
     final observations = track._history
@@ -337,6 +434,7 @@ final class DetectionStabilizer {
   }
 }
 
+/// ดึงพิกัดกรอบสำหรับใช้คำนวณการติดตามวัตถุ (เลือก normalizedBox ก่อน หากไม่มีใช้ boundingBox)
 Rect _trackingBox(YOLOResult detection) {
   final normalized = detection.normalizedBox;
   return normalized.width > 0 && normalized.height > 0
@@ -344,6 +442,7 @@ Rect _trackingBox(YOLOResult detection) {
       : detection.boundingBox;
 }
 
+/// คำนวณค่า Intersection over Union (IoU) ระหว่างสองกรอบสี่เหลี่ยม
 double _intersectionOverUnion(Rect first, Rect second) {
   final intersection = first.intersect(second);
   if (intersection.width <= 0 || intersection.height <= 0) return 0;
@@ -354,3 +453,4 @@ double _intersectionOverUnion(Rect first, Rect second) {
       intersectionArea;
   return unionArea <= 0 ? 0 : intersectionArea / unionArea;
 }
+

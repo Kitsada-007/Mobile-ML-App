@@ -35,18 +35,7 @@ class NumberDetectionService {
       iouThreshold: digitIouThreshold,
     );
 
-    _debugNumberDetection('Raw digit detections: ${prediction['detections']}');
-
     final detections = parseYoloDetections(prediction['detections']);
-    _debugNumberDetection('Parsed digit count: ${detections.length}');
-
-    for (final detection in detections) {
-      _debugNumberDetection(
-        'เลข=${detection.className}, '
-        'confidence=${detection.confidence}, '
-        'box=${detection.boundingBox}',
-      );
-    }
 
     final digitDetections =
         detections
@@ -65,7 +54,9 @@ class NumberDetectionService {
                   .reduce((a, b) => a + b) /
               selectedDigits.length;
 
-    _debugNumberDetection('เลขที่อ่านได้: $number');
+    if (number != null && number.isNotEmpty) {
+      _debugNumberDetection('เลขที่อ่านได้: $number (conf: ${averageConfidence.toStringAsFixed(2)})');
+    }
 
     return NumberDetectionResult(
       number: number,

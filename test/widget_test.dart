@@ -13,7 +13,7 @@ import 'package:trffic_ilght_app/main.dart';
 import 'package:trffic_ilght_app/features/settings/presentation/controllers/settings_controller.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/screens/camera_inference_page.dart';
 import 'package:trffic_ilght_app/features/settings/presentation/screens/setting_page.dart';
-import 'package:trffic_ilght_app/features/image_detection/presentation/screens/single_image_screen.dart';
+import 'package:trffic_ilght_app/features/video_detection/presentation/screens/video_inference_screen.dart';
 
 void main() {
   setUp(() {
@@ -79,7 +79,7 @@ void main() {
     },
   );
 
-  testWidgets('opens Single Image Test only from the drawer', (
+  testWidgets('opens Video Detection from the drawer', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
@@ -90,17 +90,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('ทดสอบรูปภาพ'), findsNothing);
-
     await tester.tap(find.byTooltip('เปิดเมนู'));
     await tester.pumpAndSettle();
-    expect(find.text('Single Image Test'), findsOneWidget);
+    expect(find.text('Video Detection'), findsOneWidget);
 
-    await tester.tap(find.text('Single Image Test'));
+    await tester.tap(find.text('Video Detection'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
 
-    expect(find.byType(SingleImageScreen), findsOneWidget);
+    expect(find.byType(VideoInferenceScreen), findsOneWidget);
   });
 
   test(

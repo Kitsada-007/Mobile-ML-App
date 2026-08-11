@@ -203,7 +203,7 @@ void main() {
       expect(confirmed.events.single.type, DetectionEventType.detected);
     });
 
-    test('countdown emits one class event and never emits number events', () {
+    test('countdown ROI class never enters stable detections or events', () {
       final stabilizer = DetectionStabilizer();
       final start = DateTime(2026);
       final events = <DetectionEvent>[];
@@ -216,8 +216,8 @@ void main() {
         );
       }
 
-      expect(events, hasLength(1));
-      expect(events.single.detection.className, 'sign_number');
+      expect(events, isEmpty);
+      expect(stabilizer.stableDetections, isEmpty);
     });
   });
 }
