@@ -6,8 +6,10 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:trffic_ilght_app/core/services/model_management/models/model_manifest.dart';
 
+/// ฟังก์ชันที่คืนโฟลเดอร์รากสำหรับเก็บโมเดล
 typedef RootDirectoryProvider = Future<Directory> Function();
 
+/// อินเทอร์เฟซดาวน์โหลดโมเดล (แยกส่วนเพื่อเทสต์ได้ง่าย)
 abstract interface class ModelDownloader {
   Future<File> downloadModel({
     required String modelId,
@@ -15,6 +17,9 @@ abstract interface class ModelDownloader {
   });
 }
 
+/// ดาวน์โหลดโมเดลจาก manifest ลงเครื่อง
+/// - ยืนยันขนาดไฟล์ + SHA-256 หลังดาวน์โหลด
+/// - เขียนผ่านไฟล์ .part ก่อน แล้ว rename เป็นไฟล์จริงเมื่อผ่านตรวจสอบ
 class ModelFileStore implements ModelDownloader {
   ModelFileStore(
     this._client, {
@@ -144,6 +149,7 @@ class ModelFileStore implements ModelDownloader {
     expectedSizeBytes: expectedSizeBytes,
   );
 
+  /// ตรวจว่าข้อมูล path/url ของโมเดลปลอดภัยก่อนเขียนไปยังระบบไฟล์
   void _validatePathParts(String modelId, RemoteModelInfo model) {
     if (!RegExp(r'^[a-z][a-z0-9_-]*$').hasMatch(modelId)) {
       throw const ModelDownloadException('Invalid model id');
@@ -180,6 +186,7 @@ class ModelFileStore implements ModelDownloader {
   }
 }
 
+/// ตรวจสอบไฟล์ว่ามีขนาดและ SHA-256 ตรงกับที่คาดหวังหรือไม่
 Future<bool> verifyModelFile(
   File file, {
   required String expectedSha256,
@@ -196,6 +203,7 @@ Future<bool> verifyModelFile(
   }
 }
 
+/// ข้อยกเว้นของการดาวน์โหลดโมเดลล้มเหลว
 class ModelDownloadException implements Exception {
   const ModelDownloadException(this.message, {this.cause});
 

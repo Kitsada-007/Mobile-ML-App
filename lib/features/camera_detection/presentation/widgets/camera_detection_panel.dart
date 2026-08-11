@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
-import 'package:trffic_ilght_app/core/services/inference/signal_interpreter.dart';
-import 'package:trffic_ilght_app/core/utils/thai_number_helper.dart';
+import 'package:trffic_ilght_app/core/services/inference/signal_interpreter.dart'; // โครงสร้าง DriverSignalResult / SignalAction
+import 'package:trffic_ilght_app/core/utils/thai_number_helper.dart'; // helper เลขไทย (shouldPrepareToGo)
 
-/// Live traffic-sign results displayed below the camera/video preview.
+/// แผงแสดงผลสัญญาณจราจรสด (อยู่ใต้ preview กล้อง/วิดีโอ)
+/// - แสดงสถานะ pipeline + confidence
+/// - แสดงตัวเลขนับถอยหลัง + ข้อความผลการตรวจจับภาษาไทย
+/// - (ถ้ามี) แสดงคำสั่งคนขับผลจาก SignalInterpreter เช่น ไปได้/หยุดรอ/ระวัง
 class CameraDetectionPanel extends StatelessWidget {
   const CameraDetectionPanel({
     super.key,
-    required this.formalNames,
-    required this.alertMessages,
-    required this.detectedNumber,
-    required this.isLandscape,
-    this.driverSignalResult,
-    this.isPipelineStale = true,
-    this.statusText = 'กำลังตรวจจับ',
-    this.lastDetectionConfidence,
+    required this.formalNames, // ชื่อไทยทางการของป้าย/สัญญาณที่พบ
+    required this.alertMessages, // ข้อความแจ้งเตือนภาษาไทย
+    required this.detectedNumber, // ตัวเลขนับถอยหลัง (ถ้ามี)
+    required this.isLandscape, // ปรับ padding ตามแนว/ขวาง
+    this.driverSignalResult, // คำสั่งคนขับจาก signal interpreter (optional)
+    this.isPipelineStale = true, // pipeline ล้าสมัยไหม (default ล้าสมัย)
+    this.statusText = 'กำลังตรวจจับ', // ข้อความสถานะ
+    this.lastDetectionConfidence, // confidence สูงสุดล่าสุด
   });
 
   final List<String> formalNames;
@@ -27,15 +30,19 @@ class CameraDetectionPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final countdown = int.tryParse(detectedNumber ?? '');
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final hasDriverMessage = driverSignalResult != null &&
-        driverSignalResult!.message.isNotEmpty;
+    final countdown = int.tryParse(detectedNumber ?? ''); // แปลงตัวเลขเป็น int
+    final isDark =
+        Theme.of(context).brightness == Brightness.dark; // ธีมมืด/สว่าง
+    final hasDriverMessage =
+        driverSignalResult != null &&
+        driverSignalResult!.message.isNotEmpty; // มีข้อความคำสั่งคนขับไหม
 
     return DecoratedBox(
       key: const Key('cameraDetectionPanel'),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF17191C) : Colors.white,
+        color: isDark
+            ? const Color(0xFF17191C)
+            : Colors.white, // พื้นหลังตามธีม
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: isDark ? Colors.white12 : const Color(0xFFE7E9ED),
@@ -59,9 +66,10 @@ class CameraDetectionPanel extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const _PanelHeader(),
+            const _PanelHeader(), // หัว "ผลการตรวจจับ"
             const SizedBox(height: 12),
             _RealtimePipelineStatus(
+              // แถวสถานะ pipeline + confidence
               isStale: isPipelineStale,
               statusText: statusText,
               lastDetectionConfidence: lastDetectionConfidence,
@@ -70,36 +78,38 @@ class CameraDetectionPanel extends StatelessWidget {
               color: isDark ? Colors.white12 : const Color(0xFFE7E9ED),
               height: 20,
             ),
+            // เนื้อหาหลัก: ตัวเลขนับถอยหลัง + ข้อความตรวจจับ
             Semantics(
-              liveRegion: true,
+              liveRegion: true, // screen reader อ่านการเปลี่ยนแบบสด
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _CountdownBadge(countdown: countdown),
+                  _CountdownBadge(countdown: countdown), // ป้ายตัวเลขนับถอยหลัง
                   const SizedBox(width: 12),
                   Expanded(
                     child: hasDriverMessage
+                        // มีคำสั่งคนขับ -> แสดงข้อความจาก SignalInterpreter
                         ? _DriverSignalMessage(result: driverSignalResult!)
                         : formalNames.isEmpty
-                            ? const _ScanningMessage()
-                            : Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  for (
-                                    var index = 0;
-                                    index < formalNames.length;
-                                    index++
-                                  )
-                                    _DetectionMessage(
-                                      className: formalNames[index],
-                                      alertMessage:
-                                          index < alertMessages.length
-                                              ? alertMessages[index]
-                                              : '',
-                                      detectedNumber: detectedNumber,
-                                    ),
-                                ],
-                              ),
+                        ? const _ScanningMessage() // ยังไม่มีอะไร -> กำลังสแกน
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // แสดงข้อความตรวจจับทุกคลาสที่พบ
+                              for (
+                                var index = 0;
+                                index < formalNames.length;
+                                index++
+                              )
+                                _DetectionMessage(
+                                  className: formalNames[index],
+                                  alertMessage: index < alertMessages.length
+                                      ? alertMessages[index]
+                                      : '',
+                                  detectedNumber: detectedNumber,
+                                ),
+                            ],
+                          ),
                   ),
                 ],
               ),
@@ -111,6 +121,7 @@ class CameraDetectionPanel extends StatelessWidget {
   }
 }
 
+/// แสดงข้อความคำสั่งคนขับ (จาก SignalInterpreter) พร้อมสี/ไอคอนตาม action
 class _DriverSignalMessage extends StatelessWidget {
   const _DriverSignalMessage({required this.result});
 
@@ -119,33 +130,31 @@ class _DriverSignalMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    // กำหนด (สี, ไอคอน, ป้ายข้อความ) ตามประเภท action ของสัญญาณ
     final (barColor, actionIcon, actionLabel) = switch (result.action) {
       SignalAction.go => (
-        const Color(0xFF34C759),
+        const Color(0xFF34C759), // เขียว
         Icons.check_circle_rounded,
         'ไปได้',
       ),
       SignalAction.stop => (
-        const Color(0xFFFF3B30),
+        const Color(0xFFFF3B30), // แดง
         Icons.back_hand_rounded,
         'หยุดรอ',
       ),
       SignalAction.caution => (
-        const Color(0xFFFF9500),
+        const Color(0xFFFF9500), // ส้ม
         Icons.warning_amber_rounded,
         'ระวัง',
       ),
-      SignalAction.none => (
-        Colors.grey,
-        Icons.info_outline_rounded,
-        '',
-      ),
+      SignalAction.none => (Colors.grey, Icons.info_outline_rounded, ''),
     };
 
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // แถบสีแนวตั้งทางซ้าย (บอกประเภท action)
           Container(
             width: 5,
             decoration: BoxDecoration(
@@ -154,6 +163,7 @@ class _DriverSignalMessage extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
+          // ข้อความหลักของคำสั่งคนขับ
           Expanded(
             child: Align(
               alignment: Alignment.centerLeft,
@@ -168,12 +178,16 @@ class _DriverSignalMessage extends StatelessWidget {
               ),
             ),
           ),
+          // ป้าย action (เช่น "ไปได้") ทางขวา ถ้ามี
           if (actionLabel.isNotEmpty) ...[
             const SizedBox(width: 8),
             Align(
               alignment: Alignment.centerRight,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: barColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
@@ -203,6 +217,7 @@ class _DriverSignalMessage extends StatelessWidget {
   }
 }
 
+/// แถวสถานะของ pipeline (ข้อความสถานะ + เปอร์เซ็นต์ confidence)
 class _RealtimePipelineStatus extends StatelessWidget {
   const _RealtimePipelineStatus({
     required this.isStale,
@@ -210,13 +225,14 @@ class _RealtimePipelineStatus extends StatelessWidget {
     required this.lastDetectionConfidence,
   });
 
-  final bool isStale;
-  final String statusText;
-  final double? lastDetectionConfidence;
+  final bool isStale; // pipeline ล้าสมัยไหม
+  final String statusText; // ข้อความสถานะ
+  final double? lastDetectionConfidence; // confidence สูงสุดล่าสุด
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    // สีตามสถานะ: ล้าสมัย = ส้ม, ปกติ = เขียว
     final statusColor = isStale
         ? const Color(0xFFE07A1F)
         : const Color(0xFF0B9A5A);
@@ -230,11 +246,13 @@ class _RealtimePipelineStatus extends StatelessWidget {
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
+          // ชิปสถานะ pipeline
           _PipelineMetricChip(
             label: statusText,
             foregroundColor: statusColor,
             backgroundColor: statusColor.withValues(alpha: 0.12),
           ),
+          // ชิปค่า confidence (ถ้ามี) — สีเปลี่ยนเป็นส้มถ้าต่ำกว่า 0.5
           if (lastDetectionConfidence != null)
             _PipelineMetricChip(
               label: 'CONF ${(lastDetectionConfidence! * 100).round()}%',
@@ -248,6 +266,7 @@ class _RealtimePipelineStatus extends StatelessWidget {
   }
 }
 
+/// ชิปเล็ก ๆ สำหรับแสดงป้ายสั้น ๆ (สถานะ/ค่า metric)
 class _PipelineMetricChip extends StatelessWidget {
   const _PipelineMetricChip({
     required this.label,
@@ -255,9 +274,9 @@ class _PipelineMetricChip extends StatelessWidget {
     this.backgroundColor,
   });
 
-  final String label;
-  final Color foregroundColor;
-  final Color? backgroundColor;
+  final String label; // ข้อความ
+  final Color foregroundColor; // สีข้อความ
+  final Color? backgroundColor; // สีพื้น (default จากธีม)
 
   @override
   Widget build(BuildContext context) {
@@ -266,7 +285,7 @@ class _PipelineMetricChip extends StatelessWidget {
         color:
             backgroundColor ??
             Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(999), // มุมโค้งเต็ม
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
@@ -283,6 +302,7 @@ class _PipelineMetricChip extends StatelessWidget {
   }
 }
 
+/// ส่วนหัวของแผง: หัวข้อ "ผลการตรวจจับ" + ไฟสถานะ "กำลังทำงาน"
 class _PanelHeader extends StatelessWidget {
   const _PanelHeader();
 
@@ -310,6 +330,7 @@ class _PanelHeader extends StatelessWidget {
             ),
           ),
         ),
+        // จุดเขียว + ข้อความ "กำลังทำงาน"
         Container(
           width: 7,
           height: 7,
@@ -332,10 +353,11 @@ class _PanelHeader extends StatelessWidget {
   }
 }
 
+/// ป้ายตัวเลขนับถอยหลัง (กล่องแดงด้านซ้าย)
 class _CountdownBadge extends StatelessWidget {
   const _CountdownBadge({required this.countdown});
 
-  final int? countdown;
+  final int? countdown; // ตัวเลข (null = ไม่พบ)
 
   @override
   Widget build(BuildContext context) {
@@ -348,13 +370,14 @@ class _CountdownBadge extends StatelessWidget {
         height: 86,
         padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFEEEE),
+          color: const Color(0xFFFFEEEE), // พื้นแดงอ่อน
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: const Color(0xFFFFD6D6)),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // ตัวเลขขนาดใหญ่ (หรือ "X" เมื่อไม่พบ)
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
@@ -370,6 +393,7 @@ class _CountdownBadge extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 2),
+            // คำว่า "วินาที" หรือ "ไม่พบตัวเลข"
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
@@ -389,6 +413,7 @@ class _CountdownBadge extends StatelessWidget {
   }
 }
 
+/// ข้อความชั่วคราวเมื่อยังไม่มีผลตรวจจับ (กำลังสแกน)
 class _ScanningMessage extends StatelessWidget {
   const _ScanningMessage();
 
@@ -398,6 +423,7 @@ class _ScanningMessage extends StatelessWidget {
 
     return Row(
       children: [
+        // จุดสีเขียวมีแสง
         Container(
           width: 10,
           height: 10,
@@ -425,11 +451,12 @@ class _ScanningMessage extends StatelessWidget {
   }
 }
 
+/// แถวข้อความการตรวจจับ 1 คลาส (มีแถบสีซ้าย + ข้อความ)
 class _DetectionMessage extends StatelessWidget {
   const _DetectionMessage({
-    required this.className,
-    required this.alertMessage,
-    required this.detectedNumber,
+    required this.className, // ชื่อภาษาไทยของคลาส
+    required this.alertMessage, // ข้อความแจ้งเตือน
+    required this.detectedNumber, // ตัวเลข (สำหรับกรณีสัญญาณนับถอยหลัง)
   });
 
   final String className;
@@ -440,6 +467,7 @@ class _DetectionMessage extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final countdown = int.tryParse(detectedNumber ?? '');
+    // กรณีเป็นสัญญาณนับถอยหลังที่มีตัวเลข -> แปลงข้อความเป็น "เตรียมตัวไป" หรือบอกวินาที
     final isCountdownSignal =
         className == 'สัญญาณไฟนับถอยหลัง' && countdown != null;
     final message = isCountdownSignal
@@ -454,6 +482,7 @@ class _DetectionMessage extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
+          // แถบสีแนวตั้ง (สีตามชื่อคลาส/ความหมาย)
           Container(
             width: 4,
             height: 24,
@@ -480,6 +509,7 @@ class _DetectionMessage extends StatelessWidget {
     );
   }
 
+  /// เลือกสีของแถบตามคำในชื่อคลาส (แดง/เหลือง/เขียว/น้ำเงิน)
   Color _alertColor(String name) {
     if (name.contains('แดง') || name.contains('ห้าม')) {
       return Colors.redAccent;

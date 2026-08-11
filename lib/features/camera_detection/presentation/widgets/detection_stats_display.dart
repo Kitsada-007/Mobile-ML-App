@@ -2,12 +2,13 @@
 
 import 'package:flutter/material.dart';
 
-/// A widget that displays detection statistics (count and FPS)
+/// วิดเจ็ตแสดงสถิติการตรวจจับ (จำนวนที่ตรวจพบ และ FPS ปัจจุบัน)
+/// - วางทับบนกล้อง (HUD) และกันไม่ให้รับการแตะ (IgnorePointer)
 class DetectionStatsDisplay extends StatelessWidget {
   const DetectionStatsDisplay({
     super.key,
-    required this.detectionCount,
-    required this.currentFps,
+    required this.detectionCount, // จำนวนวัตถุที่ตรวจพบ
+    required this.currentFps, // FPS ปัจจุบัน
   });
 
   final int detectionCount;
@@ -21,18 +22,19 @@ class DetectionStatsDisplay extends StatelessWidget {
         child: DecoratedBox(
           key: const Key('cameraStatusHud'),
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.7),
+            color: Colors.black.withValues(alpha: 0.7), // พื้นดำโปร่งแสง
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             child: FittedBox(
-              fit: BoxFit.scaleDown,
+              fit: BoxFit.scaleDown, // ย่อให้พอดีเมื่อเนื้อที่น้อย
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  // จำนวนการตรวจจับ
                   Text(
                     'DETECTIONS: $detectionCount',
                     style: const TextStyle(
@@ -42,6 +44,7 @@ class DetectionStatsDisplay extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 12),
+                  // FPS ปัจจุบัน
                   Text(
                     'FPS: ${currentFps.toStringAsFixed(1)}',
                     style: TextStyle(

@@ -1,7 +1,10 @@
+import 'dart:ui';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:trffic_ilght_app/core/services/inference/signal_interpreter.dart';
 import 'package:trffic_ilght_app/core/services/voice/traffic_voice_service.dart';
 import 'package:trffic_ilght_app/features/video_detection/presentation/controllers/video_inference_controller.dart';
+import 'package:ultralytics_yolo/yolo.dart';
 
 class FakeTrafficVoiceService implements TrafficVoiceService {
   bool _enabled = true;
@@ -15,22 +18,10 @@ class FakeTrafficVoiceService implements TrafficVoiceService {
   }
 
   @override
+  Future<void> reloadSettings() async {}
+
+  @override
   Future<void> speak(String message) async {}
-
-  @override
-  Future<void> speakNumber(String number, {String? activeLightClass}) async {}
-
-  @override
-  Future<void> processDetection(
-    String className,
-    double confidence, {
-    bool isSignActive = false,
-    bool hasSpokenGetReady = false,
-    bool announceImmediately = false,
-  }) async {}
-
-  @override
-  String getFormalThaiName(String className) => className;
 
   @override
   String getThaiMessage(String className) => className;
@@ -53,14 +44,16 @@ void main() {
 
     test('updates DriverSignalResult on frame update', () {
       final redLightResult = SignalInterpreter.interpret([
-        const YOLOResult(
+        YOLOResult(
+          classIndex: 0,
           className: 'red_light_circle',
           confidence: 0.9,
           boundingBox: Rect.fromLTRB(0, 0, 10, 10),
-        )
+          normalizedBox: Rect.fromLTRB(0, 0, 1, 1),
+        ),
       ]);
       expect(redLightResult.action, SignalAction.stop);
-      expect(redLightResult.message, 'ไฟแดง หยุดรถ');
+      expect(redLightResult.message, 'ไฟแดง - หยุดรอ');
     });
 
     test('toggles voice notification state', () {

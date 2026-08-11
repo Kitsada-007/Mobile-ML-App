@@ -4,8 +4,15 @@ import 'package:trffic_ilght_app/core/services/model_management/model_file_store
 import 'package:trffic_ilght_app/core/services/model_management/model_registry.dart';
 import 'package:trffic_ilght_app/core/services/model_management/model_update_client.dart';
 
-enum ModelUpdateStatus { updated, alreadyCurrent, incompatible, failed }
+/// สถานะการอัปเดตของแต่ละโมเดล
+enum ModelUpdateStatus {
+  updated, // อัปเดตเป็นเวอร์ชันใหม่แล้ว
+  alreadyCurrent, // เป็นเวอร์ชันล่าสุดอยู่แล้ว
+  incompatible, // แอปเวอร์ชันต่ำเกินไป ไม่รองรับ manifest นี้
+  failed, // อัปเดตไม่สำเร็จ
+}
 
+/// ผลการอัปเดตของโมเดลหนึ่งตัว
 class ModelUpdateItemResult {
   const ModelUpdateItemResult({
     required this.status,
@@ -18,15 +25,21 @@ class ModelUpdateItemResult {
   final Object? error;
 }
 
+/// รายงานผลการตรวจอัปเดตทั้งหมด (ครบทุกโมเดล)
 class ModelUpdateReport {
   const ModelUpdateReport({required this.results, this.error});
 
   final Map<String, ModelUpdateItemResult> results;
   final Object? error;
 
+  /// ตรวจ manifest สำเร็จหรือไม่ (ไม่มี error ระดับ top-level)
   bool get manifestChecked => error == null;
 }
 
+/// เช็คอัปเดตโมเดลจากระยะไกลและดาวน์โหลดเวอร์ชันใหม่
+/// - เปรียบเทียบเวอร์ชันโมเดลที่ใช้งานอยู่กับเวอร์ชันล่าสุด
+/// - ตรวจ minimumAppVersion (แอปเก่าเกินไป = incompatible)
+/// - กันรันซ้ำพร้อมกัน (in-flight) และกันดาวน์โหลดเวอร์ชันที่เคย fail
 class ModelUpdater {
   ModelUpdater(
     this._manifestSource,
@@ -44,6 +57,7 @@ class ModelUpdater {
 
   Future<ModelUpdateReport>? _inFlight;
 
+  /// เริ่มเช็คอัปเดต (ถ้ามีการเช็คอยู่แล้ว จะใช้ผลเดียวกัน)
   Future<ModelUpdateReport> checkForUpdates() {
     final running = _inFlight;
     if (running != null) return running;

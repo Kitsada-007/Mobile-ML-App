@@ -5,6 +5,11 @@ import 'package:trffic_ilght_app/app/app_shell.dart';
 import 'package:trffic_ilght_app/app/theme.dart';
 import 'package:trffic_ilght_app/features/settings/settings.dart';
 
+/// Root widget ของแอปพลิเคชัน "Berng Fai" (เบิ้งไฟ - ผู้ช่วยจราจรเรียลไทม์)
+/// - ใช้ GetMaterialApp เพื่อรองรับ GetX navigation/snackbar
+/// - ใช้ Provider สำหรับ SettingsProvider (theme, voice settings)
+/// - รองรับ Light/Dark theme ตามการตั้งค่าของผู้ใช้
+/// - initializeCamera: ควบคุมว่าเปิดกล้องทันทีหรือไม่ (ใช้สำหรับ testing)
 class MyApp extends StatelessWidget {
   const MyApp({super.key, this.initializeCamera = true});
 

@@ -9,7 +9,9 @@ import 'package:trffic_ilght_app/core/services/model_management/model_registry.d
 import 'package:trffic_ilght_app/core/services/model_management/model_update_client.dart';
 import 'package:trffic_ilght_app/core/services/model_management/model_updater.dart';
 
-/// Starts one non-blocking remote-model check per application session.
+/// เริ่มการเช็คอัปเดตโมเดลระยะไกล 1 ครั้งต่อเซสชัน (ไม่บล็อก UI)
+/// - เรียกใช้เมื่อเปิดแอป
+/// - ทำงานแบบเบื้องหลัง ไม่บล็อกการเริ่มแอป
 final class RemoteModelUpdateBootstrap {
   RemoteModelUpdateBootstrap._();
 
@@ -20,6 +22,7 @@ final class RemoteModelUpdateBootstrap {
 
   static Future<ModelUpdateReport?>? _sessionCheck;
 
+  /// เช็คครั้งเดียวต่อเซสชัน (ครั้งถัดไปจะคืนผลเดิม)
   static Future<ModelUpdateReport?> checkOnce() {
     return _sessionCheck ??= _performCheck();
   }
@@ -50,6 +53,7 @@ final class RemoteModelUpdateBootstrap {
     }
   }
 
+  /// บันทึกผลการอัปเดตลง log เพื่อดูภายหลัง
   static void _logReport(ModelUpdateReport report) {
     if (report.error != null) {
       debugPrint('Remote model update check failed: ${report.error}');

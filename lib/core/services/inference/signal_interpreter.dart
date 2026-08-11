@@ -63,8 +63,7 @@ class DriverSignalResult {
   int get hashCode => message.hashCode ^ action.hashCode;
 
   @override
-  String toString() =>
-      'DriverSignalResult(message: $message, action: $action)';
+  String toString() => 'DriverSignalResult(message: $message, action: $action)';
 }
 
 enum SignalAction { go, stop, caution, none }

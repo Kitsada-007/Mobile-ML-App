@@ -1,9 +1,11 @@
 // Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
 import 'package:flutter/material.dart';
-import 'package:trffic_ilght_app/shared/models/model_types.dart';
+import 'package:trffic_ilght_app/shared/models/model_types.dart'; // ประเภท SliderType
 
-/// A widget containing camera control buttons
+/// วิดเจ็ตสำหรับกลุ่มปุ่มควบคุมกล้อง (zoom / สลับกล้อง / ปรับ threshold)
+/// หมายเหตุ: ปุ่มส่วนใหญ่ถูกคอมเมนต์ทิ้งไว้ (ดีดออกชั่วคราว) — ใช้ไว้สำหรับ
+/// ปรับแต่งภายหลัง ปัจจุบัน layout มีแค่ตำแหน่งปุ่มกล้องล่างขวาเท่านั้น
 class CameraControls extends StatelessWidget {
   const CameraControls({
     super.key,
@@ -16,13 +18,13 @@ class CameraControls extends StatelessWidget {
     required this.isLandscape,
   });
 
-  final double currentZoomLevel;
-  final bool isFrontCamera;
-  final SliderType activeSlider;
-  final ValueChanged<double> onZoomChanged;
-  final ValueChanged<SliderType> onSliderToggled;
-  final VoidCallback onCameraFlipped;
-  final bool isLandscape;
+  final double currentZoomLevel; // ระดับ zoom ปัจจุบัน
+  final bool isFrontCamera; // เปิดอยู่ที่กล้องหน้าหรือไม่
+  final SliderType activeSlider; // slider ที่แสดงอยู่
+  final ValueChanged<double> onZoomChanged; // callback เปลี่ยน zoom
+  final ValueChanged<SliderType> onSliderToggled; // callback สลับ slider
+  final VoidCallback onCameraFlipped; // callback สลับกล้องหน้า/หลัง
+  final bool isLandscape; // ปรับตำแหน่งตามแนว/ขวางจอ
 
   @override
   Widget build(BuildContext context) {
@@ -36,6 +38,7 @@ class CameraControls extends StatelessWidget {
           right: isLandscape ? 8 : 16,
           child: Column(
             children: [
+              // ปุ่ม Zoom (ปิดไว้ชั่วคราว)
               // if (!isFrontCamera)
               //   ControlButton(
               //     content: '${currentZoomLevel.toStringAsFixed(1)}x',
@@ -49,7 +52,7 @@ class CameraControls extends StatelessWidget {
               //   ),
               // SizedBox(height: isLandscape ? 8 : 12),
 
-              // ปุ่ม Layers (numItems)
+              // ปุ่ม Layers (numItems) (ปิดไว้ชั่วคราว)
               // ControlButton(
               //   content: Icons.layers,
               //   onPressed: () {
@@ -62,7 +65,7 @@ class CameraControls extends StatelessWidget {
               // ),
               // SizedBox(height: isLandscape ? 8 : 12),
 
-              // ปุ่ม Adjust (confidence)
+              // ปุ่ม Adjust (confidence) (ปิดไว้ชั่วคราว)
               // ControlButton(
               //   content: Icons.adjust,
               //   onPressed: () {
@@ -75,7 +78,7 @@ class CameraControls extends StatelessWidget {
               // ),
               // SizedBox(height: isLandscape ? 8 : 12),
 
-              // // ปุ่ม IOU
+              // // ปุ่ม IOU (ปิดไว้ชั่วคราว)
               // ControlButton(
               //   content: 'assets/iou.png',
               //   onPressed: () {
@@ -91,6 +94,7 @@ class CameraControls extends StatelessWidget {
           ),
         ),
 
+        // ปุ่มสลับกล้องหน้า/หลัง (ปิดไว้ชั่วคราว)
         // Positioned(
         //   bottom: safeBottomPadding + (isLandscape ? 32 : 16),
         //   left: isLandscape ? 32 : 16,

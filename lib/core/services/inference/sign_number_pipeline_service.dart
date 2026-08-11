@@ -11,17 +11,24 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 export 'package:trffic_ilght_app/core/services/inference/number_detection_service.dart'
     show digitConfidenceThreshold, digitIouThreshold;
 
-const int minimumDigitCropEdge = 128;
-const int maximumDigitCropEdge = 640;
-const double tightHorizontalPaddingFactor = 0.15;
-const double tightVerticalPaddingFactor = 0.10;
-const double wideHorizontalPaddingFactor = 0.30;
-const double wideVerticalPaddingFactor = 0.15;
+// ---- ขนาด/ปัจจัยการ crop ป้ายตัวเลขนับถอยหลัง ----
+const int minimumDigitCropEdge =
+    128; // ขอบสั้นขั้นต่ำของภาพที่ส่งเข้า digit model
+const int maximumDigitCropEdge =
+    640; // ขอบยาวสูงสุดของภาพที่ส่งเข้า digit model
+const double tightHorizontalPaddingFactor =
+    0.15; // padding แนวนอนแบบแน่น (crop ตามกล่อง)
+const double tightVerticalPaddingFactor = 0.10; // padding แนวตั้งแบบแน่น
+const double wideHorizontalPaddingFactor =
+    0.30; // padding แนวนอนแบบกว้าง (เผื่อตัวเลขล้นกล่อง)
+const double wideVerticalPaddingFactor = 0.15; // padding แนวตั้งแบบกว้าง
 
+/// พิมพ์ log ดีบักเฉพาะในโหมด debug
 void _debugPipeline(String message) {
   if (kDebugMode) debugPrint(message);
 }
 
+/// ข้อมูลการ crop หนึ่งชุด: ภาพ + พิกัดกล่อง (normalized หรือ pixel) + ปัจจัย padding
 class CropData {
   final Uint8List imageBytes;
   final double left;
@@ -42,11 +49,14 @@ class CropData {
   });
 }
 
+/// พิกัด crop ที่เป็นจำนวนเต็ม (pixel) ภายในภาพ
 typedef CropBounds = ({int left, int top, int right, int bottom});
 
 /// YOLOView 0.6.10 reports boxes in the upright frame coordinate space but
 /// streams the camera bitmap before CameraX rotation. Normalize the bitmap
 /// before applying those boxes.
+/// (YOLOView 0.6.10 รายงานพิกัดกล่องในระบบพิกัดเฟรมที่ตั้งตรง แต่สตรีม bitmap
+/// ของกล้องก่อนหมุนตาม CameraX -> ต้องปรับภาพให้ตรงกับพิกัดก่อนใช้กล่อง)
 @visibleForTesting
 Uint8List orientFrameForDetectionCoordinates(
   Uint8List frameBytes, {
@@ -82,6 +92,9 @@ class SignNumberAnalysis {
   const SignNumberAnalysis({this.cropBytes, this.number, this.selectedSign});
 }
 
+/// แปลงพิกัดกล่อง (normalized หรือ pixel) ให้เป็น CropBounds เป็นพิกเซล
+/// - ถ้าค่าเป็น normalized (0..1) จะคูณขนาดภาพก่อน
+/// - ครอบค่าอยู่ในขอบภาพเสมอ
 CropBounds resolveCropBounds(
   CropData data, {
   required int imageWidth,
@@ -110,6 +123,7 @@ CropBounds resolveCropBounds(
   return (left: left, top: top, right: right, bottom: bottom);
 }
 
+/// ขยายกล่อง crop ออกไปตาม factor (เพื่อรวมตัวเลขที่ล้นขอบกล่องเล็กน้อย)
 @visibleForTesting
 CropBounds expandCropBounds(
   CropBounds bounds, {
@@ -131,6 +145,10 @@ CropBounds expandCropBounds(
   );
 }
 
+/// ประมวลผลภาพ crop ของป้ายตัวเลขเป็นภาพ grayscale ขนาดที่เหมาะกับ digit model
+/// - crop ทีละขั้นตอนแล้ว จัดสเกลให้อยู่ในช่วง [minimumDigitCropEdge, maximumDigitCropEdge]
+/// - เปลี่ยนเป็น grayscale (digit model ฝึกมาจากภาพ grayscale) แต่คง 3 ช่องสีไว้
+/// - รันได้ทั้งใน isolate/background isolate (เหมาะกับ compute)
 @visibleForTesting
 Uint8List? processSignCrop(CropData data) {
   try {
@@ -229,6 +247,7 @@ class RealtimeFrameTaskData {
   });
 }
 
+/// ผลลัพธ์การ crop เฟรม Realtime (ทั้งแบบแน่นและแบบกว้าง) — ส่งกลับมา 2 ชุด
 class RealtimeFrameTaskResult {
   final Uint8List? tightCropBytes;
   final Uint8List? wideCropBytes;
@@ -236,6 +255,9 @@ class RealtimeFrameTaskResult {
   RealtimeFrameTaskResult({this.tightCropBytes, this.wideCropBytes});
 }
 
+/// ประมวลผล 1 เฟรมใน isolate: หมุนภาพ + crop 2 รูปแบบ (แน่น/กว้าง)
+/// - คำนวณมุมหมุนจาก rotationDegrees หรือย้อนจากขนาดภาพที่คาดหวัง
+/// - ครอบพิกัดให้อยู่ในภาพแล้วสร้าง crop ทั้งแบบ tight (padding น้อย) และ wide (padding มาก)
 RealtimeFrameTaskResult _processRealtimeFrameTask(RealtimeFrameTaskData data) {
   final decoded = img.decodeImage(data.frameBytes);
   if (decoded == null) return RealtimeFrameTaskResult();
@@ -309,6 +331,7 @@ RealtimeFrameTaskResult _processRealtimeFrameTask(RealtimeFrameTaskData data) {
       height: padded.bottom - padded.top,
     );
 
+    // จัดสเกลให้พอดีกับช่วงที่ digit model รองรับ
     final int shortestEdge = min(cropped.width, cropped.height);
     final int longestEdge = max(cropped.width, cropped.height);
     double scale = shortestEdge < minimumDigitCropEdge
@@ -328,6 +351,7 @@ RealtimeFrameTaskResult _processRealtimeFrameTask(RealtimeFrameTaskData data) {
       );
     }
 
+    // digit model ฝึกด้วยภาพ grayscale -> แปลงเป็น grayscale แล้วเข้ารหัส JPG
     cropped = img.grayscale(cropped);
     return Uint8List.fromList(img.encodeJpg(cropped, quality: 95));
   }
@@ -347,13 +371,17 @@ RealtimeFrameTaskResult _processRealtimeFrameTask(RealtimeFrameTaskData data) {
   );
 }
 
+/// อินเทอร์เฟซของตัวประมวลผล crop แบบ Realtime (แยกเพื่อสลับ implementation ได้)
 abstract interface class RealtimeSignCropProcessor {
   Future<RealtimeFrameTaskResult> process(RealtimeFrameTaskData data);
 
   Future<void> dispose();
 }
 
-/// Reuses one isolate and transfers frame buffers without copying them.
+/// ใช้ isolate เดียว (reuse) และส่งข้อมูลเฟรมแบบ zero-copy (TransferableTypedData)
+/// - ลดค่าใช้จ่ายการสร้าง isolate ใหม่ทุกเฟรม
+/// - ติดตามงานค้าง (pending) และคืนผลตาม requestId
+/// - เก็บ worker ไว้ใน memory ระหว่างเฟรม
 class PersistentSignCropWorker implements RealtimeSignCropProcessor {
   ReceivePort? _responsePort;
   StreamSubscription<dynamic>? _responseSubscription;
@@ -374,6 +402,7 @@ class PersistentSignCropWorker implements RealtimeSignCropProcessor {
     final completer = Completer<RealtimeFrameTaskResult>();
     _pending[requestId] = completer;
 
+    // ส่งเฟรมผ่าน TransferableTypedData เพื่อไม่ต้องคัดลอกหน่วยความจำ
     workerPort.send([
       requestId,
       TransferableTypedData.fromList([data.frameBytes]),
@@ -399,6 +428,7 @@ class PersistentSignCropWorker implements RealtimeSignCropProcessor {
     final starting = _startupCompleter;
     if (starting != null) return starting.future;
 
+    // สร้าง isolate ขึ้นครั้งเดียว (ถ้ายังไม่มี) แล้วรอรับ SendPort กลับมา
     final startupCompleter = Completer<SendPort>();
     _startupCompleter = startupCompleter;
     final responsePort = ReceivePort();
@@ -428,6 +458,7 @@ class PersistentSignCropWorker implements RealtimeSignCropProcessor {
     final completer = _pending.remove(requestId);
     if (completer == null) return;
 
+    // ถ้า worker ส่ง error กลับมา -> ทำคำขอให้ล้มเหลวตามนั้น
     final error = message[3] as String?;
     if (error != null) {
       completer.completeError(StateError(error));
@@ -450,6 +481,7 @@ class PersistentSignCropWorker implements RealtimeSignCropProcessor {
     _isolate?.kill(priority: Isolate.immediate);
     _isolate = null;
     _workerPort = null;
+    // ทำให้คำขอค้างทั้งหมดล้มเหลว (เพราะ worker ถูกปิดแล้ว)
     for (final completer in _pending.values) {
       if (!completer.isCompleted) {
         completer.completeError(StateError('Sign crop worker was disposed'));
@@ -462,6 +494,9 @@ class PersistentSignCropWorker implements RealtimeSignCropProcessor {
   }
 }
 
+/// ฟังก์ชันเริ่มต้นของ isolate: รอรับข้อความคำขอแล้วประมวลผล crop ทีละเฟรม
+/// - ข้อความแรกคือ SendPort สำหรับตอบกลับ (ตอบ SendPort ของตัวเองกลับไปก่อน)
+/// - รับค่า null เพื่อบอกให้หยุดและปิด port
 void _signCropWorkerEntryPoint(SendPort responsePort) async {
   final requestPort = ReceivePort();
   responsePort.send(requestPort.sendPort);
@@ -488,6 +523,7 @@ void _signCropWorkerEntryPoint(SendPort responsePort) async {
           runAlternative: message[9] as bool,
         ),
       );
+      // ส่งผลกลับ (crop เป็น TransferableTypedData เพื่อไม่ต้องคัดลอก)
       responsePort.send([
         requestId,
         _transferBytes(result.tightCropBytes),
@@ -507,6 +543,10 @@ TransferableTypedData? _transferBytes(Uint8List? bytes) =>
 Uint8List? _materializeBytes(dynamic data) =>
     data is TransferableTypedData ? data.materialize().asUint8List() : null;
 
+/// ตัวประมวลผลสายงานทั้งหมด: ตรวจจับป้าย -> crop -> อ่านตัวเลข
+/// - โหมด Realtime: ใช้ PersistentSignCropWorker (isolate เดียว reused)
+/// - โหมดภาพเดี่ยว: crop บน background isolate ผ่าน compute()
+/// - เลือกผลที่ดีที่สุดระหว่าง crop แบบแน่น (tight) กับแบบกว้าง (wide)
 class SignNumberPipelineService {
   SignNumberPipelineService({
     NumberDetectionService? numberDetectionService,
@@ -522,6 +562,7 @@ class SignNumberPipelineService {
   final NumberDetectionService _numberDetectionService;
   final RealtimeSignCropProcessor _realtimeCropProcessor;
 
+  /// เลือก NumberDetectionService ที่จะใช้ (ส่งตรง หรือสร้างจาก digitYolo)
   static NumberDetectionService _resolveNumberDetectionService({
     NumberDetectionService? numberDetectionService,
     YOLO? digitYolo,
@@ -550,6 +591,10 @@ class SignNumberPipelineService {
     return analysis.number;
   }
 
+  /// วิเคราะห์เฟรม Realtime: เลือกป้ายตัวเลขที่ดีที่สุด -> crop -> อ่านเลข
+  /// - ถ้า crop แบบแน่นอ่านได้ >= 2 หลัก -> ใช้เลย
+  /// - ไม่งั้นลอง crop แบบกว้าง แล้วเลือกผลที่ได้เลข/ความมั่นใจดีกว่า
+  /// - ถ้ายังไม่ได้ผลและไม่มีข้อมูลการหมุน -> ลอง crop แบบหมุนอีกทิศทาง (runAlternative)
   Future<SignNumberAnalysis> analyzeRealtimeFrame({
     required Uint8List frameBytes,
     required List<YOLOResult> detectionResults,
@@ -661,6 +706,8 @@ class SignNumberPipelineService {
 
   Future<void> dispose() => _realtimeCropProcessor.dispose();
 
+  /// วิเคราะห์ภาพเดี่ยว (เช่นภาพถ่าย): ค้นหาป้าย -> crop 2 แบบ -> เลือกผลที่ดีที่สุด
+  /// - ใช้ compute() รัน crop บน background isolate
   Future<SignNumberAnalysis> analyzeSingleImage({
     required Uint8List frameBytes,
     required List<YOLOResult> detectionResults,
@@ -726,6 +773,7 @@ class SignNumberPipelineService {
     );
   }
 
+  /// ลองวิเคราะห์ 1 crop (เป็น background isolate ผ่าน compute) แล้วเก็บผล
   Future<_DigitCandidate> _analyzeCrop({
     required Uint8List frameBytes,
     required Rect rect,
@@ -752,6 +800,8 @@ class SignNumberPipelineService {
     return _DigitCandidate(cropBytes: processedBytes, reading: reading);
   }
 
+  /// เลือก crop ที่ดีกว่าระหว่างแน่น (tight) กับกว้าง (wide):
+  /// หลักมากกว่า -> ใช้; หลักเท่ากัน -> ใช้ค่าที่ confidence เฉลี่ยสูงกว่า
   _DigitCandidate _preferDigitCandidate(
     _DigitCandidate tight,
     _DigitCandidate wide,
@@ -765,6 +815,7 @@ class SignNumberPipelineService {
   }
 }
 
+/// เลือกป้าย sign_number ที่มีความมั่นใจสูงสุดจากผลการตรวจจับ (หรือ null ถ้าไม่พบ)
 YOLOResult? _selectBestNumberSign(List<YOLOResult> detectionResults) {
   final signResults =
       detectionResults

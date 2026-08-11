@@ -21,10 +21,7 @@ void main() {
       ];
 
       final result = SignalInterpreter.interpret(detections);
-      expect(
-        result.message,
-        'ไฟเขียว - ไปได้ (เลี้ยวซ้ายได้, เลี้ยวขวาได้)',
-      );
+      expect(result.message, 'ไฟเขียว - ไปได้ (เลี้ยวซ้ายได้, เลี้ยวขวาได้)');
       expect(result.action, SignalAction.go);
     });
 
@@ -64,9 +61,7 @@ void main() {
     });
 
     test('off light shows system error caution', () {
-      final detections = [
-        _makeDetection(TrafficSignalClasses.offLight, 0.85),
-      ];
+      final detections = [_makeDetection(TrafficSignalClasses.offLight, 0.85)];
 
       final result = SignalInterpreter.interpret(detections);
       expect(result.message, 'สัญญาณไฟขัดข้อง - ขับด้วยความระมัดระวัง');

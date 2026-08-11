@@ -1,18 +1,20 @@
 // Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
 import 'package:flutter/material.dart';
-import 'package:trffic_ilght_app/shared/models/model_types.dart';
+import 'package:trffic_ilght_app/shared/models/model_types.dart'; // ประเภท SliderType
 
-/// A slider widget for adjusting threshold values
+/// วิดเจ็ตแถบเลื่อน (Slider) สำหรับปรับค่า threshold ของโมเดล
+/// - ปรากฏเฉพาะเมื่อ activeSlider != none (ปุ่มถูกเปิดไว้)
+/// - ปรับได้ 3 แบบ: numItems / confidence / iou (ตามที่เลือก)
 class ThresholdSlider extends StatelessWidget {
   const ThresholdSlider({
     super.key,
-    required this.activeSlider,
-    required this.confidenceThreshold,
-    required this.iouThreshold,
-    required this.numItemsThreshold,
-    required this.onValueChanged,
-    required this.isLandscape,
+    required this.activeSlider, // สไลเดอร์ตัวที่กำลังแสดงอยู่
+    required this.confidenceThreshold, // ค่า confidence ปัจจุบัน
+    required this.iouThreshold, // ค่า iou ปัจจุบัน
+    required this.numItemsThreshold, // ค่า numItems ปัจจุบัน
+    required this.onValueChanged, // callback เมื่อค่าถูกเปลี่ยน
+    required this.isLandscape, // ปรับ padding ตามแนวนอน/แนวตั้ง
   });
 
   final SliderType activeSlider;
@@ -24,6 +26,7 @@ class ThresholdSlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ไม่มี slider ถูกเปิด -> ไม่แสดงอะไรเลย
     if (activeSlider == SliderType.none) {
       return const SizedBox.shrink();
     }
@@ -37,8 +40,9 @@ class ThresholdSlider extends StatelessWidget {
           horizontal: isLandscape ? 16 : 24,
           vertical: isLandscape ? 8 : 12,
         ),
-        color: Colors.black.withValues(alpha: 0.8),
+        color: Colors.black.withValues(alpha: 0.8), // พื้นดำโปร่งแสง
         child: SliderTheme(
+          // ปรับธีมสีของ slider ให้เป็นฟ้า
           data: SliderTheme.of(context).copyWith(
             activeTrackColor: Colors.blue,
             inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
@@ -46,7 +50,7 @@ class ThresholdSlider extends StatelessWidget {
             overlayColor: Colors.blue.withValues(alpha: 0.2),
           ),
           child: Slider(
-            value: _getSliderValue(),
+            value: _getSliderValue(), // ค่าปัจจุบันตามประเภท
             min: _getSliderMin(),
             max: _getSliderMax(),
             divisions: _getSliderDivisions(),
@@ -58,6 +62,7 @@ class ThresholdSlider extends StatelessWidget {
     );
   }
 
+  /// ค่าปัจจุบันของ slider (ตามประเภทที่เลือก)
   double _getSliderValue() => switch (activeSlider) {
     SliderType.numItems => numItemsThreshold.toDouble(),
     SliderType.confidence => confidenceThreshold,

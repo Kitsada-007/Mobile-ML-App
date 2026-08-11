@@ -1,17 +1,21 @@
-import 'package:flutter/material.dart';
-import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/video_bounding_box_overlay.dart';
-import 'package:ultralytics_yolo/yolo.dart';
-import 'package:video_player/video_player.dart';
+import 'package:flutter/material.dart'; // ชุด UI หลักของ Flutter
+import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/video_bounding_box_overlay.dart'; // วิดเจ็ตวาด Bounding Box
+import 'package:ultralytics_yolo/yolo.dart'; // โครงสร้าง YOLOResult
+import 'package:video_player/video_player.dart'; // ตัวเล่นวิดีโอ
 
+/// ส่วนแสดงผลวิดีโอผลลัพธ์หลังประมวลผลเสร็จ
+/// - เล่นวิดีโอแบบ loop พร้อม overlay bounding box แบบ realtime
+/// - มีปุ่มควบคุม: เล่น/หยุด, เปิด/ปิดเสียง, เลือกวิดีโอใหม่
+/// - มีแถบ progress วิดีโอ + ป้ายสถานะสด (live badge)
 class ResultVideoSection extends StatelessWidget {
-  final VideoPlayerController controller;
-  final List<YOLOResult> detections;
-  final String? detectedNumber;
-  final bool isVoiceEnabled;
-  final VoidCallback onOpenFullScreen;
-  final VoidCallback onTogglePlayPause;
-  final VoidCallback? onToggleVoice;
-  final VoidCallback? onPickNewVideo;
+  final VideoPlayerController controller; // ตัวควบคุมวิดีโอผลลัพธ์
+  final List<YOLOResult>
+  detections; // ผลตรวจจับของเฟรมปัจจุบัน (ใช้วาด overlay)
+  final String? detectedNumber; // ตัวเลขนับถอยหลังปัจจุบัน
+  final bool isVoiceEnabled; // เสียงเปิดหรือไม่ (กำหนดสีปุ่ม)
+  final VoidCallback onTogglePlayPause; // สลับเล่น/หยุด
+  final VoidCallback? onToggleVoice; // สลับเปิด/ปิดเสียง (nullable = ซ่อนปุ่ม)
+  final VoidCallback? onPickNewVideo; // เลือกวิดีโอใหม่ (nullable = ซ่อนปุ่ม)
 
   const ResultVideoSection({
     super.key,
@@ -19,7 +23,7 @@ class ResultVideoSection extends StatelessWidget {
     this.detections = const [],
     this.detectedNumber,
     this.isVoiceEnabled = true,
-    required this.onOpenFullScreen,
+
     required this.onTogglePlayPause,
     this.onToggleVoice,
     this.onPickNewVideo,
@@ -27,10 +31,12 @@ class ResultVideoSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final videoSize = controller.value.size;
+    final videoSize =
+        controller.value.size; // ขนาดเฟรมวิดีโอ (ใช้แปลงพิกัด overlay)
 
     return DecoratedBox(
       key: const Key('videoPreviewCard'),
+      // กล่องดำพร้อมเงา (เหมือนการ์ดอื่นในหน้าจอ)
       decoration: BoxDecoration(
         color: Colors.black,
         borderRadius: BorderRadius.circular(24),
@@ -44,6 +50,7 @@ class ResultVideoSection extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
+        // สัดส่วนตามวิดีโอจริง (fallback 16:9 ถ้ายังไม่มีค่า)
         child: AspectRatio(
           aspectRatio: controller.value.aspectRatio == 0
               ? 16 / 9
@@ -52,8 +59,9 @@ class ResultVideoSection extends StatelessWidget {
             fit: StackFit.expand,
             alignment: Alignment.bottomCenter,
             children: [
+              // ชั้นวิดีโอตัวจริง
               Container(color: Colors.black, child: VideoPlayer(controller)),
-              // Real-time Bounding Box Overlay
+              // ชั้น overlay: วาด bounding box แบบ realtime ทับวิดีโอ
               Positioned.fill(
                 child: VideoBoundingBoxOverlay(
                   detections: detections,
@@ -61,6 +69,7 @@ class ResultVideoSection extends StatelessWidget {
                   videoSize: videoSize,
                 ),
               ),
+              // แถบ progress วิดีโอ (ลากเพื่อข้ามเวลาได้)
               Positioned(
                 left: 0,
                 right: 0,
@@ -75,7 +84,7 @@ class ResultVideoSection extends StatelessWidget {
                   ),
                 ),
               ),
-              // Live Status Badge
+              // ป้ายสถานะสดที่มุมบนซ้าย (เล่น/หยุด/ตรวจจับแล้ว)
               Positioned(
                 top: 14,
                 left: 14,
@@ -85,13 +94,14 @@ class ResultVideoSection extends StatelessWidget {
                       detections.isNotEmpty || detectedNumber != null,
                 ),
               ),
-              // Action Controls (Play/Pause, Sound Toggle, Fullscreen, Change Video)
+              // ---------- ปุ่มควบคุมชุด (Play/Pause, เสียง, เลือกวิดีโอใหม่) ----------
               Positioned(
                 top: 10,
                 right: 10,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // ปุ่มเล่น/หยุดวิดีโอ (ไอคอนเปลี่ยนตามสถานะ)
                     IconButton.filled(
                       tooltip: controller.value.isPlaying
                           ? 'พักวิดีโอ'
@@ -107,6 +117,7 @@ class ResultVideoSection extends StatelessWidget {
                       ),
                       onPressed: onTogglePlayPause,
                     ),
+                    // ปุ่มเปิด/ปิดเสียง (แสดงเฉพาะเมื่อส่ง callback มา)
                     if (onToggleVoice != null) ...[
                       const SizedBox(width: 8),
                       IconButton.filled(
@@ -116,7 +127,7 @@ class ResultVideoSection extends StatelessWidget {
                         style: IconButton.styleFrom(
                           backgroundColor: Colors.black54,
                           foregroundColor: isVoiceEnabled
-                              ? const Color(0xFF34C759)
+                              ? const Color(0xFF34C759) // เขียว = เสียงเปิด
                               : Colors.white60,
                         ),
                         icon: Icon(
@@ -127,15 +138,8 @@ class ResultVideoSection extends StatelessWidget {
                         onPressed: onToggleVoice,
                       ),
                     ],
-                    IconButton.filled(
-                      tooltip: 'แสดงเต็มจอ',
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.black54,
-                        foregroundColor: Colors.white,
-                      ),
-                      icon: const Icon(Icons.fullscreen_rounded),
-                      onPressed: onOpenFullScreen,
-                    ),
+
+                    // ปุ่มเลือกวิดีโอใหม่ (แสดงเฉพาะเมื่อส่ง callback มา)
                     if (onPickNewVideo != null) ...[
                       const SizedBox(width: 8),
                       IconButton.filled(
@@ -159,15 +163,17 @@ class ResultVideoSection extends StatelessWidget {
   }
 }
 
+/// ป้ายสถานะสด (Live Badge) แสดงที่มุมบนซ้ายของวิดีโอ
 class _VideoLiveBadge extends StatelessWidget {
   const _VideoLiveBadge({required this.isPlaying, required this.hasDetections});
 
-  final bool isPlaying;
-  final bool hasDetections;
+  final bool isPlaying; // วิดีโอกำลังเล่นหรือไม่
+  final bool hasDetections; // มีผลการตรวจจับในเฟรมนี้หรือไม่
 
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
+      // กล่องดำโปร่งมุมโค้งพร้อมกรอบขาวบาง ๆ
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.62),
         borderRadius: BorderRadius.circular(99),
@@ -178,6 +184,7 @@ class _VideoLiveBadge extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // จุดไฟสถานะ: เขียว = เล่นอยู่, ส้ม = หยุด
             Container(
               width: 9,
               height: 9,
@@ -189,6 +196,7 @@ class _VideoLiveBadge extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
+            // ข้อความแจ้งสถานะปัจจุบัน
             Text(
               hasDetections
                   ? 'ตรวจจับแล้ว'

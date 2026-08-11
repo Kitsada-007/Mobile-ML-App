@@ -228,6 +228,17 @@ void main() {
       });
 
       expect(digitYolo.predictCallCount, 2);
+      expect(controller.detectedNumber, isNull);
+
+      await controller.onStreamingData({
+        'frameNumber': 3,
+        'detections': [_signDetection()],
+        'originalImage': frameBytes,
+        'imageWidth': 200,
+        'imageHeight': 100,
+      });
+
+      expect(digitYolo.predictCallCount, 3);
       expect(controller.detectedNumber, '12');
       controller.dispose();
     },
@@ -235,7 +246,6 @@ void main() {
 
   test('default freshness budget keeps a successful Number result', () async {
     var now = DateTime(2026, 8, 3, 12);
-    final capturedAt = now;
     final digitYolo = ClockAdvancingDigitYolo(
       () => now = now.add(const Duration(milliseconds: 600)),
     );
@@ -250,14 +260,17 @@ void main() {
     );
     final frame = img.Image(width: 200, height: 100);
 
-    await controller.onStreamingData({
-      'frameNumber': 1,
-      'timestamp': capturedAt.millisecondsSinceEpoch,
-      'detections': [_signDetection()],
-      'originalImage': Uint8List.fromList(img.encodeJpg(frame)),
-      'imageWidth': 200,
-      'imageHeight': 100,
-    });
+    for (var frameNumber = 1; frameNumber <= 3; frameNumber++) {
+      final frameCapturedAt = now;
+      await controller.onStreamingData({
+        'frameNumber': frameNumber,
+        'timestamp': frameCapturedAt.millisecondsSinceEpoch,
+        'detections': [_signDetection()],
+        'originalImage': Uint8List.fromList(img.encodeJpg(frame)),
+        'imageWidth': 200,
+        'imageHeight': 100,
+      });
+    }
 
     expect(controller.detectedNumber, '12');
     expect(controller.isRealtimePipelineStale, isFalse);
@@ -358,7 +371,9 @@ void main() {
     final controller = CameraInferenceController();
     final redLight = _trafficLightDetection('red_light_circle');
 
-    await controller.onDetectionResults([redLight]);
+    for (var frame = 0; frame < 3; frame++) {
+      await controller.onDetectionResults([redLight]);
+    }
     expect(controller.confirmedTrafficLightClassName, isNull);
     expect(controller.detectedFormalNames, isEmpty);
 
@@ -368,18 +383,80 @@ void main() {
     controller.dispose();
   });
 
-  test('unconfirmed low-confidence traffic light is hidden from the UI', () async {
-    final controller = CameraInferenceController();
-    final redLight = _trafficLightDetection(
-      'red_light_circle',
-      confidence: 0.30,
-    );
+  test(
+    'confirmed green light clears countdown and stops stale number inference',
+    () async {
+      final digitYolo = RecordingDigitYolo();
+      final controller = CameraInferenceController(
+        signNumberPipelineService: SignNumberPipelineService(
+          digitYolo: digitYolo,
+        ),
+        numberDetectionInterval: Duration.zero,
+        countdownStabilizer: CountdownReadingStabilizer(requiredMatches: 1),
+        enableFreshnessWatchdog: false,
+      );
+      final frame = img.Image(width: 200, height: 100);
+      final frameBytes = Uint8List.fromList(img.encodeJpg(frame));
 
-    await controller.onDetectionResults([redLight]);
+      for (var frameNumber = 1; frameNumber <= 3; frameNumber++) {
+        await controller.onStreamingData({
+          'frameNumber': frameNumber,
+          'detections': [_signDetection()],
+          'originalImage': frameBytes,
+          'imageWidth': 200,
+          'imageHeight': 100,
+        });
+      }
+      expect(controller.detectedNumber, '12');
+      expect(digitYolo.predictCallCount, 3);
 
-    expect(controller.detectedFormalNames, isEmpty);
-    controller.dispose();
-  });
+      for (var frameNumber = 4; frameNumber <= 7; frameNumber++) {
+        await controller.onStreamingData({
+          'frameNumber': frameNumber,
+          'detections': [
+            _signDetection(),
+            _trafficLightDetectionMap('green_light_circle'),
+          ],
+          'originalImage': frameBytes,
+          'imageWidth': 200,
+          'imageHeight': 100,
+        });
+      }
+
+      expect(controller.confirmedTrafficLightClassName, 'green_light_circle');
+      expect(controller.detectedNumber, isNull);
+      expect(digitYolo.predictCallCount, 6);
+
+      await controller.onStreamingData({
+        'frameNumber': 8,
+        'detections': [
+          _signDetection(),
+          _trafficLightDetectionMap('green_light_circle'),
+        ],
+        'originalImage': frameBytes,
+        'imageWidth': 200,
+        'imageHeight': 100,
+      });
+      expect(digitYolo.predictCallCount, 6);
+      controller.dispose();
+    },
+  );
+
+  test(
+    'unconfirmed low-confidence traffic light is hidden from the UI',
+    () async {
+      final controller = CameraInferenceController();
+      final redLight = _trafficLightDetection(
+        'red_light_circle',
+        confidence: 0.30,
+      );
+
+      await controller.onDetectionResults([redLight]);
+
+      expect(controller.detectedFormalNames, isEmpty);
+      controller.dispose();
+    },
+  );
 
   test('traffic light tracking selects the centered relevant light', () async {
     final controller = CameraInferenceController();
@@ -393,8 +470,9 @@ void main() {
       _trafficLightDetection('red_light_circle', confidence: 0.86),
     ];
 
-    await controller.onDetectionResults(detections);
-    await controller.onDetectionResults(detections);
+    for (var frame = 0; frame < 4; frame++) {
+      await controller.onDetectionResults(detections);
+    }
 
     expect(controller.confirmedTrafficLightClassName, 'red_light_circle');
     controller.dispose();
@@ -450,7 +528,7 @@ void main() {
       enableFreshnessWatchdog: false,
     );
 
-    for (var frame = 1; frame <= 2; frame++) {
+    for (var frame = 1; frame <= 4; frame++) {
       await controller.onStreamingData({
         'frameNumber': frame,
         'timestamp': now.millisecondsSinceEpoch,

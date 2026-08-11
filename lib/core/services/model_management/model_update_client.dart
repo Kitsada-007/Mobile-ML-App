@@ -5,10 +5,14 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:trffic_ilght_app/core/services/model_management/models/model_manifest.dart';
 
+/// แหล่งที่มาของ manifest (fetch จากระยะไกล)
 abstract interface class ModelManifestSource {
   Future<ModelManifest> fetchLatestManifest();
 }
 
+/// ดาวน์โหลด manifest JSON จาก GitHub release
+/// - จำกัดขนาดไฟล์ (กัน manifest ใหญ่เกินไป)
+/// - ตรวจสอบ URL ต้องชี้ไปที่ repo Mobile-ML-App เท่านั้น
 class ModelUpdateClient implements ModelManifestSource {
   ModelUpdateClient(
     this._client, {
@@ -98,6 +102,7 @@ class ModelUpdateClient implements ModelManifestSource {
     }
   }
 
+  /// ตรวจว่า URL ของ manifest ปลอดภัย: HTTPS + github.com + path ถูกต้อง
   void _validateManifestUri() {
     if (manifestUri.scheme != 'https' ||
         manifestUri.host.toLowerCase() != 'github.com') {
@@ -119,6 +124,7 @@ class ModelUpdateClient implements ModelManifestSource {
   }
 }
 
+/// ข้อยกเว้นของการดึง manifest ล้มเหลว
 class ModelManifestFetchException implements Exception {
   const ModelManifestFetchException(this.message, {this.cause});
 

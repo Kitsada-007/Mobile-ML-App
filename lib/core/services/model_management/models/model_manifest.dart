@@ -1,5 +1,10 @@
 import 'package:trffic_ilght_app/core/services/model_management/models/semantic_version.dart';
 
+/// แถลงการณ์ (manifest) ที่บอกว่าโมเดลระยะไกลเวอร์ชันอะไรบ้างที่ควรอัปเดต
+/// - schemaVersion: เวอร์ชันของโครงสร้าง manifest (รองรับแค่ 1)
+/// - releaseVersion: เวอร์ชัน release โดยรวม
+/// - minimumAppVersion: แอปเวอร์ชันต่ำสุดที่รองรับ manifest นี้
+/// - models: รายการโมเดลทั้งหมดที่ต้องใช้ (เช่น traffic, number)
 class ModelManifest {
   const ModelManifest({
     required this.schemaVersion,
@@ -13,6 +18,7 @@ class ModelManifest {
   final String minimumAppVersion;
   final Map<String, RemoteModelInfo> models;
 
+  /// สร้าง ModelManifest จาก JSON พร้อมตรวจสอบความถูกต้องทั้งหมด
   factory ModelManifest.fromJson(Map<String, dynamic> json) {
     final schemaVersion = _requiredInt(json, 'schemaVersion');
 
@@ -70,6 +76,12 @@ class ModelManifest {
   }
 }
 
+/// ข้อมูลโมเดลระยะไกลหนึ่งตัว (ไฟล์ + URL + checksum)
+/// - version: เวอร์ชันของโมเดล (major.minor.patch)
+/// - fileName: ชื่อไฟล์ .tflite
+/// - url: ลิงก์ดาวน์โหลด (ต้องเป็น GitHub release ของโปรเจกต์นี้เท่านั้น)
+/// - sha256: ค่า checksum ใช้ยืนยันว่าไฟล์ถูกต้องหลังดาวน์โหลด
+/// - sizeBytes: ขนาดไฟล์ที่คาดหวัง
 class RemoteModelInfo {
   const RemoteModelInfo({
     required this.version,
@@ -87,6 +99,7 @@ class RemoteModelInfo {
 
   static const int maximumModelSizeBytes = 500 * 1024 * 1024; // 500 MB
 
+  /// สร้าง RemoteModelInfo จาก JSON พร้อมตรวจสอบรูปแบบทุกฟิลด์
   factory RemoteModelInfo.fromJson(String modelId, Map<String, dynamic> json) {
     final version = _requiredString(json, 'version');
     final fileName = _requiredString(json, 'fileName');
@@ -130,10 +143,13 @@ class RemoteModelInfo {
   }
 }
 
+// รูปแบบ sha256: ตัวเลขฐาน 16 ยาว 64 ตัว
 final RegExp _sha256Pattern = RegExp(r'^[a-f0-9]{64}$');
 
+// รูปแบบ modelId: ขึ้นต้นด้วยตัวอักษร a-z ตามด้วย a-z/0-9/_- (ห้ามเว้นว่าง)
 final RegExp _modelIdPattern = RegExp(r'^[a-z][a-z0-9_-]*$');
 
+/// อ่านฟิลด์ที่ต้องเป็น String ไม่ว่าง (ตัดช่องว่างหัวท้ายออก)
 String _requiredString(Map<String, dynamic> json, String fieldName) {
   final value = json[fieldName];
 
@@ -144,6 +160,7 @@ String _requiredString(Map<String, dynamic> json, String fieldName) {
   return value.trim();
 }
 
+/// อ่านฟิลด์ที่ต้องเป็น int
 int _requiredInt(Map<String, dynamic> json, String fieldName) {
   final value = json[fieldName];
 
@@ -154,6 +171,7 @@ int _requiredInt(Map<String, dynamic> json, String fieldName) {
   return value;
 }
 
+/// ตรวจว่าเป็นรูปแบบ major.minor.patch หรือไม่
 void _validateVersion(String version, {required String fieldName}) {
   try {
     SemanticVersion.parse(version);
@@ -162,6 +180,7 @@ void _validateVersion(String version, {required String fieldName}) {
   }
 }
 
+/// ตรวจชื่อไฟล์: ต้องลงท้าย .tflite และต้องไม่มี path/ช่องว่าง
 void _validateFileName(String fileName, {required String fieldName}) {
   if (!fileName.endsWith('.tflite')) {
     throw FormatException('$fieldName must end with .tflite');
@@ -178,6 +197,8 @@ void _validateFileName(String fileName, {required String fieldName}) {
   }
 }
 
+/// ตรวจ URL ดาวน์โหลด: ต้องเป็น HTTPS บน github.com
+/// และต้องชี้ไปที่ release asset ของ repo Mobile-ML-App เท่านั้น
 Uri _validateModelUrl(
   String urlText, {
   required String fileName,

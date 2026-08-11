@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
-/// Page header for the real-time traffic-light detection experience.
+/// ส่วนหัว (Header) ของหน้าตรวจจับไฟจราจรแบบเรียลไทม์
+/// - ปุ่มนำทาง (เมนูหรือย้อนกลับ ตาม context)
+/// - ชื่อแอป/แบรนด์ย่อ (กลาง)
+/// - ไอคอนแจ้งเตือน (ทึบ วางตำแหน่งให้สมมาตร)
 class CameraInferenceOverlay extends StatelessWidget {
   const CameraInferenceOverlay({
     super.key,
@@ -8,8 +11,9 @@ class CameraInferenceOverlay extends StatelessWidget {
     this.showMenuButton = false,
   });
 
-  final VoidCallback onLeadingPressed;
-  final bool showMenuButton;
+  final VoidCallback onLeadingPressed; // callback กดปุ่มนำทางด้านซ้าย
+  final bool
+  showMenuButton; // true = แสดงปุ่มเมนู (อยู่ใน Drawer), false = ปุ่มย้อนกลับ
 
   @override
   Widget build(BuildContext context) {
@@ -18,6 +22,7 @@ class CameraInferenceOverlay extends StatelessWidget {
     return Row(
       key: const Key('cameraPageHeader'),
       children: [
+        // ปุ่มนำทางซ้าย: เมนู (ถ้าอยู่ในหน้าหลัก) หรือย้อนกลับ
         _HeaderButton(
           key: const Key('cameraNavigationButton'),
           tooltip: showMenuButton ? 'เปิดเมนู' : 'ย้อนกลับ',
@@ -25,8 +30,9 @@ class CameraInferenceOverlay extends StatelessWidget {
           onPressed: onLeadingPressed,
         ),
         const SizedBox(width: 8),
-        const Expanded(child: _BrandBadge()),
+        const Expanded(child: _BrandBadge()), // ชื่อแอปกลางจอ
         const SizedBox(width: 8),
+        // ไอคอนแจ้งเตือน (สำรองตำแหน่งให้สมมาตรกับปุ่มขวา)
         SizedBox(
           width: 48,
           height: 48,
@@ -43,6 +49,7 @@ class CameraInferenceOverlay extends StatelessWidget {
   }
 }
 
+/// ป้ายแบรนด์ (ชื่อไทย + ภาษาอังกฤษ + ชื่อเล่น)
 class _BrandBadge extends StatelessWidget {
   const _BrandBadge();
 
@@ -51,7 +58,7 @@ class _BrandBadge extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Semantics(
-      header: true,
+      header: true, // ทำเครื่องหมายเป็น header สำหรับ screen reader
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -94,6 +101,7 @@ class _BrandBadge extends StatelessWidget {
   }
 }
 
+/// ปุ่มนำทาง (IconButton) ขนาดมาตรฐานที่ใช้ใน header
 class _HeaderButton extends StatelessWidget {
   const _HeaderButton({
     super.key,
@@ -102,9 +110,9 @@ class _HeaderButton extends StatelessWidget {
     required this.onPressed,
   });
 
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback onPressed;
+  final String tooltip; // ข้อความ tooltip
+  final IconData icon; // ไอคอนที่แสดง
+  final VoidCallback onPressed; // callback เมื่อกด
 
   @override
   Widget build(BuildContext context) {

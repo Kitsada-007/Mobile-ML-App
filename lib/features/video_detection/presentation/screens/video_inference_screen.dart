@@ -1,11 +1,10 @@
-import 'package:flutter/material.dart';
-import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_detection_panel.dart';
-import 'package:trffic_ilght_app/features/video_detection/presentation/controllers/video_inference_controller.dart';
-import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/full_screen_video.dart';
-import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/video_result_section.dart';
+import 'package:flutter/material.dart'; // ชุด UI หลักของ Flutter
+import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_detection_panel.dart'; // แผงแสดงผลการตรวจจับ (ใช้ร่วมกับหน้าหนัง)
+import 'package:trffic_ilght_app/features/video_detection/presentation/controllers/video_inference_controller.dart'; // Controller ฝั่ง Business logic
+import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/video_result_section.dart'; // วิดเจ็ตแสดงผลวิดีโอ + overlay
 
-/// Screen widget for Video Detection UI.
-/// Contains pure UI rendering and delegates business logic to [VideoInferenceController].
+/// หน้า Screen สำหรับ UI ของการตรวจจับวิดีโอ
+/// ฝั่งนี้เป็นแค่ pure UI rendering และส่งต่อ business logic ทั้งหมดให้ [VideoInferenceController]
 class VideoInferenceScreen extends StatefulWidget {
   const VideoInferenceScreen({super.key});
 
@@ -14,81 +13,82 @@ class VideoInferenceScreen extends StatefulWidget {
 }
 
 class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
-  late final VideoInferenceController _controller;
+  late final VideoInferenceController
+  _controller; // สร้าง controller เป็น late final
 
   @override
   void initState() {
     super.initState();
+    // สร้าง Controller, ลงทะเบียนฟังการแจ้งเตือน และเริ่มโหลดโมเดลทันที
     _controller = VideoInferenceController();
     _controller.addListener(_onControllerNotification);
     _controller.initializeModels();
   }
 
+  /// ตอบสนองเมื่อ controller notifyListeners()
   void _onControllerNotification() {
-    if (!mounted) return;
-    if (_controller.snackBarMessage != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_controller.snackBarMessage!)),
-      );
+    if (!mounted) {
+      return; // ถ้า widget ถูกถอดออกจาก tree แล้ว ไม่ทำงาน (กัน error)
     }
-    setState(() {});
+    // ถ้ามีข้อความ SnackBar ให้แสดงเป็น SnackBar
+    if (_controller.snackBarMessage != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_controller.snackBarMessage!)));
+    }
+    setState(() {}); // rebuild UI เพื่อให้แสดงสถานะล่าสุด
   }
 
   @override
   void dispose() {
+    // ถอด listener และปล่อย controller (ซึ่งจะปล่อยโมเดล/วิดีโอ/เสียงด้วย)
     _controller.removeListener(_onControllerNotification);
     _controller.dispose();
     super.dispose();
   }
 
-  void _openFullScreen() {
-    if (_controller.videoController == null) return;
-
-    Navigator.push<void>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => FullScreenVideoPage(
-          controller: _controller.videoController!,
-        ),
-      ),
-    ).then((_) {
-      if (mounted) setState(() {});
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
+    // ตรวจสอบว่าจอเป็นแนวนอนหรือแนวตั้ง เพื่อปรับ layout ให้เหมาะสม
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
-    final colorScheme = Theme.of(context).colorScheme;
+    final colorScheme = Theme.of(context).colorScheme; // ธีมสีของแอป
 
     return Scaffold(
-      backgroundColor: colorScheme.surface,
+      backgroundColor: colorScheme.surface, // พื้นหลังใช้สีจากธีม
       body: SafeArea(
+        // กันเนื้อหาชนกับพื้นที่สถานะ/แถบนำทางของระบบ
+        // ListenableBuilder: rebuild เฉพาะส่วนนี้เมื่อ controller มีการเปลี่ยนแปลง
         child: ListenableBuilder(
           listenable: _controller,
           builder: (context, _) {
+            // มีวิดีโอผลลัพธ์ที่พร้อมเล่นหรือไม่ (สร้าง + initialize แล้ว)
             final bool hasVideoResult =
                 _controller.videoController != null &&
                 _controller.videoController!.value.isInitialized;
 
+            // ใช้ SingleChildScrollView ให้เลื่อนดูได้เมื่อเนื้อหายาว (หมุนจอ)
             return SingleChildScrollView(
               key: const Key('videoDetectionScrollView'),
               padding: EdgeInsets.fromLTRB(
-                isLandscape ? 24 : 16,
+                isLandscape ? 24 : 16, // ขอบตามแนวนอน/แนวตั้ง
                 8,
                 isLandscape ? 24 : 16,
                 24,
               ),
               child: Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 720),
+                  constraints: const BoxConstraints(
+                    maxWidth: 720,
+                  ), // จำกัดความกว้างให้งามบนจอใหญ่
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    crossAxisAlignment:
+                        CrossAxisAlignment.stretch, // ให้ลูกทุกตัวกว้างเต็ม
                     children: [
-                      // Header Row
+                      // ---------- Header Row (ย้อนกลับ + ชื่อหน้า + เลือกวิดีโอ) ----------
                       Row(
                         children: [
+                          // ปุ่มย้อนกลับ (มี Semantics เพื่อ Accessibility)
                           Semantics(
                             button: true,
                             label: 'ย้อนกลับ',
@@ -100,6 +100,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                             ),
                           ),
                           const SizedBox(width: 8),
+                          // ชื่อหน้า + คำอธิบายสั้น
                           const Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -121,6 +122,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                               ],
                             ),
                           ),
+                          // ปุ่มเลือกวิดีโอ (ปิดการใช้งานตอนกำลังประมวลผล)
                           IconButton(
                             tooltip: 'เลือกวิดีโอ',
                             icon: const Icon(Icons.video_library_rounded),
@@ -132,6 +134,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                       ),
                       const SizedBox(height: 16),
 
+                      // แสดงแถบโหลดแบบเส้น ถ้าโมเดลยังโหลดไม่เสร็จ
                       if (!_controller.areModelsReady)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 12),
@@ -144,25 +147,28 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                           ),
                         ),
 
-                      // Main Video Card (Result Video OR Processing OR Picker Prompt)
+                      // ---------- การ์ดหลัก: แสดงตามสถานะ 3 แบบ ----------
+                      // 1. มีผลลัพธ์วิดีโอ -> แสดงวิดีโอ + overlay + ปุ่มควบคุม
                       if (hasVideoResult) ...[
                         ResultVideoSection(
                           controller: _controller.videoController!,
                           detections: _controller.currentFrameDetections,
                           detectedNumber: _controller.currentDetectedNumber,
                           isVoiceEnabled: _controller.isVoiceEnabled,
-                          onOpenFullScreen: _openFullScreen,
+
                           onTogglePlayPause: _controller.togglePlayPause,
                           onToggleVoice: _controller.toggleVoice,
                           onPickNewVideo: _controller.pickVideo,
                         ),
                       ] else if (_controller.isProcessing) ...[
+                        // 2. กำลังประมวลผล -> แสดงการ์ดความคืบหน้า
                         _VideoProcessingCard(
                           progressValue: _controller.progressValue,
                           progressText: _controller.progressText,
                           isLandscape: isLandscape,
                         ),
                       ] else ...[
+                        // 3. ยังไม่ได้เลือกวิดีโอ -> แสดงการ์ดชวนให้เลือกวิดีโอ
                         _VideoPickerPlaceholderCard(
                           areModelsReady: _controller.areModelsReady,
                           onPickVideo: _controller.pickVideo,
@@ -172,7 +178,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
 
                       const SizedBox(height: 20),
 
-                      // Realtime Detection Panel matching Camera Page
+                      // ---------- แผงผลลัพธ์การตรวจจับ (เหมือนหน้า Camera) ----------
                       CameraDetectionPanel(
                         formalNames: _controller.currentFormalNames,
                         alertMessages: _controller.currentAlertMessages,
@@ -180,10 +186,12 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
                         driverSignalResult:
                             _controller.currentDriverSignalResult,
                         isLandscape: isLandscape,
+                        // isPipelineStale: จริงเมื่อไม่ได้ประมวลผล และยังไม่มีผลตรวจจับในเฟรม
                         isPipelineStale:
                             !_controller.isProcessing &&
                             _controller.currentFrameDetections.isEmpty &&
                             _controller.currentDetectedNumber == null,
+                        // กำหนดข้อความสถานะตามสถานะปัจจุบันของวิดีโอ
                         statusText: hasVideoResult
                             ? (_controller.videoController!.value.isPlaying
                                   ? 'กำลังตรวจจับแบบเรียลไทม์'
@@ -206,6 +214,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
   }
 }
 
+/// การ์ดแสดงความคืบหน้า (Progress) ขณะประมวลผลวิดีโอ
 class _VideoProcessingCard extends StatelessWidget {
   const _VideoProcessingCard({
     required this.progressValue,
@@ -213,13 +222,14 @@ class _VideoProcessingCard extends StatelessWidget {
     required this.isLandscape,
   });
 
-  final double progressValue;
-  final String progressText;
-  final bool isLandscape;
+  final double progressValue; // ค่าความคืบหน้า 0.0 - 1.0
+  final String progressText; // ข้อความอธิบายขั้นตอน
+  final bool isLandscape; // จอแนวนอนหรือไม่ (ปรับสัดส่วน)
 
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
+      // กล่องดำ + เงาใต้การ์ด
       decoration: BoxDecoration(
         color: Colors.black,
         borderRadius: BorderRadius.circular(24),
@@ -232,7 +242,9 @@ class _VideoProcessingCard extends StatelessWidget {
         ],
       ),
       child: ClipRRect(
+        // ตัดมุมโค้งให้กับเนื้อหาด้านในด้วย
         borderRadius: BorderRadius.circular(24),
+        // สัดส่วนตามการหมุนจอ (16:9 แนวนอน / 4:3 แนวตั้ง)
         child: AspectRatio(
           aspectRatio: isLandscape ? 16 / 9 : 4 / 3,
           child: Padding(
@@ -240,6 +252,7 @@ class _VideoProcessingCard extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                // ไอคอนหมุน (CircularProgressIndicator) สีเขียว
                 const SizedBox(
                   width: 48,
                   height: 48,
@@ -249,6 +262,7 @@ class _VideoProcessingCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 20),
+                // ข้อความสถานะการทำงาน (fallback ข้อความเสมอถ้าช่องว่าง)
                 Text(
                   progressText.isEmpty
                       ? 'กำลังวิเคราะห์วิดีโอ...'
@@ -261,6 +275,7 @@ class _VideoProcessingCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
+                // แถบ progress (ไม่มีกำหนดค่า -> ใช้ mode อนิเมชันแบบ indeterminate)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: LinearProgressIndicator(
@@ -279,6 +294,7 @@ class _VideoProcessingCard extends StatelessWidget {
   }
 }
 
+/// การ์ดชวนเลือกวิดีโอ เมื่อยังไม่เลือกไฟล์ (Placeholder)
 class _VideoPickerPlaceholderCard extends StatelessWidget {
   const _VideoPickerPlaceholderCard({
     required this.areModelsReady,
@@ -286,9 +302,9 @@ class _VideoPickerPlaceholderCard extends StatelessWidget {
     required this.isLandscape,
   });
 
-  final bool areModelsReady;
-  final VoidCallback onPickVideo;
-  final bool isLandscape;
+  final bool areModelsReady; // โมเดลพร้อมแล้วหรือยัง (ปุ่มเปิด/ปิดตามนี้)
+  final VoidCallback onPickVideo; // callback กดปุ่มเลือกวิดีโอ
+  final bool isLandscape; // ปรับสัดส่วนตามการหมุนจอ
 
   @override
   Widget build(BuildContext context) {
@@ -311,6 +327,7 @@ class _VideoPickerPlaceholderCard extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
+              // พื้นหลังไล่สีเข้ม + ไอคอนวิดีโอขนาดใหญ่
               const DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -327,6 +344,7 @@ class _VideoPickerPlaceholderCard extends StatelessWidget {
                   ),
                 ),
               ),
+              // ข้อความชวน + ปุ่มเลือกวิดีโอ (คั่นกลาง)
               Center(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -349,6 +367,7 @@ class _VideoPickerPlaceholderCard extends StatelessWidget {
                         style: TextStyle(color: Colors.white70, fontSize: 13),
                       ),
                       const SizedBox(height: 20),
+                      // ปุ่มเลือกวิดีโอ (disabled ถ้าโมเดลยังไม่พร้อม)
                       FilledButton.icon(
                         onPressed: areModelsReady ? onPickVideo : null,
                         icon: const Icon(Icons.video_library_outlined),

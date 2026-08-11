@@ -22,14 +22,16 @@ import 'package:ultralytics_yolo/yolo.dart';
 // HELPER FUNCTIONS
 // =============================================================================
 
-/// Calculates the frame sampling interval given source FPS and target checks per second.
+/// คำนวณช่วงห่างของเฟรมที่ต้องสุ่ม (sampling interval)
+/// จากค่า FPS ของวิดีโอต้นฉบับ และจำนวนครั้งที่ต้องการตรวจต่อวินาที
+/// เช่น sourceFps=30, targetChecksPerSecond=4 -> interval = 30/4 ≈ 8 (ตรวจทุก 8 เฟรม)
 int calculateSampleInterval({
   required int sourceFps,
   required int targetChecksPerSecond,
 }) {
-  if (sourceFps <= 0 || targetChecksPerSecond <= 0) return 1;
+  if (sourceFps <= 0 || targetChecksPerSecond <= 0) return 1; // กันหารด้วยศูนย์
   final interval = (sourceFps / targetChecksPerSecond).round();
-  return interval > 0 ? interval : 1;
+  return interval > 0 ? interval : 1; // อย่างน้อย 1 (ตรวจทุกเฟรม)
 }
 
 // =============================================================================
@@ -46,13 +48,14 @@ class FrameAnalysisResult {
 }
 
 /// Result data from realtime video processing pipeline.
+/// รวมผลลัพธ์ทั้งหมดของการประมวลผลวิดีโอ 1 ไฟล์
 class VideoProcessingResult {
   const VideoProcessingResult({
-    required this.finalVideoPath,
-    required this.frameResults,
-    required this.detectedClasses,
-    required this.detectedNumbers,
-    this.targetFps = 5,
+    required this.finalVideoPath, // path วิดีโอผลลัพธ์ (annotate แล้ว)
+    required this.frameResults, // ผลรายเฟรม (key = index เฟรม)
+    required this.detectedClasses, // ชุดคลาสที่ตรวจพบทั้งไฟล์
+    required this.detectedNumbers, // ชุดตัวเลขนับถอยหลังที่พบทั้งไฟล์
+    this.targetFps = 5, // อัตราตรวจจับต่อวินาทีที่ใช้จริง
   });
 
   final String finalVideoPath;

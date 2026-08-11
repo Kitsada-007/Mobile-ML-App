@@ -9,10 +9,16 @@ import 'package:trffic_ilght_app/core/services/model_management/model_file_store
 import 'package:trffic_ilght_app/core/services/model_management/model_registry.dart';
 import 'package:ultralytics_yolo/config/channel_config.dart';
 
+/// โหลดโมเดลที่ฝังมากับแอป (asset) : คืน bytes
 typedef BundledModelLoader = Future<Uint8List> Function(String assetPath);
+
+/// ค้นหาโมเดล native (ผ่าน platform channel) : คืน path หรือ null
 typedef NativeModelLookup = Future<String?> Function(String assetPath);
 
-/// Resolves verified downloaded YOLO models with a bundled offline fallback.
+/// ตัวจัดการโมเดล YOLO:
+/// - ใช้โมเดลที่ดาวน์โหลดและตรวจสอบแล้วก่อน (registry)
+/// - ถ้าไม่มีหรือใช้ไม่ได้ -> ถอยกลับไปใช้โมเดลที่ฝังในแอป
+/// - มีระบบโหลดโมเดลที่ล้มเหลว -> ย้อนกลับรุ่นก่อนหน้าอัตโนมัติ
 class ModelManager {
   ModelManager({
     this.onStatusUpdate,
@@ -40,6 +46,7 @@ class ModelManager {
 
   Future<ActiveModelRegistry>? _registryFuture;
 
+  /// คืน path ของโมเดลที่ควรใช้ (ดาวน์โหลดแล้ว -> ถ้าไม่มี ใช้แบบฝังในแอป)
   Future<String?> getModelPath(ModelType modelType) async {
     if (!_isAndroid) {
       _updateStatus('แอปพลิเคชันนี้รองรับโมเดลเฉพาะระบบ Android');
@@ -56,8 +63,9 @@ class ModelManager {
     return _resolveBundledModel(modelType);
   }
 
-  /// Marks a downloaded model that the YOLO runtime could not load and
-  /// returns the previous verified model or the bundled fallback.
+  /// ใช้เมื่อโมเดลที่ดาวน์โหลดโหลดไม่ขึ้น (runtime error)
+  /// - marks โมเดลนั้นว่า failed
+  /// - คืนโมเดลรุ่นก่อนหน้าที่ตรวจสอบแล้ว หรือ fallback เป็นแบบฝังในแอป
   Future<String?> reportModelLoadFailure(
     ModelType modelType, {
     required String failedPath,
@@ -73,6 +81,7 @@ class ModelManager {
     return _resolveBundledModel(modelType);
   }
 
+  /// ค้นหาโมเดลที่ดาวน์โหลดมาและตรวจสอบว่าไฟล์ยัง valid (ขนาด + SHA-256)
   Future<String?> _resolveDownloadedModel(ModelType modelType) async {
     final registry = await _getRegistry();
     var active = await registry.getActive(modelType.remoteId);
@@ -96,6 +105,7 @@ class ModelManager {
     return null;
   }
 
+  /// เตรียมโมเดลที่ฝังในแอป (native path หรือ copy ลง documents)
   Future<String?> _resolveBundledModel(ModelType modelType) async {
     try {
       final nativePath = await _nativeModelLookup(modelType.modelName);
@@ -129,6 +139,7 @@ class ModelManager {
     }
   }
 
+  /// รับ registry (จากที่ส่งเข้ามา หรือสร้างจาก SharedPreferences เอง)
   Future<ActiveModelRegistry> _getRegistry() {
     final provided = _providedRegistry;
     if (provided != null) return Future<ActiveModelRegistry>.value(provided);
@@ -138,11 +149,13 @@ class ModelManager {
     );
   }
 
+  /// โหลด asset ที่ฝังในแอปเป็น bytes
   static Future<Uint8List> _loadBundledAsset(String assetPath) async {
     final data = await rootBundle.load(assetPath);
     return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
   }
 
+  /// ถาม native ว่าโมเดลใน asset มีอยู่จริงและอยู่ที่ไหน
   static Future<String?> _lookupNativeModel(String assetPath) async {
     final result = await _channel.invokeMethod<dynamic>(
       'checkModelExists',

@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trffic_ilght_app/core/services/model_management/models/semantic_version.dart';
 
+/// ทะเบียนโมเดลที่ใช้งานอยู่/ก่อนหน้า เก็บไว้ใน SharedPreferences
+/// - ติดตามโมเดลที่กำลังใช้ (active) และรุ่นก่อนหน้า (previous) ต่อ modelId
+/// - จำบันทึกเวอร์ชันที่โหลดไม่สำเร็จ เพื่อไม่ให้ดาวน์โหลดซ้ำเดิม
 abstract interface class ActiveModelRegistry {
   Future<StoredModelRecord?> getActive(String modelId);
 
@@ -21,6 +24,7 @@ abstract interface class ActiveModelRegistry {
   });
 }
 
+/// Implementation จริงของ ActiveModelRegistry เก็บข้อมูลเป็น JSON ใน preferences
 class ModelRegistry implements ActiveModelRegistry {
   ModelRegistry(this._preferences);
 
@@ -104,6 +108,7 @@ class ModelRegistry implements ActiveModelRegistry {
     return previous;
   }
 
+  /// อ่าน record จาก preferences (ถ้า JSON เสีย -> ลบทิ้งแล้วคืน null)
   Future<StoredModelRecord?> _readRecord(String modelId, _Slot slot) async {
     _validateModelId(modelId);
     final key = _key(modelId, slot);
@@ -120,6 +125,7 @@ class ModelRegistry implements ActiveModelRegistry {
     }
   }
 
+  /// เขียน record ลง preferences (ตรวจสอบก่อนเสมอ)
   Future<void> _writeRecord(
     String modelId,
     _Slot slot,
@@ -152,6 +158,7 @@ class ModelRegistry implements ActiveModelRegistry {
 
 enum _Slot { active, previous }
 
+/// บันทึกข้อมูลโมเดลที่เก็บไว้ (ทั้ง active และ previous)
 class StoredModelRecord {
   const StoredModelRecord({
     required this.version,
