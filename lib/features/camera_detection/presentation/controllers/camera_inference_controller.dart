@@ -161,6 +161,19 @@ class CameraInferenceController extends ChangeNotifier {
   List<String> get detectedAlertMessages => _detectedAlertMessages;
   double? get lastDetectionConfidence => _lastDetectionConfidence;
 
+  bool get isVoiceEnabled => _voiceService.isEnabled; // เสียงเปิดอยู่หรือไม่
+
+  /// สลับเปิด/ปิดเสียงประกาศ (signature ตรงกับฝั่ง video controller)
+  void toggleVoice() {
+    _voiceService.setEnabled(!_voiceService.isEnabled); // สลับสถานะ
+    if (!_voiceService.isEnabled) {
+      unawaited(
+        _voiceService.stop(),
+      ); // ถ้าปิดเสียง ให้หยุดการพูดที่กำลังค้างอยู่
+    }
+    notifyListeners(); // แจ้ง UI ให้ rebuild
+  }
+
   /// สถานะการตรวจจับโดยรวม (ใช้แสดงใน UI แบบข้อความ)
   String get detectionStatus {
     if (!_isCameraEnabled) return 'กล้องปิดอยู่';
@@ -637,7 +650,11 @@ class CameraInferenceController extends ChangeNotifier {
       shouldNotify = true;
     }
 
-    unawaited(_voiceAlertController.handleEvents(stabilization.events));
+    // ผู้ใช้ปิดเสียงใน settings แล้วต้องไม่พูด (เหมือนที่ video controller ทำ)
+    final shouldAnnounce = _voiceService.isEnabled;
+    if (shouldAnnounce) {
+      unawaited(_voiceAlertController.handleEvents(stabilization.events));
+    }
 
     // ----- คำนวณ FPS ต่อตามปกติ -----
     _frameCount++;

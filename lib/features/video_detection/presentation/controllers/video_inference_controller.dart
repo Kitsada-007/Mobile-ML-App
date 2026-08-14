@@ -209,6 +209,12 @@ class VideoInferenceController extends ChangeNotifier {
         return;
       }
 
+      // เก็บของเก่าไว้ก่อน แล้วค่อยปล่อยหลังสลับของใหม่เข้าที่
+      // (initializeModels อาจถูกเรียกซ้ำตอน retry หลัง error -> ถ้าไม่ปล่อยจะ leak)
+      final oldPipeline = _signNumberPipeline;
+      final oldTrafficYolo = _trafficYolo;
+      final oldNumberYolo = _numberYolo;
+
       // เก็บโมเดลเข้าที่และสร้างบริการวิเคราะห์เฟรม
       _trafficYolo = trafficYolo;
       _numberYolo = numberYolo;
@@ -219,6 +225,12 @@ class VideoInferenceController extends ChangeNotifier {
       );
       _areModelsReady = true; // ตั้งสถานะว่าพร้อมแล้ว
       notifyListeners();
+
+      // ปล่อยของเก่า: pipeline ก่อน (มี isolate worker และใช้ numberYolo ตัวเก่าอยู่)
+      // แล้วจึงปล่อยโมเดล ไม่งั้นงานที่ค้างใน worker จะอ้างโมเดลที่ถูกปล่อยไปแล้ว
+      await oldPipeline?.dispose();
+      await oldTrafficYolo?.dispose();
+      await oldNumberYolo?.dispose();
     } catch (e) {
       // กรณี error: ปล่อยโมเดลที่โหลดมา (บางส่วน) แล้วแสดงข้อความผิดพลาด
       await trafficYolo?.dispose();
@@ -602,9 +614,21 @@ class VideoInferenceController extends ChangeNotifier {
   void dispose() {
     _isDisposed = true; // ปิด flag กัน async code ทำงานต่อหลัง dispose
     _resetDetectionSession();
-    unawaited(_trafficYolo?.dispose()); // ปล่อยโมเดล Traffic
-    unawaited(_numberYolo?.dispose()); // ปล่อยโมเดล Number
-    unawaited(_signNumberPipeline?.dispose()); // ปิด worker isolate ของ crop
+    unawaited(_trafficYolo?.dispose()); // Traffic ไม่ผูกกับ pipeline ปล่อยได้เลย
+
+    // pipeline ใช้ numberYolo อยู่ และมี isolate worker ที่อาจยังทำงานค้าง
+    // จึงต้องรอ pipeline.dispose() ให้จบก่อนแล้วค่อยปล่อยโมเดลที่มันใช้
+    // ใช้ then() ไม่ใช่ Future(...) เพราะ Future(...) สร้าง Timer ที่ค้างจน
+    // widget test ฟ้อง "pending timers" ตอน teardown
+    final pipeline = _signNumberPipeline;
+    final numberYolo = _numberYolo;
+    _signNumberPipeline = null;
+    _numberYolo = null;
+    unawaited(
+      (pipeline?.dispose() ?? Future<void>.value()).then(
+        (_) => numberYolo?.dispose() ?? Future<void>.value(),
+      ),
+    );
     if (_videoController != null) {
       final controller = _videoController!;
       _videoController = null;

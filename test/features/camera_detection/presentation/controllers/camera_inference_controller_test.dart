@@ -5,9 +5,40 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trffic_ilght_app/core/services/inference/countdown_reading_stabilizer.dart';
+import 'package:trffic_ilght_app/core/services/voice/traffic_voice_service.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/controllers/camera_inference_controller.dart';
 import 'package:trffic_ilght_app/core/services/inference/sign_number_pipeline_service.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+
+/// TrafficVoiceService ปลอมสำหรับเทสต์: บันทึกข้อความที่ถูกสั่งพูดไว้ตรวจสอบ
+class FakeTrafficVoiceService implements TrafficVoiceService {
+  FakeTrafficVoiceService({bool enabled = true}) : _enabled = enabled;
+
+  bool _enabled;
+  final List<String> spokenMessages = [];
+
+  @override
+  bool get isEnabled => _enabled;
+
+  @override
+  Future<void> setEnabled(bool value) async {
+    _enabled = value;
+  }
+
+  @override
+  Future<void> reloadSettings() async {}
+
+  @override
+  Future<void> speak(String message) async {
+    spokenMessages.add(message);
+  }
+
+  @override
+  String getThaiMessage(String className) => className;
+
+  @override
+  Future<void> stop() async {}
+}
 
 class RecordingDigitYolo extends YOLO {
   RecordingDigitYolo()
@@ -380,6 +411,60 @@ void main() {
     await controller.onDetectionResults([redLight]);
     expect(controller.confirmedTrafficLightClassName, 'red_light_circle');
     expect(controller.detectedFormalNames, hasLength(1));
+    controller.dispose();
+  });
+
+  test('stays silent while the user has voice turned off', () async {
+    final voiceService = FakeTrafficVoiceService(enabled: false);
+    final controller = CameraInferenceController(
+      voiceService: voiceService,
+      enableFreshnessWatchdog: false,
+    );
+    final redLight = _trafficLightDetection('red_light_circle');
+
+    // ยิงจนผ่านโหวต (4 จาก 5 เฟรม) ให้เกิด stable detected event จริง
+    for (var frame = 0; frame < 4; frame++) {
+      await controller.onDetectionResults([redLight]);
+    }
+
+    expect(controller.isVoiceEnabled, false);
+    // ยืนยันว่าเกิด stable event จริง ไม่ใช่เงียบเพราะไม่มีอะไรให้พูด
+    expect(controller.confirmedTrafficLightClassName, 'red_light_circle');
+    expect(voiceService.spokenMessages, isEmpty);
+    controller.dispose();
+  });
+
+  test('announces the stable class when voice is enabled', () async {
+    final voiceService = FakeTrafficVoiceService();
+    final controller = CameraInferenceController(
+      voiceService: voiceService,
+      enableFreshnessWatchdog: false,
+    );
+    final redLight = _trafficLightDetection('red_light_circle');
+
+    for (var frame = 0; frame < 4; frame++) {
+      await controller.onDetectionResults([redLight]);
+    }
+    await Future<void>.delayed(Duration.zero); // รอ unawaited handleEvents
+
+    expect(controller.isVoiceEnabled, true);
+    expect(voiceService.spokenMessages, hasLength(1));
+    expect(voiceService.spokenMessages.single, contains('red_light_circle'));
+    controller.dispose();
+  });
+
+  test('toggleVoice flips the announcement state', () {
+    final controller = CameraInferenceController(
+      voiceService: FakeTrafficVoiceService(),
+      enableFreshnessWatchdog: false,
+    );
+    expect(controller.isVoiceEnabled, true);
+
+    controller.toggleVoice();
+    expect(controller.isVoiceEnabled, false);
+
+    controller.toggleVoice();
+    expect(controller.isVoiceEnabled, true);
     controller.dispose();
   });
 
