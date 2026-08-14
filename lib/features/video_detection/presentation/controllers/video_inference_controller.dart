@@ -111,6 +111,8 @@ class VideoInferenceController extends ChangeNotifier {
   // ---- โมเดล YOLO และบริการวิเคราะห์ ----
   YOLO? _trafficYolo; // โมเดลตรวจจับไฟจราจร
   YOLO? _numberYolo; // โมเดลอ่านตัวเลข/ป้ายนับถอยหลัง
+  SignNumberPipelineService?
+  _signNumberPipeline; // pipeline อ่านเลขป้าย (ต้อง dispose เพราะมี worker isolate)
   VideoFrameAnalysisService? _videoFrameAnalysisService; // บริการวิเคราะห์เฟรม
   String? _trafficModelPath; // path ไฟล์โมเดล Traffic
   String? _numberModelPath; // path ไฟล์โมเดล Number
@@ -210,9 +212,10 @@ class VideoInferenceController extends ChangeNotifier {
       // เก็บโมเดลเข้าที่และสร้างบริการวิเคราะห์เฟรม
       _trafficYolo = trafficYolo;
       _numberYolo = numberYolo;
+      _signNumberPipeline = SignNumberPipelineService(digitYolo: numberYolo);
       _videoFrameAnalysisService = VideoFrameAnalysisService(
         trafficYolo: trafficYolo,
-        signNumberPipeline: SignNumberPipelineService(digitYolo: numberYolo),
+        signNumberPipeline: _signNumberPipeline!,
       );
       _areModelsReady = true; // ตั้งสถานะว่าพร้อมแล้ว
       notifyListeners();
@@ -339,6 +342,7 @@ class VideoInferenceController extends ChangeNotifier {
         videoFile: _videoFile!,
         frameAnalysisService: _videoFrameAnalysisService!,
         countdownStabilizer: _countdownStabilizer,
+        targetFps: targetChecksPerSecond, // ใช้ค่าที่ controller กำหนดจริง
         isCancelled: () => _isDisposed,
         onProgress: (progressValue, progressText) {
           if (!_isDisposed) {
@@ -600,6 +604,7 @@ class VideoInferenceController extends ChangeNotifier {
     _resetDetectionSession();
     unawaited(_trafficYolo?.dispose()); // ปล่อยโมเดล Traffic
     unawaited(_numberYolo?.dispose()); // ปล่อยโมเดล Number
+    unawaited(_signNumberPipeline?.dispose()); // ปิด worker isolate ของ crop
     if (_videoController != null) {
       final controller = _videoController!;
       _videoController = null;

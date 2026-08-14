@@ -36,22 +36,55 @@ class VideoFrameAnalysisService {
   final SignNumberPipelineService
   _signNumberPipeline; // pipeline อ่านตัวเลขป้าย
 
+  // ---- ตัวสะสมเวลา (สำหรับวัดประสิทธิภาพ per-stage) ----
+  int _trafficPredictMicros = 0; // เวลารวมของ traffic model predict
+  int _signPipelineMicros = 0; // เวลารวมของ pipeline อ่านตัวเลข
+  int _analyzedFrameCount = 0; // จำนวนเฟรมที่วิเคราะห์แล้ว
+
+  /// รีเซ็ตตัวสะสมเวลา (เรียกก่อนเริ่มประมวลผลวิดีโอแต่ละไฟล์)
+  void resetTiming() {
+    _trafficPredictMicros = 0;
+    _signPipelineMicros = 0;
+    _analyzedFrameCount = 0;
+  }
+
+  /// สรุปเวลาเฉลี่ยต่อเฟรมของแต่ละขั้นตอน (ใช้เทียบ before/after ตอนวัดผล)
+  String timingSummary() {
+    if (_analyzedFrameCount == 0) return 'no frames analyzed';
+    final avgTraffic = _trafficPredictMicros / _analyzedFrameCount / 1000;
+    final avgSign = _signPipelineMicros / _analyzedFrameCount / 1000;
+    return 'frames=$_analyzedFrameCount '
+        'trafficPredict avg=${avgTraffic.toStringAsFixed(1)}ms '
+        'signPipeline avg=${avgSign.toStringAsFixed(1)}ms';
+  }
+
   /// วิเคราะห์ภาพ 1 เฟรม (ไบต์ภาพ) และคืนผลลัพธ์การตรวจจับทั้งหมด
   Future<VideoFrameAnalysisResult> analyze(Uint8List frameBytes) async {
+    final stopwatch = Stopwatch()..start();
     // ขั้นตอนที่ 1: ตรวจจับไฟจราจรด้วยโมเดลหลัก
     final trafficResult = await _trafficYolo.predict(
       frameBytes,
       confidenceThreshold: videoTrafficConfidenceThreshold,
       iouThreshold: videoTrafficIouThreshold,
     );
+    _trafficPredictMicros += stopwatch.elapsedMicroseconds;
     // แปลงผลตรวจจับ raw เป็น list ของ YOLOResult
     final detections = parseYoloDetections(trafficResult['detections']);
 
     // ขั้นตอนที่ 2: อ่านตัวเลขจากป้าย (ถ้าเจอบริเวณ sign_number)
-    final signAnalysis = await _signNumberPipeline.analyzeSingleImage(
+    // ใช้เส้นทาง realtime (PersistentSignCropWorker): isolate เดียวที่ reuse,
+    // decode ภาพครั้งเดียวได้ crop ทั้ง tight/wide — แทน analyzeSingleImage
+    // ที่ spawn isolate ใหม่ + decode ซ้ำต่อ crop ทุกเฟรม
+    // rotationDegrees: 0 เพราะเฟรมจาก ffmpeg ตั้งตรงเสมอ (ไม่ต้องเดาการหมุน
+    // และเป็นการปิด fallback ลองหมุนทิศอื่นซึ่งไม่จำเป็นกับวิดีโอ)
+    stopwatch.reset();
+    final signAnalysis = await _signNumberPipeline.analyzeRealtimeFrame(
       frameBytes: frameBytes,
       detectionResults: detections,
+      rotationDegrees: 0,
     );
+    _signPipelineMicros += stopwatch.elapsedMicroseconds;
+    _analyzedFrameCount += 1;
 
     // ภาพที่ annotate แล้ว (fallback เป็นภาพต้นฉบับถ้าไม่มี)
     final annotatedImage = trafficResult['annotatedImage'];

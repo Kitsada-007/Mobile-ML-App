@@ -90,6 +90,7 @@ class VideoProcessingService {
       // 1. Extract frames from video using FFmpeg at the exact target rate.
       //    ไม่ extract ถี่กว่านี้แล้วมา skip ทีหลัง เพราะเปลืองเวลา/พื้นที่โดยไม่จำเป็น
       onProgress(0.0, 'กำลังสกัดเฟรมจากวิดีโอ ($targetFps ครั้ง/วินาที)...');
+      final extractStopwatch = Stopwatch()..start();
 
       final String extractCmd =
           '-threads 0 '
@@ -109,6 +110,7 @@ class VideoProcessingService {
       if (!ReturnCode.isSuccess(extractReturnCode)) {
         throw Exception('Failed to extract frames from video.');
       }
+      extractStopwatch.stop();
 
       final List<FileSystemEntity> frameFiles = inputDir.listSync()
         ..sort((a, b) => a.path.compareTo(b.path));
@@ -129,6 +131,8 @@ class VideoProcessingService {
 
       // 2. Process every extracted frame through the dual-stage pipeline
       //    with realtime stabilization & decay hold for the countdown number.
+      frameAnalysisService.resetTiming(); // เริ่มเก็บเวลา per-stage ใหม่
+      final analysisStopwatch = Stopwatch()..start();
       String? lastAcceptedNumber;
       int holdFrameCount = 0;
 
@@ -193,6 +197,17 @@ class VideoProcessingService {
             await fileEntity.delete();
           }
         }
+      }
+
+      analysisStopwatch.stop();
+      // สรุปเวลาแต่ละขั้นตอน (ใช้เทียบ before/after ตอนวัดประสิทธิภาพ)
+      // ไม่พิมพ์ใน release build — แต่พิมพ์ใน profile mode ซึ่งเป็นโหมดที่ควรใช้วัด
+      if (!kReleaseMode) {
+        debugPrint(
+          '[video-perf] extract=${extractStopwatch.elapsedMilliseconds}ms '
+          'analysisLoop=${analysisStopwatch.elapsedMilliseconds}ms '
+          '(${frameAnalysisService.timingSummary()})',
+        );
       }
 
       onProgress(1.0, 'วิเคราะห์วิดีโอเรียบร้อย พร้อมเล่นแบบ Real-time');

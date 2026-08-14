@@ -17,7 +17,7 @@ final class RemoteModelUpdateBootstrap {
 
   static final Uri manifestUri = Uri.parse(
     'https://github.com/Kitsada-007/Mobile-ML-App/'
-    'releases/latest/download/model_manifest.json',
+    'releases/download/model-latest/model_manifest.json',
   );
 
   static Future<ModelUpdateReport?>? _sessionCheck;
