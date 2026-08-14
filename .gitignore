@@ -56,10 +56,16 @@ Mobile_ML_App_Systems.csv
 Mobile_ML_App_Systems.xlsx
 assets/test/1.mp4
 
-.claude
+# Claude Code: share project memory + project settings, keep local overrides and
+# installed skills out (skills are restorable from the tracked skills-lock.json)
+.claude/*
+!.claude/CLAUDE.md
+!.claude/settings.json
 
-# Model release staging folders (assets are published to GitHub Releases, see ADR-0003)
-release-model-*/
+# Model release staging folders — the .tflite assets are published to GitHub
+# Releases (see ADR-0003); only the manifest is versioned as an audit trail
+release-model-*/*
+!release-model-*/model_manifest.json
 
 # Superseded bundled models (only the *_v1_2_1 pair ships, see pubspec.yaml assets)
 assets/models/*_v1_2_0.tflite
