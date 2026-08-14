@@ -76,6 +76,23 @@ void main() {
       controller.clearSnackBarMessage();
       expect(controller.snackBarMessage, isNull);
     });
+
+    test('pause resets detection session and handles uninitialized controller safely', () async {
+      final controller = VideoInferenceController(
+        voiceService: FakeTrafficVoiceService(),
+      );
+      await controller.pause();
+      expect(controller.currentDriverSignalResult.action, SignalAction.none);
+      expect(controller.currentFormalNames, isEmpty);
+    });
+
+    test('dispose safely cleans up controller and voice service', () {
+      final controller = VideoInferenceController(
+        voiceService: FakeTrafficVoiceService(),
+      );
+      controller.dispose();
+      expect(controller.currentDriverSignalResult.action, SignalAction.none);
+    });
   });
 }
 

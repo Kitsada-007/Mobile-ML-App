@@ -38,15 +38,20 @@ final class VoiceAlertController {
           );
     if (candidates.isEmpty) return null;
 
-    final selected = candidates.first;
-    final className = selected.detection.className;
-    final cooldown = config.ruleFor(className).voiceCooldown;
-    final lastSpokenAt = _lastSpokenAtByClass[className];
-    if (lastSpokenAt != null &&
-        selected.timestamp.difference(lastSpokenAt) < cooldown) {
-      return null;
+    DetectionEvent? selected;
+    for (final candidate in candidates) {
+      final className = candidate.detection.className;
+      final cooldown = config.ruleFor(className).voiceCooldown;
+      final lastSpokenAt = _lastSpokenAtByClass[className];
+      if (lastSpokenAt == null ||
+          candidate.timestamp.difference(lastSpokenAt) >= cooldown) {
+        selected = candidate;
+        break;
+      }
     }
+    if (selected == null) return null;
 
+    final className = selected.detection.className;
     final didSpeak = await speakMessageIfIdle(() => _speakClassName(className));
     if (!didSpeak) return null;
     _lastSpokenAtByClass[className] = selected.timestamp;

@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:trffic_ilght_app/core/services/detection/detection_alert_config.dart';
 import 'package:trffic_ilght_app/core/services/detection/detection_stabilizer.dart';
 import 'package:trffic_ilght_app/core/services/voice/voice_alert_controller.dart';
 import 'package:ultralytics_yolo/yolo.dart';
@@ -186,7 +187,12 @@ void main() {
     });
 
     test('requires six continuous frames before confirming off light', () {
-      final stabilizer = DetectionStabilizer();
+      final stabilizer = DetectionStabilizer(
+        config: const DetectionAlertConfig(
+          offLightMinimumFrames: 6,
+          offLightMinimumDuration: Duration(milliseconds: 500),
+        ),
+      );
       final start = DateTime(2026);
 
       for (var frame = 0; frame < 5; frame++) {

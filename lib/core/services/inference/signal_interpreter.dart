@@ -94,8 +94,42 @@ class SignalInterpreter {
       // signNumber ไม่เข้ามาที่นี่ ถูกจัดการแยกใน pipeline number model
     }
 
-    // 2. ไม่เจอไฟเลย -> ไม่ต้องแสดงอะไร (กันเคส noise)
+    // 2. ไม่เจอไฟเลย -> ตรวจสอบว่ามีป้ายทิศทางหรือสัญญาณทิศทางหรือไม่
     if (bestLight == null) {
+      if (directions.isEmpty) {
+        return const DriverSignalResult(message: '', action: SignalAction.none);
+      }
+
+      final allowed = directions
+          .where((d) => !d.className.startsWith('dont_'))
+          .map((d) => TrafficSignalClasses.thaiLabel[d.className])
+          .whereType<String>()
+          .toSet()
+          .toList();
+
+      final disallowed = directions
+          .where((d) => d.className.startsWith('dont_'))
+          .map((d) => TrafficSignalClasses.thaiLabel[d.className])
+          .whereType<String>()
+          .toSet()
+          .toList();
+
+      if (allowed.isNotEmpty) {
+        final buffer = StringBuffer(allowed.join(', '));
+        if (disallowed.isNotEmpty) {
+          buffer.write(' (${disallowed.join(', ')})');
+        }
+        return DriverSignalResult(
+          message: buffer.toString(),
+          action: SignalAction.go,
+        );
+      } else if (disallowed.isNotEmpty) {
+        return DriverSignalResult(
+          message: disallowed.join(', '),
+          action: SignalAction.caution,
+        );
+      }
+
       return const DriverSignalResult(message: '', action: SignalAction.none);
     }
 

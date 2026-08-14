@@ -98,5 +98,16 @@ void main() {
       expect(result.message, '');
       expect(result.action, SignalAction.none);
     });
+
+    test('interprets straight arrow and turn right when no traffic light is detected', () {
+      final detections = [
+        _makeDetection(TrafficSignalClasses.goStraightArrow, 0.85),
+        _makeDetection(TrafficSignalClasses.turnRight, 0.8),
+      ];
+
+      final result = SignalInterpreter.interpret(detections);
+      expect(result.message, 'ตรงไปได้, เลี้ยวขวาได้');
+      expect(result.action, SignalAction.go);
+    });
   });
 }

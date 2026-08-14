@@ -143,4 +143,28 @@ void main() {
       expect(spoken, ['yellow_light']);
     },
   );
+
+  test(
+    'skips highest priority candidate if on cooldown and announces next available candidate',
+    () async {
+      final spoken = <String>[];
+      final controller = VoiceAlertController(
+        speakClassName: (className) async => spoken.add(className),
+      );
+      final start = DateTime(2026);
+
+      // 1. Speak turn_right first
+      await controller.handleEvents([event('turn_right', start)]);
+      expect(spoken, ['turn_right']);
+
+      // 2. Next frame (2 seconds later): turn_right is on 5s cooldown, but go_straight_arrow is fresh
+      final selected = await controller.handleEvents([
+        event('turn_right', start.add(const Duration(seconds: 2))),
+        event('go_straight_arrow', start.add(const Duration(seconds: 2))),
+      ]);
+
+      expect(selected?.detection.className, 'go_straight_arrow');
+      expect(spoken, ['turn_right', 'go_straight_arrow']);
+    },
+  );
 }

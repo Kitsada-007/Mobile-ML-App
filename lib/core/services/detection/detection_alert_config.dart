@@ -56,8 +56,8 @@ final class DetectionAlertConfig {
     this.trafficRequiredVotes = 4,
     this.trafficMissingGracePeriod = const Duration(seconds: 1),
     this.trafficVoiceCooldown = const Duration(seconds: 3),
-    this.offLightMinimumFrames = 6,
-    this.offLightMinimumDuration = const Duration(seconds: 1),
+    this.offLightMinimumFrames = 12,
+    this.offLightMinimumDuration = const Duration(seconds: 6),
     this.turnHistorySize = 3,
     this.turnRequiredVotes = 3,
     this.turnMissingGracePeriod = const Duration(seconds: 1),
@@ -193,15 +193,16 @@ final class DetectionAlertConfig {
   /// กำหนดลำดับความสำคัญของคลาส (ตัวเลขน้อย = สำคัญมากที่สุด)
   int _priorityFor(String className) {
     return switch (className) {
-      'off_light' => 0,            // สัญญาณไฟขัดข้องสำคัญสูงสุด
-      'red_light_circle' => 1,     // สัญญาณไฟแดง
-      'yellow_light' => 2,        // สัญญาณไฟเหลือง
-      'green_light_circle' => 3,   // สัญญาณไฟเขียว
+      'off_light' => 0, // สัญญาณไฟขัดข้องสำคัญสูงสุด
+      'red_light_circle' => 1, // สัญญาณไฟแดง
+      'yellow_light' => 2, // สัญญาณไฟเหลือง
+      'green_light_circle' => 3, // สัญญาณไฟเขียว
       'turn_left' || 'turn_right' => 4, // ไฟเลี้ยว
-      'dont_go_straight_arrow' || 'dont_turn_left' || 'dont_turn_right' => 5, // ป้ายห้าม
-      'go_straight_arrow' => 6,   // ป้ายตรงไป
-      _ => 7,                      // อื่นๆ
+      'dont_go_straight_arrow' ||
+      'dont_turn_left' ||
+      'dont_turn_right' => 5, // ป้ายห้าม
+      'go_straight_arrow' => 6, // ป้ายตรงไป
+      _ => 7, // อื่นๆ
     };
   }
 }
-

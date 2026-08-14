@@ -143,7 +143,7 @@ class VideoProcessingService {
         final displayFrame = currentFrame + 1;
         onProgress(
           displayFrame / totalFrames,
-          'กำลังวิเคราะห์เฟรม $displayFrame / $totalFrames',
+          'กำลังวิเคราะห์วิดีโอ...',
         );
 
         try {

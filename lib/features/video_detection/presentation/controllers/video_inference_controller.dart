@@ -565,13 +565,25 @@ class VideoInferenceController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// หยุดเล่นวิดีโอชั่วคราวและล้างสถานะการตรวจจับ/เสียง
+  Future<void> pause() async {
+    if (_videoController != null && _videoController!.value.isPlaying) {
+      await _videoController!.pause();
+      _resetDetectionSession();
+      if (!_isDisposed) {
+        notifyListeners();
+      }
+    }
+  }
+
   /// ล้างตัวเล่นวิดีโอผลลัพธ์ปัจจุบัน (ถอด listener + dispose + หยุดเสียง)
   void _clearVideoController() {
     _resetDetectionSession();
     if (_videoController != null) {
-      _videoController!.removeListener(_onVideoPositionChanged);
-      _videoController!.dispose();
+      final controller = _videoController!;
       _videoController = null;
+      controller.removeListener(_onVideoPositionChanged);
+      unawaited(controller.pause().then((_) => controller.dispose()));
     }
   }
 
@@ -588,7 +600,12 @@ class VideoInferenceController extends ChangeNotifier {
     _resetDetectionSession();
     unawaited(_trafficYolo?.dispose()); // ปล่อยโมเดล Traffic
     unawaited(_numberYolo?.dispose()); // ปล่อยโมเดล Number
-    _clearVideoController(); // ล้างวิดีโอผลลัพธ์
+    if (_videoController != null) {
+      final controller = _videoController!;
+      _videoController = null;
+      controller.removeListener(_onVideoPositionChanged);
+      unawaited(controller.pause().then((_) => controller.dispose()));
+    }
     _selectedPreviewController?.dispose(); // ล้างวิดีโอตัวอย่าง
     super.dispose();
   }

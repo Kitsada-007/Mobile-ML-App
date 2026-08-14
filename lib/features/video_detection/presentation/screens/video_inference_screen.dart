@@ -1,3 +1,4 @@
+import 'dart:async'; // ชุดช่วยทำงาน async
 import 'package:flutter/material.dart'; // ชุด UI หลักของ Flutter
 import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/video_detection_panel.dart'; // แผงแสดงผลการตรวจจับวิดีโอ (เฉพาะฝั่ง Video)
 import 'package:trffic_ilght_app/features/video_detection/presentation/controllers/video_inference_controller.dart'; // Controller ฝั่ง Business logic
@@ -12,17 +13,44 @@ class VideoInferenceScreen extends StatefulWidget {
   State<VideoInferenceScreen> createState() => _VideoInferenceScreenState();
 }
 
-class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
+class _VideoInferenceScreenState extends State<VideoInferenceScreen>
+    with WidgetsBindingObserver {
   late final VideoInferenceController
   _controller; // สร้าง controller เป็น late final
+  bool? _isRouteCurrent;
+  bool _isAppResumed = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // สร้าง Controller, ลงทะเบียนฟังการแจ้งเตือน และเริ่มโหลดโมเดลทันที
     _controller = VideoInferenceController();
     _controller.addListener(_onControllerNotification);
     _controller.initializeModels();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+    if (_isRouteCurrent == isCurrent) return;
+
+    _isRouteCurrent = isCurrent;
+    _syncVideoLifecycle();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _isAppResumed = state == AppLifecycleState.resumed;
+    _syncVideoLifecycle();
+  }
+
+  void _syncVideoLifecycle() {
+    final shouldPlay = (_isRouteCurrent ?? true) && _isAppResumed;
+    if (!shouldPlay) {
+      unawaited(_controller.pause());
+    }
   }
 
   /// ตอบสนองเมื่อ controller notifyListeners()
@@ -41,7 +69,14 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
   }
 
   @override
+  void deactivate() {
+    unawaited(_controller.pause());
+    super.deactivate();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // ถอด listener และปล่อย controller (ซึ่งจะปล่อยโมเดล/วิดีโอ/เสียงด้วย)
     _controller.removeListener(_onControllerNotification);
     _controller.dispose();
@@ -55,51 +90,60 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
         MediaQuery.orientationOf(context) == Orientation.landscape;
     final colorScheme = Theme.of(context).colorScheme; // ธีมสีของแอป
 
-    return Scaffold(
-      backgroundColor: colorScheme.surface, // พื้นหลังใช้สีจากธีม
-      body: SafeArea(
-        // กันเนื้อหาชนกับพื้นที่สถานะ/แถบนำทางของระบบ
-        // ListenableBuilder: rebuild เฉพาะส่วนนี้เมื่อ controller มีการเปลี่ยนแปลง
-        child: ListenableBuilder(
-          listenable: _controller,
-          builder: (context, _) {
-            // มีวิดีโอผลลัพธ์ที่พร้อมเล่นหรือไม่ (สร้าง + initialize แล้ว)
-            final bool hasVideoResult =
-                _controller.videoController != null &&
-                _controller.videoController!.value.isInitialized;
+    return PopScope(
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          unawaited(_controller.pause());
+        }
+      },
+      child: Scaffold(
+        backgroundColor: colorScheme.surface, // พื้นหลังใช้สีจากธีม
+        body: SafeArea(
+          // กันเนื้อหาชนกับพื้นที่สถานะ/แถบนำทางของระบบ
+          // ListenableBuilder: rebuild เฉพาะส่วนนี้เมื่อ controller มีการเปลี่ยนแปลง
+          child: ListenableBuilder(
+            listenable: _controller,
+            builder: (context, _) {
+              // มีวิดีโอผลลัพธ์ที่พร้อมเล่นหรือไม่ (สร้าง + initialize แล้ว)
+              final bool hasVideoResult =
+                  _controller.videoController != null &&
+                  _controller.videoController!.value.isInitialized;
 
-            // ใช้ SingleChildScrollView ให้เลื่อนดูได้เมื่อเนื้อหายาว (หมุนจอ)
-            return SingleChildScrollView(
-              key: const Key('videoDetectionScrollView'),
-              padding: EdgeInsets.fromLTRB(
-                isLandscape ? 24 : 16, // ขอบตามแนวนอน/แนวตั้ง
-                8,
-                isLandscape ? 24 : 16,
-                24,
-              ),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: 720,
-                  ), // จำกัดความกว้างให้งามบนจอใหญ่
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.stretch, // ให้ลูกทุกตัวกว้างเต็ม
-                    children: [
-                      // ---------- Header Row (ย้อนกลับ + ชื่อหน้า + เลือกวิดีโอ) ----------
-                      Row(
-                        children: [
-                          // ปุ่มย้อนกลับ (มี Semantics เพื่อ Accessibility)
-                          Semantics(
-                            button: true,
-                            label: 'ย้อนกลับ',
-                            child: IconButton(
-                              icon: const Icon(
-                                Icons.arrow_back_ios_new_rounded,
+              // ใช้ SingleChildScrollView ให้เลื่อนดูได้เมื่อเนื้อหายาว (หมุนจอ)
+              return SingleChildScrollView(
+                key: const Key('videoDetectionScrollView'),
+                padding: EdgeInsets.fromLTRB(
+                  isLandscape ? 24 : 16, // ขอบตามแนวนอน/แนวตั้ง
+                  8,
+                  isLandscape ? 24 : 16,
+                  24,
+                ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: 720,
+                    ), // จำกัดความกว้างให้งามบนจอใหญ่
+                    child: Column(
+                      crossAxisAlignment:
+                          CrossAxisAlignment.stretch, // ให้ลูกทุกตัวกว้างเต็ม
+                      children: [
+                        // ---------- Header Row (ย้อนกลับ + ชื่อหน้า + เลือกวิดีโอ) ----------
+                        Row(
+                          children: [
+                            // ปุ่มย้อนกลับ (มี Semantics เพื่อ Accessibility)
+                            Semantics(
+                              button: true,
+                              label: 'ย้อนกลับ',
+                              child: IconButton(
+                                icon: const Icon(
+                                  Icons.arrow_back_ios_new_rounded,
+                                ),
+                                onPressed: () {
+                                  unawaited(_controller.pause());
+                                  Navigator.maybePop(context);
+                                },
                               ),
-                              onPressed: () => Navigator.maybePop(context),
                             ),
-                          ),
                           const SizedBox(width: 8),
                           // ชื่อหน้า + คำอธิบายสั้น
                           const Expanded(
@@ -203,8 +247,9 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen> {
           },
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 /// การ์ดแสดงความคืบหน้า (Progress) ขณะประมวลผลวิดีโอ
@@ -221,14 +266,18 @@ class _VideoProcessingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final percent = (progressValue * 100).clamp(0, 100).toInt();
+    final hasDeterminateProgress = progressValue > 0;
+
     return DecoratedBox(
       // กล่องดำ + เงาใต้การ์ด
       decoration: BoxDecoration(
-        color: Colors.black,
+        color: const Color(0xFF121417),
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
+            color: Colors.black.withValues(alpha: 0.3),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -241,41 +290,74 @@ class _VideoProcessingCard extends StatelessWidget {
         child: AspectRatio(
           aspectRatio: isLandscape ? 16 / 9 : 4 / 3,
           child: Padding(
-            padding: const EdgeInsets.all(24.0),
+            padding: const EdgeInsets.symmetric(horizontal: 28.0, vertical: 24.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // ไอคอนหมุน (CircularProgressIndicator) สีเขียว
-                const SizedBox(
-                  width: 48,
-                  height: 48,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 4,
-                    color: Color(0xFF34C759),
+                // วงกลมแจ้งความคืบหน้า: รวม CircularProgressIndicator + ตัวเลข % ไว้ที่เดียวกัน
+                SizedBox(
+                  width: 72,
+                  height: 72,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox(
+                        width: 72,
+                        height: 72,
+                        child: CircularProgressIndicator(
+                          value: hasDeterminateProgress ? progressValue : null,
+                          strokeWidth: 5,
+                          color: const Color(0xFF34C759),
+                          backgroundColor: Colors.white12,
+                          strokeCap: StrokeCap.round,
+                        ),
+                      ),
+                      if (hasDeterminateProgress)
+                        Text(
+                          '$percent%',
+                          style: const TextStyle(
+                            color: Color(0xFF34C759),
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        )
+                      else
+                        const Icon(
+                          Icons.movie_creation_rounded,
+                          color: Color(0xFF34C759),
+                          size: 28,
+                        ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 20),
-                // ข้อความสถานะการทำงาน (fallback ข้อความเสมอถ้าช่องว่าง)
+                const SizedBox(height: 18),
+                // ข้อความสถานะการทำงาน (ข้อความอธิบายใต้ตัวหมุน/ตัวเลข)
                 Text(
                   progressText.isEmpty
                       ? 'กำลังวิเคราะห์วิดีโอ...'
                       : progressText,
                   textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.w700,
+                    height: 1.3,
                   ),
                 ),
-                const SizedBox(height: 12),
-                // แถบ progress (ไม่มีกำหนดค่า -> ใช้ mode อนิเมชันแบบ indeterminate)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: LinearProgressIndicator(
-                    value: progressValue > 0 ? progressValue : null,
-                    minHeight: 8,
-                    color: const Color(0xFF34C759),
-                    backgroundColor: Colors.white24,
+                const SizedBox(height: 14),
+                // แถบ Progress แบบเส้นตรง: จัดให้อยู่ใต้ข้อความและวงกลมประมวลผลอย่างสมดุล
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 240),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: hasDeterminateProgress ? progressValue : null,
+                      minHeight: 6,
+                      color: const Color(0xFF34C759),
+                      backgroundColor: Colors.white12,
+                    ),
                   ),
                 ),
               ],
