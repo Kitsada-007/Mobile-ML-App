@@ -20,6 +20,9 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
   bool? _isRouteCurrent;
   bool _isAppResumed = true;
 
+  /// ระยะขอบบน/ล่างของทั้งหน้า (ใช้คำนวณความสูงที่เหลือด้วย)
+  static const double _screenPadding = 12;
+
   @override
   void initState() {
     super.initState();
@@ -109,59 +112,110 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
                   _controller.videoController != null &&
                   _controller.videoController!.value.isInitialized;
 
-              // ใช้ SingleChildScrollView ให้เลื่อนดูได้เมื่อเนื้อหายาว (หมุนจอ)
-              return SingleChildScrollView(
-                key: const Key('videoDetectionScrollView'),
-                padding: EdgeInsets.fromLTRB(
-                  isLandscape ? 24 : 16, // ขอบตามแนวนอน/แนวตั้ง
-                  8,
-                  isLandscape ? 24 : 16,
-                  24,
-                ),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      maxWidth: 720,
-                    ), // จำกัดความกว้างให้งามบนจอใหญ่
-                    child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.stretch, // ให้ลูกทุกตัวกว้างเต็ม
-                      children: [
-                        // ---------- Header Row (ย้อนกลับ + ชื่อหน้า + เลือกวิดีโอ) ----------
-                        Row(
-                          children: [
-                            // ปุ่มย้อนกลับ (มี Semantics เพื่อ Accessibility)
-                            Semantics(
-                              button: true,
-                              label: 'ย้อนกลับ',
-                              child: IconButton(
-                                icon: const Icon(
-                                  Icons.arrow_back_ios_new_rounded,
-                                ),
-                                onPressed: () {
-                                  unawaited(_controller.pause());
-                                  Navigator.maybePop(context);
-                                },
-                              ),
-                            ),
-                          const SizedBox(width: 8),
-                          // ชื่อหน้า + คำอธิบายสั้น
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+              // LayoutBuilder: รู้ความสูงที่เหลือจริง จึงจัดเนื้อหาให้เต็มจอได้
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  final horizontalPadding = isLandscape ? 24.0 : 16.0;
+                  final availableHeight = constraints.maxHeight.isFinite
+                      ? (constraints.maxHeight - _screenPadding * 2).clamp(
+                          0.0,
+                          double.infinity,
+                        )
+                      : 0.0;
+                  // จอเตี้ยต้องแบ่งให้การ์ดน้อยลง ไม่งั้นแผงผลถูกดันตกขอบจนต้องเลื่อนหา
+                  final cardHeight =
+                      (availableHeight * (availableHeight >= 720 ? 0.55 : 0.45))
+                          .clamp(180.0, 560.0);
+
+                  final header = _VideoHeader(
+                    showModelProgress: !_controller.areModelsReady,
+                    onBack: () {
+                      unawaited(_controller.pause());
+                      Navigator.maybePop(context);
+                    },
+                  );
+
+                  // การ์ดหลัก: แสดงตามสถานะ 3 แบบ
+                  // 1. มีผลลัพธ์วิดีโอ -> วิดีโอ + overlay + ปุ่มควบคุม (คงสัดส่วนวิดีโอจริง)
+                  // 2. กำลังประมวลผล -> การ์ดความคืบหน้า
+                  // 3. ยังไม่ได้เลือกวิดีโอ -> การ์ดชวนให้เลือกวิดีโอ
+                  final Widget mainCard;
+                  if (hasVideoResult) {
+                    mainCard = ResultVideoSection(
+                      controller: _controller.videoController!,
+                      detections: _controller.currentFrameDetections,
+                      isVoiceEnabled: _controller.isVoiceEnabled,
+                      onTogglePlayPause: _controller.togglePlayPause,
+                      onToggleVoice: _controller.toggleVoice,
+                      onPickNewVideo: _controller.pickVideo,
+                    );
+                  } else if (_controller.isProcessing) {
+                    mainCard = _VideoProcessingCard(
+                      progressValue: _controller.progressValue,
+                      progressText: _controller.progressText,
+                      height: cardHeight,
+                    );
+                  } else {
+                    mainCard = _VideoPickerPlaceholderCard(
+                      areModelsReady: _controller.areModelsReady,
+                      onPickVideo: _controller.pickVideo,
+                      height: cardHeight,
+                    );
+                  }
+
+                  final panel = VideoDetectionPanel(
+                    formalNames: _controller.currentFormalNames,
+                    alertMessages: _controller.currentAlertMessages,
+                    detectedNumber: _controller.currentDetectedNumber,
+                    driverSignalResult: _controller.currentDriverSignalResult,
+                    isLandscape: isLandscape,
+                    // isPipelineStale: จริงเมื่อไม่ได้ประมวลผล และยังไม่มีผลตรวจจับในเฟรม
+                    isPipelineStale:
+                        !_controller.isProcessing &&
+                        _controller.currentFrameDetections.isEmpty &&
+                        _controller.currentDetectedNumber == null,
+                    // กำหนดข้อความสถานะตามสถานะปัจจุบันของวิดีโอ
+                    statusText: hasVideoResult
+                        ? (_controller.videoController!.value.isPlaying
+                              ? 'กำลังตรวจจับแบบเรีลไทม์'
+                              : 'หยุดชั่วคราว')
+                        : _controller.isProcessing
+                        ? _controller.progressText
+                        : 'พร้อมตรวจจับวิดีโอ',
+                    lastDetectionConfidence: _controller.lastDetectionConfidence,
+                  );
+
+                  // แนวนอน: จอเตี้ยแต่กว้าง จึงวางวิดีโอคู่กับแผงผล
+                  if (isLandscape) {
+                    return Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        horizontalPadding,
+                        _screenPadding,
+                        horizontalPadding,
+                        _screenPadding,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          header,
+                          const SizedBox(height: 12),
+                          Expanded(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                Text(
-                                  'ตรวจจับจากวิดีโอ',
-                                  style: TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w800,
+                                Expanded(
+                                  flex: 3,
+                                  // วิดีโอแนวตั้งสูงเกินจอได้ จึงให้เลื่อนดูได้แทนการล้นขอบ
+                                  child: SingleChildScrollView(
+                                    child: mainCard,
                                   ),
                                 ),
-                                Text(
-                                  'Video Traffic Light Detection',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xFF6B7280),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  flex: 2,
+                                  child: SingleChildScrollView(
+                                    key: const Key('videoDetectionScrollView'),
+                                    child: panel,
                                   ),
                                 ),
                               ],
@@ -169,87 +223,110 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
+                    );
+                  }
 
-                      // แสดงแถบโหลดแบบเส้น ถ้าโมเดลยังโหลดไม่เสร็จ
-                      if (!_controller.areModelsReady)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: LinearProgressIndicator(
-                            minHeight: 3,
-                            color: colorScheme.primary,
-                            backgroundColor: colorScheme.onSurface.withValues(
-                              alpha: 0.08,
+                  // แนวตั้ง: ใช้ SingleChildScrollView ให้เลื่อนดูได้เมื่อเนื้อหายาว
+                  return SingleChildScrollView(
+                    key: const Key('videoDetectionScrollView'),
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      _screenPadding,
+                      horizontalPadding,
+                      _screenPadding,
+                    ),
+                    child: Center(
+                      child: ConstrainedBox(
+                        // minHeight ดันเนื้อหาให้สูงเท่าจอเสมอ จึงไม่เหลือช่องว่างค้างด้านล่าง
+                        constraints: BoxConstraints(
+                          maxWidth: 720,
+                          minHeight: availableHeight,
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            header,
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              child: mainCard,
                             ),
-                          ),
+                            panel,
+                          ],
                         ),
-
-                      // ---------- การ์ดหลัก: แสดงตามสถานะ 3 แบบ ----------
-                      // 1. มีผลลัพธ์วิดีโอ -> แสดงวิดีโอ + overlay + ปุ่มควบคุม
-                      if (hasVideoResult) ...[
-                        ResultVideoSection(
-                          controller: _controller.videoController!,
-                          detections: _controller.currentFrameDetections,
-                          isVoiceEnabled: _controller.isVoiceEnabled,
-
-                          onTogglePlayPause: _controller.togglePlayPause,
-                          onToggleVoice: _controller.toggleVoice,
-                          onPickNewVideo: _controller.pickVideo,
-                        ),
-                      ] else if (_controller.isProcessing) ...[
-                        // 2. กำลังประมวลผล -> แสดงการ์ดความคืบหน้า
-                        _VideoProcessingCard(
-                          progressValue: _controller.progressValue,
-                          progressText: _controller.progressText,
-                          isLandscape: isLandscape,
-                        ),
-                      ] else ...[
-                        // 3. ยังไม่ได้เลือกวิดีโอ -> แสดงการ์ดชวนให้เลือกวิดีโอ
-                        _VideoPickerPlaceholderCard(
-                          areModelsReady: _controller.areModelsReady,
-                          onPickVideo: _controller.pickVideo,
-                          isLandscape: isLandscape,
-                        ),
-                      ],
-
-                      const SizedBox(height: 20),
-
-                      // ---------- แผงผลลัพธ์การตรวจจับวิดีโอ (เฉพาะฝั่ง Video) ----------
-                      VideoDetectionPanel(
-                        formalNames: _controller.currentFormalNames,
-                        alertMessages: _controller.currentAlertMessages,
-                        detectedNumber: _controller.currentDetectedNumber,
-                        // countdownMessage: _controller.currentCountdownUiMessage,
-                        driverSignalResult:
-                            _controller.currentDriverSignalResult,
-                        isLandscape: isLandscape,
-                        // isPipelineStale: จริงเมื่อไม่ได้ประมวลผล และยังไม่มีผลตรวจจับในเฟรม
-                        isPipelineStale:
-                            !_controller.isProcessing &&
-                            _controller.currentFrameDetections.isEmpty &&
-                            _controller.currentDetectedNumber == null,
-                        // กำหนดข้อความสถานะตามสถานะปัจจุบันของวิดีโอ
-                        statusText: hasVideoResult
-                            ? (_controller.videoController!.value.isPlaying
-                                  ? 'กำลังตรวจจับแบบเรีลไทม์'
-                                  : 'หยุดชั่วคราว')
-                            : _controller.isProcessing
-                            ? _controller.progressText
-                            : 'พร้อมตรวจจับวิดีโอ',
-                        lastDetectionConfidence:
-                            _controller.lastDetectionConfidence,
                       ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
+                    ),
+                  );
+                },
+              );
+            },
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
+
+/// ส่วนหัวของหน้า: ปุ่มย้อนกลับ + ชื่อหน้า + แถบโหลดโมเดล (ถ้ายังไม่พร้อม)
+class _VideoHeader extends StatelessWidget {
+  const _VideoHeader({required this.showModelProgress, required this.onBack});
+
+  final bool showModelProgress; // โมเดลยังโหลดไม่เสร็จหรือไม่
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            // ปุ่มย้อนกลับ (มี Semantics เพื่อ Accessibility)
+            Semantics(
+              button: true,
+              label: 'ย้อนกลับ',
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                onPressed: onBack,
+              ),
+            ),
+            const SizedBox(width: 8),
+            // ชื่อหน้า + คำอธิบายสั้น
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'ตรวจจับจากวิดีโอ',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  Text(
+                    'Video Traffic Light Detection',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        // แถบโหลดแบบเส้น ถ้าโมเดลยังโหลดไม่เสร็จ
+        if (showModelProgress)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: LinearProgressIndicator(
+              minHeight: 3,
+              color: colorScheme.primary,
+              backgroundColor: colorScheme.onSurface.withValues(alpha: 0.08),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 /// การ์ดแสดงความคืบหน้า (Progress) ขณะประมวลผลวิดีโอ
@@ -257,12 +334,12 @@ class _VideoProcessingCard extends StatelessWidget {
   const _VideoProcessingCard({
     required this.progressValue,
     required this.progressText,
-    required this.isLandscape,
+    required this.height,
   });
 
   final double progressValue; // ค่าความคืบหน้า 0.0 - 1.0
   final String progressText; // ข้อความอธิบายขั้นตอน
-  final bool isLandscape; // จอแนวนอนหรือไม่ (ปรับสัดส่วน)
+  final double height; // ความสูงที่หน้าจอจัดสรรให้
 
   @override
   Widget build(BuildContext context) {
@@ -286,9 +363,8 @@ class _VideoProcessingCard extends StatelessWidget {
       child: ClipRRect(
         // ตัดมุมโค้งให้กับเนื้อหาด้านในด้วย
         borderRadius: BorderRadius.circular(24),
-        // สัดส่วนตามการหมุนจอ (16:9 แนวนอน / 4:3 แนวตั้ง)
-        child: AspectRatio(
-          aspectRatio: isLandscape ? 16 / 9 : 4 / 3,
+        child: SizedBox(
+          height: height,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 28.0, vertical: 24.0),
             child: Column(
@@ -374,12 +450,12 @@ class _VideoPickerPlaceholderCard extends StatelessWidget {
   const _VideoPickerPlaceholderCard({
     required this.areModelsReady,
     required this.onPickVideo,
-    required this.isLandscape,
+    required this.height,
   });
 
   final bool areModelsReady; // โมเดลพร้อมแล้วหรือยัง (ปุ่มเปิด/ปิดตามนี้)
   final VoidCallback onPickVideo; // callback กดปุ่มเลือกวิดีโอ
-  final bool isLandscape; // ปรับสัดส่วนตามการหมุนจอ
+  final double height; // ความสูงที่หน้าจอจัดสรรให้
 
   @override
   Widget build(BuildContext context) {
@@ -397,8 +473,8 @@ class _VideoPickerPlaceholderCard extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: AspectRatio(
-          aspectRatio: isLandscape ? 16 / 9 : 4 / 3,
+        child: SizedBox(
+          height: height,
           child: Stack(
             fit: StackFit.expand,
             children: [

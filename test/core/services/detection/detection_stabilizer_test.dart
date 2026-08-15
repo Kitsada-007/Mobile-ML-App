@@ -209,6 +209,150 @@ void main() {
       expect(confirmed.events.single.type, DetectionEventType.detected);
     });
 
+    test(
+      'flicker with sparse frames never confirms off light via duration rule',
+      () {
+        // จำลอง flicker ที่เฟรมมาห่างๆ (เฟรมละ 1 วิ): เห็นไฟเขียว 1 เฟรม
+        // แล้วตามด้วย off 8 เฟรม (กิน 7 วิ) — เกณฑ์ระยะเวลา 6 วิ เคยผ่าน
+        // ทั้งที่เพิ่งเห็นไฟติดที่ตำแหน่งเดิม lookback ต้องกันไว้
+        final stabilizer = DetectionStabilizer();
+        final start = DateTime(2026);
+        final events = <DetectionEvent>[];
+
+        events.addAll(
+          stabilizer.update([
+            detection('green_light_circle'),
+          ], timestamp: start).events,
+        );
+        for (var frame = 1; frame <= 8; frame++) {
+          events.addAll(
+            stabilizer.update([
+              detection('off_light'),
+            ], timestamp: start.add(Duration(seconds: frame))).events,
+          );
+          expect(
+            stabilizer.stableDetections.where(
+              (item) => item.className == 'off_light',
+            ),
+            isEmpty,
+            reason: 'เฟรมที่ $frame: เพิ่งเห็นไฟเขียวใน lookback = flicker '
+                'ต้องไม่รายงานไฟขัดข้อง',
+          );
+        }
+        expect(
+          events.where((event) => event.detection.className == 'off_light'),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
+      'off light burst is suppressed until the lit frame leaves the lookback',
+      () {
+        // lookback (8) ยาวกว่า minimumFrames (6): ช่วง off รัวๆ หลังเห็นไฟเขียว
+        // ต้องถูกกดไว้จนเฟรมไฟเขียวหลุดหน้าต่าง แล้วไฟดับจริงจึงยืนยันได้
+        final stabilizer = DetectionStabilizer(
+          config: const DetectionAlertConfig(
+            offLightMinimumFrames: 6,
+            offLightMinimumDuration: Duration(milliseconds: 500),
+            flickerLookbackFrames: 8,
+          ),
+        );
+        final start = DateTime(2026);
+
+        stabilizer.update([detection('green_light_circle')], timestamp: start);
+        for (var frame = 1; frame <= 7; frame++) {
+          stabilizer.update([
+            detection('off_light'),
+          ], timestamp: start.add(Duration(milliseconds: frame * 100)));
+          expect(
+            stabilizer.stableDetections.where(
+              (item) => item.className == 'off_light',
+            ),
+            isEmpty,
+            reason: 'เฟรมที่ $frame: ไฟเขียวยังอยู่ใน lookback ต้องยังไม่ยืนยัน',
+          );
+        }
+
+        // เฟรมที่ 8: ประวัติเต็มหน้าต่าง ไฟเขียวถูก evict ออก -> ไฟดับจริง ยืนยันได้
+        final confirmed = stabilizer.update([
+          detection('off_light'),
+        ], timestamp: start.add(const Duration(milliseconds: 800)));
+        expect(confirmed.stableDetections.single.className, 'off_light');
+      },
+    );
+
+    test('alternating off and green at one location never triggers off light', () {
+      // flicker ตรงตามโจทย์: off, green, off, green, ... ที่ IoU เดิม
+      final stabilizer = DetectionStabilizer();
+      final start = DateTime(2026);
+      final events = <DetectionEvent>[];
+
+      for (var frame = 0; frame < 30; frame++) {
+        final className = frame.isEven ? 'off_light' : 'green_light_circle';
+        events.addAll(
+          stabilizer.update([
+            detection(className),
+          ], timestamp: start.add(Duration(milliseconds: frame * 100))).events,
+        );
+        expect(
+          stabilizer.stableDetections.where(
+            (item) => item.className == 'off_light',
+          ),
+          isEmpty,
+        );
+      }
+      expect(
+        events.where((event) => event.detection.className == 'off_light'),
+        isEmpty,
+      );
+    });
+
+    test('genuinely dark light with sparse frames still confirms off light', () {
+      // ไฟดับจริง (ไม่เคยเห็นไฟติดเลย) เฟรมห่างๆ -> เกณฑ์ระยะเวลายังทำงานเหมือนเดิม
+      final stabilizer = DetectionStabilizer();
+      final start = DateTime(2026);
+
+      DetectionStabilizerUpdate? update;
+      for (var frame = 0; frame < 8; frame++) {
+        update = stabilizer.update([
+          detection('off_light'),
+        ], timestamp: start.add(Duration(seconds: frame)));
+      }
+
+      expect(update!.stableDetections.single.className, 'off_light');
+    });
+
+    test('light that turns off for good still raises the off light alert', () {
+      // ไฟเขียวติดจริง แล้วดับถาวร: พอเฟรมไฟเขียวพ้น lookback ต้องแจ้งเหมือนเดิม
+      final stabilizer = DetectionStabilizer();
+      final start = DateTime(2026);
+      final events = <DetectionEvent>[];
+
+      for (var frame = 0; frame < 4; frame++) {
+        stabilizer.update([
+          detection('green_light_circle'),
+        ], timestamp: start.add(Duration(milliseconds: frame * 100)));
+      }
+      for (var frame = 4; frame < 16; frame++) {
+        events.addAll(
+          stabilizer.update([
+            detection('off_light'),
+          ], timestamp: start.add(Duration(milliseconds: frame * 100))).events,
+        );
+      }
+
+      expect(stabilizer.stableDetections.single.className, 'off_light');
+      expect(
+        events.where(
+          (event) =>
+              event.type == DetectionEventType.changed &&
+              event.detection.className == 'off_light',
+        ),
+        hasLength(1),
+      );
+    });
+
     test('countdown ROI class never enters stable detections or events', () {
       final stabilizer = DetectionStabilizer();
       final start = DateTime(2026);

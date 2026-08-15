@@ -5,9 +5,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trffic_ilght_app/core/services/inference/countdown_reading_stabilizer.dart';
+import 'package:trffic_ilght_app/core/services/inference/signal_interpreter.dart';
 import 'package:trffic_ilght_app/core/services/voice/traffic_voice_service.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/controllers/camera_inference_controller.dart';
 import 'package:trffic_ilght_app/core/services/inference/sign_number_pipeline_service.dart';
+import 'package:trffic_ilght_app/core/services/model_management/model_manager.dart';
+import 'package:trffic_ilght_app/shared/models/model_types.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 /// TrafficVoiceService ปลอมสำหรับเทสต์: บันทึกข้อความที่ถูกสั่งพูดไว้ตรวจสอบ
@@ -170,6 +173,20 @@ YOLOResult _trafficLightDetection(
     },
     'normalizedBox': {'left': left, 'top': 0.1, 'right': right, 'bottom': 0.3},
   });
+}
+
+/// ModelManager ปลอม: คืน path เสมอ เพื่อให้ controller อยู่ในสถานะ "โมเดลพร้อม"
+/// (toggleCamera จะไม่ทำงานเลยถ้า modelPath ยังเป็น null)
+class FakeModelManager extends ModelManager {
+  @override
+  Future<String?> getModelPath(ModelType modelType) async =>
+      'fake_${modelType.remoteId}.tflite';
+
+  @override
+  Future<String?> reportModelLoadFailure(
+    ModelType modelType, {
+    required String failedPath,
+  }) async => null;
 }
 
 void main() {
@@ -652,6 +669,125 @@ void main() {
     expect(controller.pipelineSnapshot.endToEndLatencyP95.inMilliseconds, 120);
     expect(controller.pipelineSnapshot.inferenceLatencyP95.inMilliseconds, 30);
     expect(controller.isRealtimePipelineStale, isFalse);
+    controller.dispose();
+  });
+
+  test(
+    'reopening the camera accepts a restarted native frame sequence',
+    () async {
+      final now = DateTime(2026, 8, 15, 10);
+      final controller = CameraInferenceController(
+        clock: () => now,
+        enableFreshnessWatchdog: false,
+        modelManager: FakeModelManager(),
+      );
+      await controller.initialize();
+      expect(controller.modelPath, isNotNull);
+
+      Future<void> feed(int frameNumber) => controller.onStreamingData({
+        'frameNumber': frameNumber,
+        'timestamp': now.millisecondsSinceEpoch,
+        'detections': [_trafficLightDetectionMap('red_light_circle')],
+      });
+
+      await feed(101);
+      await feed(102);
+      expect(controller.isRealtimePipelineStale, isFalse);
+
+      await controller.toggleCamera(); // ปิดกล้อง
+      expect(controller.isCameraEnabled, isFalse);
+      await controller.toggleCamera(); // เปิดกล้องอีกครั้ง
+      expect(controller.isCameraEnabled, isTrue);
+
+      // กล้อง native เริ่มนับ frameNumber ใหม่หลัง resume
+      await feed(1);
+      await feed(2);
+
+      expect(
+        controller.isRealtimePipelineStale,
+        isFalse,
+        reason: 'เฟรมชุดใหม่หลังเปิดกล้องต้องถูกยอมรับ ไม่ใช่ถูกตัดเป็น outOfOrder',
+      );
+      controller.dispose();
+    },
+  );
+
+  test('expiring stale results also clears the displayed confidence', () async {
+    var now = DateTime(2026, 8, 15, 10);
+    final controller = CameraInferenceController(
+      clock: () => now,
+      enableFreshnessWatchdog: false,
+    );
+
+    for (var frameNumber = 1; frameNumber <= 5; frameNumber++) {
+      await controller.onStreamingData({
+        'frameNumber': frameNumber,
+        'timestamp': now.millisecondsSinceEpoch,
+        'detections': [_trafficLightDetectionMap('red_light_circle')],
+      });
+    }
+    expect(controller.detectedFormalNames, isNotEmpty);
+    expect(controller.lastDetectionConfidence, isNotNull);
+
+    now = now.add(const Duration(seconds: 5));
+    controller.expireStaleResults();
+
+    expect(controller.isRealtimePipelineStale, isTrue);
+    expect(controller.detectedFormalNames, isEmpty);
+    expect(
+      controller.lastDetectionConfidence,
+      isNull,
+      reason: 'ผลล้าสมัยแล้ว ชิป CONF ต้องไม่ค้างค่าเดิมไว้บนแผงที่ว่าง',
+    );
+    controller.dispose();
+  });
+
+  test('stable red light produces the stop banner from SignalInterpreter', () async {
+    final now = DateTime(2026, 8, 15, 10);
+    final controller = CameraInferenceController(
+      clock: () => now,
+      enableFreshnessWatchdog: false,
+    );
+
+    for (var frameNumber = 1; frameNumber <= 5; frameNumber++) {
+      await controller.onStreamingData({
+        'frameNumber': frameNumber,
+        'timestamp': now.millisecondsSinceEpoch,
+        'detections': [_trafficLightDetectionMap('red_light_circle')],
+      });
+    }
+
+    expect(controller.driverSignalResult.action, SignalAction.stop);
+    expect(controller.driverSignalResult.message, 'ไฟแดง - หยุดรอ');
+    controller.dispose();
+  });
+
+  test('expiring stale results also clears the driver signal banner', () async {
+    var now = DateTime(2026, 8, 15, 10);
+    final controller = CameraInferenceController(
+      clock: () => now,
+      enableFreshnessWatchdog: false,
+    );
+
+    for (var frameNumber = 1; frameNumber <= 5; frameNumber++) {
+      await controller.onStreamingData({
+        'frameNumber': frameNumber,
+        'timestamp': now.millisecondsSinceEpoch,
+        'detections': [_trafficLightDetectionMap('red_light_circle')],
+      });
+    }
+    expect(controller.driverSignalResult.action, SignalAction.stop);
+
+    now = now.add(const Duration(seconds: 5));
+    controller.expireStaleResults();
+
+    expect(controller.isRealtimePipelineStale, isTrue);
+    expect(
+      controller.driverSignalResult.message,
+      isEmpty,
+      reason: 'เฟรมหยุดมาแล้ว แบนเนอร์ต้องไม่ค้างคำสั่ง "หยุดรอ" ไว้',
+    );
+    expect(controller.driverSignalResult.action, SignalAction.none);
     controller.dispose();
   });
 }

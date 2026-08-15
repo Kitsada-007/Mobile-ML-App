@@ -23,6 +23,7 @@ final class DetectionRule {
     required this.priority,
     this.minimumConsecutiveFrames,
     this.minimumContinuousDuration,
+    this.flickerLookbackFrames,
   });
 
   /// จำนวนเฟรมย้อนหลังที่ใช้สะสมประวัติผลการตรวจจับ
@@ -45,6 +46,11 @@ final class DetectionRule {
 
   /// ระยะเวลาต่อเนื่องขั้นต่ำที่ต้องตรวจเจอ (ใช้สำหรับกรณีพิเศษ เช่น สัญญาณไฟดับ off_light)
   final Duration? minimumContinuousDuration;
+
+  /// จำนวนเฟรมย้อนหลังที่ต้อง "ไม่เคยเห็นคลาสอื่นเลย" ที่ตำแหน่งเดิม (กัน flicker)
+  /// ใช้เฉพาะ off_light: ถ้าเห็นไฟติด (แดง/เหลือง/เขียว) ที่ IoU เดิมภายในหน้าต่างนี้
+  /// = ไฟกะพริบจากกล้อง ไม่ใช่ไฟดับจริง (null = ไม่ตรวจ)
+  final int? flickerLookbackFrames;
 }
 
 /// คลาสการตั้งค่าคอนฟิกสำหรับการกรองความเสถียร (Stabilization), การติดตามวัตถุ (Tracking) และเสียงแจ้งเตือน (Voice Alerts)
@@ -58,6 +64,7 @@ final class DetectionAlertConfig {
     this.trafficVoiceCooldown = const Duration(seconds: 3),
     this.offLightMinimumFrames = 12,
     this.offLightMinimumDuration = const Duration(seconds: 6),
+    int? flickerLookbackFrames,
     this.turnHistorySize = 3,
     this.turnRequiredVotes = 3,
     this.turnMissingGracePeriod = const Duration(seconds: 1),
@@ -66,7 +73,7 @@ final class DetectionAlertConfig {
     this.signRequiredVotes = 3,
     this.signMissingGracePeriod = const Duration(milliseconds: 1500),
     this.signVoiceCooldown = const Duration(seconds: 8),
-  });
+  }) : _flickerLookbackFrames = flickerLookbackFrames;
 
   /// คลาสวัตถุประเภทสัญญาณไฟจราจรหลัก
   static const trafficLightClasses = <String>{
@@ -103,6 +110,14 @@ final class DetectionAlertConfig {
   final Duration trafficVoiceCooldown;
   final int offLightMinimumFrames;
   final Duration offLightMinimumDuration;
+
+  /// ค่าที่ผู้ใช้ตั้งเอง (null = ใช้ค่า default ผูกกับ offLightMinimumFrames)
+  final int? _flickerLookbackFrames;
+
+  /// จำนวนเฟรมย้อนหลังที่ off_light ต้องไม่เคยเห็นไฟติดที่ตำแหน่งเดิมเลย (กัน flicker)
+  /// (const constructor อ้างค่า field อื่นเป็น default ไม่ได้ จึง default ผ่าน getter)
+  int get flickerLookbackFrames =>
+      _flickerLookbackFrames ?? offLightMinimumFrames;
 
   // --- คอนฟิกสัญญาณไฟเลี้ยว (Turn Signal) ---
   final int turnHistorySize;
@@ -151,6 +166,9 @@ final class DetectionAlertConfig {
         minimumContinuousDuration: className == 'off_light'
             ? offLightMinimumDuration
             : null,
+        flickerLookbackFrames: className == 'off_light'
+            ? flickerLookbackFrames
+            : null,
       ),
       DetectionGroup.turnSignal => DetectionRule(
         historySize: turnHistorySize,
@@ -179,9 +197,12 @@ final class DetectionAlertConfig {
   /// คำนวณขนาดบัฟเฟอร์ประวัติสูงสุดสำหรับกลุ่มวัตถุนั้นๆ
   int maximumHistorySizeFor(DetectionGroup group) {
     if (group == DetectionGroup.trafficLight) {
-      return offLightMinimumFrames > trafficHistorySize
-          ? offLightMinimumFrames
-          : trafficHistorySize;
+      // ต้องเก็บพอให้ lookback กัน flicker มองเห็นเฟรมไฟติดก่อนหน้าได้
+      // (ไม่งั้นเฟรมไฟติดถูก evict ออกก่อนพอดี แล้ว off_light ยืนยันผิดๆ)
+      var size = trafficHistorySize;
+      if (offLightMinimumFrames > size) size = offLightMinimumFrames;
+      if (flickerLookbackFrames > size) size = flickerLookbackFrames;
+      return size;
     }
     return switch (group) {
       DetectionGroup.turnSignal => turnHistorySize,

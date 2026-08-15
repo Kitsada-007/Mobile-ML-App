@@ -370,6 +370,12 @@ final class DetectionStabilizer {
     final requiredDuration = rule.minimumContinuousDuration;
     if (requiredFrames == null && requiredDuration == null) return true;
 
+    // กัน flicker: ถ้าภายใน N เฟรมล่าสุดของตำแหน่งนี้ (Track เดิมตาม IoU) เคยเห็น
+    // คลาสอื่น (= ไฟติด) แม้แต่เฟรมเดียว แปลว่าไฟกะพริบจากกล้อง ไม่ใช่ไฟดับจริง
+    // เกตนี้คุมทั้งเกณฑ์นับเฟรมและเกณฑ์ระยะเวลา (สำคัญกับเฟรมห่างๆ ที่เกณฑ์
+    // ระยะเวลาเคยผ่านทั้งที่เพิ่งเห็นไฟติดก่อนหน้าช่วงสั้นๆ)
+    if (_sawOtherClassWithinLookback(track, candidate, rule)) return false;
+
     final consecutive = <DetectionObservation>[];
     for (final observation in track._history.toList().reversed) {
       if (observation.className != candidate) break;
@@ -383,6 +389,23 @@ final class DetectionStabilizer {
         consecutive.first.timestamp.difference(consecutive.last.timestamp) >=
             requiredDuration;
     return frameRequirementPassed || durationRequirementPassed;
+  }
+
+  /// ตรวจว่าใน [DetectionRule.flickerLookbackFrames] เฟรมล่าสุดของ Track นี้
+  /// เคยพบคลาสอื่นนอกจากผู้สมัครหรือไม่ (ใช้เฉพาะคลาสที่กำหนด lookback เช่น off_light)
+  bool _sawOtherClassWithinLookback(
+    TrackedDetectionState track,
+    String candidate,
+    DetectionRule rule,
+  ) {
+    final lookback = rule.flickerLookbackFrames;
+    if (lookback == null) return false;
+
+    final history = track._history;
+    final window = history.length <= lookback
+        ? history
+        : history.skip(history.length - lookback);
+    return window.any((observation) => observation.className != candidate);
   }
 
   /// ตรวจสอบ Track ที่หมดอายุ (ไม่พบวัตถุเกินระยะเวลาผ่อนผัน missingGracePeriod) และส่งออกเหตุการณ์ lost

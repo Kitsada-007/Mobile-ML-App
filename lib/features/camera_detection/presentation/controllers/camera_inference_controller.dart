@@ -9,6 +9,7 @@ import 'package:trffic_ilght_app/core/services/detection/traffic_detection_label
 import 'package:trffic_ilght_app/shared/models/model_types.dart'; // ประเภทโมเดล (traffic/number)
 import 'package:trffic_ilght_app/features/camera_detection/data/models/realtime_inference.dart'; // โครงสร้างเฟรมเรียลไทม์
 import 'package:trffic_ilght_app/core/services/inference/countdown_reading_stabilizer.dart'; // กันเลขสั่นไหว
+import 'package:trffic_ilght_app/core/services/inference/signal_interpreter.dart'; // ตีความผล stable เป็นคำสั่งคนขับ
 import 'package:trffic_ilght_app/features/camera_detection/data/services/latest_frame_queue.dart'; // คิวเฟรมล่าสุด
 import 'package:trffic_ilght_app/features/camera_detection/data/services/realtime_pipeline_monitor.dart'; // ติดตามสถิติ pipeline
 import 'package:trffic_ilght_app/core/services/inference/number_detection_service.dart'; // บริการตรวจจับตัวเลข
@@ -122,6 +123,14 @@ class CameraInferenceController extends ChangeNotifier {
   List<String> _detectedAlertMessages = []; // ข้อความเตือนภาษาไทย
   double? _lastDetectionConfidence; // confidence สูงสุดของการตรวจจับเฟรมล่าสุด
 
+  /// ค่าว่างของแบนเนอร์คำสั่งคนขับ (ไม่มีสัญญาณ -> แผงซ่อนแบนเนอร์)
+  static const DriverSignalResult _emptyDriverSignal = DriverSignalResult(
+    message: '',
+    action: SignalAction.none,
+  );
+  DriverSignalResult _driverSignalResult =
+      _emptyDriverSignal; // คำสั่งคนขับจากผล stable ล่าสุด
+
   // ---------- Getters: ให้ UI อ่านค่าจากภายนอก (อ่านอย่างเดียว) ----------
   int get detectionCount => _detectionCount;
   double get currentFps => _currentFps;
@@ -160,6 +169,9 @@ class CameraInferenceController extends ChangeNotifier {
   List<String> get detectedFormalNames => _detectedFormalNames;
   List<String> get detectedAlertMessages => _detectedAlertMessages;
   double? get lastDetectionConfidence => _lastDetectionConfidence;
+
+  /// แบนเนอร์คำสั่งคนขับ (เช่น "ไฟแดง - หยุดรอ") จาก [SignalInterpreter]
+  DriverSignalResult get driverSignalResult => _driverSignalResult;
 
   bool get isVoiceEnabled => _voiceService.isEnabled; // เสียงเปิดอยู่หรือไม่
 
@@ -205,6 +217,7 @@ class CameraInferenceController extends ChangeNotifier {
     @visibleForTesting
     Duration maximumFrameAge = defaultRealtimeMaximumFrameAge,
     @visibleForTesting bool enableFreshnessWatchdog = true,
+    @visibleForTesting ModelManager? modelManager,
   }) {
     _clock = clock ?? DateTime.now;
     _maximumFrameAge = maximumFrameAge;
@@ -233,13 +246,15 @@ class CameraInferenceController extends ChangeNotifier {
     _isFrontCamera = _lensFacing == LensFacing.front;
 
     // ModelManager พร้อม callback รับข้อความสถานะโหลดเส้น
-    _modelManager = ModelManager(
-      onStatusUpdate: (message) {
-        if (_isDisposed) return;
-        _loadingMessage = message;
-        notifyListeners();
-      },
-    );
+    _modelManager =
+        modelManager ??
+        ModelManager(
+          onStatusUpdate: (message) {
+            if (_isDisposed) return;
+            _loadingMessage = message;
+            notifyListeners();
+          },
+        );
   }
 
   /// เริ่มต้นระบบ: เปิด watchdog + โหลดค่า threshold เก็บไว้ + โหลดโมเดลทั้ง 2 ตัว
@@ -417,7 +432,10 @@ class CameraInferenceController extends ChangeNotifier {
       }
       _isCameraEnabled = nextEnabled;
       _resetDetectionSession();
-      _isRealtimePipelineStale = true;
+      // ต้องรีเซ็ต guard/monitor ด้วย ไม่ใช่แค่ตั้ง flag:
+      // กล้อง native เริ่มนับ frameNumber ใหม่หลัง resume ถ้าไม่ล้างเลขเฟรมล่าสุด
+      // เฟรมชุดใหม่จะถูกตัดเป็น outOfOrder ทั้งหมดจนกว่าจะเลยเลขเดิม
+      _resetRealtimePipeline();
       notifyListeners();
     } catch (error) {
       _loadingMessage =
@@ -547,11 +565,15 @@ class CameraInferenceController extends ChangeNotifier {
         _detectedFormalNames.isNotEmpty ||
         _detectedAlertMessages.isNotEmpty ||
         _detectedNumber != null ||
+        _lastDetectionConfidence != null ||
+        _driverSignalResult != _emptyDriverSignal ||
         _detectionStabilizer.stableDetections.isNotEmpty;
 
     _detectionCount = 0;
     _detectedFormalNames = [];
     _detectedAlertMessages = [];
+    // ค่า confidence ต้องหายไปพร้อมผลลัพธ์ ไม่งั้นชิป CONF ค้างค่าเก่าบนแผงที่ว่างแล้ว
+    _lastDetectionConfidence = null;
     _resetDetectionSession(stopVoice: false);
     return changed;
   }
@@ -576,6 +598,8 @@ class CameraInferenceController extends ChangeNotifier {
     _detectionStabilizer.reset();
     _voiceAlertController.reset();
     _detectedNumber = null;
+    // แบนเนอร์คำสั่งคนขับผูกกับผล stable -> รีเซ็ต stabilizer แล้วต้องล้างด้วย
+    _driverSignalResult = _emptyDriverSignal;
     _numberInferenceEngine.resetCycle();
     if (stopVoice) unawaited(_voiceService.stop());
   }
@@ -625,6 +649,17 @@ class CameraInferenceController extends ChangeNotifier {
     )) {
       _detectedNumber = null;
       _numberInferenceEngine.resetCycle();
+    }
+
+    // ตีความผล stable เป็นคำสั่งคนขับ (แดง ⇒ หยุดเสมอ อยู่ใน SignalInterpreter)
+    final driverSignal = SignalInterpreter.interpret(
+      stableDetections
+          .map((detection) => detection.toYoloResult())
+          .toList(growable: false),
+    );
+    if (_driverSignalResult != driverSignal) {
+      _driverSignalResult = driverSignal;
+      shouldNotify = true;
     }
 
     final formalNames = <String>[];

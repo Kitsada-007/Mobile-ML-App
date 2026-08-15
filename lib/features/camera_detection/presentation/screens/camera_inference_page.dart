@@ -33,6 +33,9 @@ class _CameraInferencePageState extends State<CameraInferencePage>
   bool? _isRouteCurrent;
   bool _isAppResumed = true;
 
+  /// ระยะขอบบน/ล่างของทั้งหน้า (ใช้คำนวณความสูงที่เหลือด้วย)
+  static const double _screenPadding = 12;
+
   @override
   void initState() {
     super.initState();
@@ -107,120 +110,187 @@ class _CameraInferencePageState extends State<CameraInferencePage>
             rebuildKey: _rebuildKey,
           ),
           builder: (context, cameraContent) {
-            return SingleChildScrollView(
-              key: const Key('cameraDetectionScrollView'),
-              padding: EdgeInsets.fromLTRB(
-                isLandscape ? 24 : 16,
-                8,
-                isLandscape ? 24 : 16,
-                24,
-              ),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 720),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // ---------- Header: เมนู/ย้อนกลับ + ชื่อแอป + ไอคอนแจ้งเตือน ----------
-                      CameraInferenceOverlay(
-                        showMenuButton: widget.onMenuPressed != null,
-                        onLeadingPressed:
-                            widget.onMenuPressed ??
-                            () => Navigator.maybePop(context),
-                      ),
-                      const SizedBox(height: 16),
-                      // ---------- การ์ดแสดงกล้อง (preview) ----------
-                      DecoratedBox(
-                        key: const Key('cameraPreviewCard'),
-                        decoration: BoxDecoration(
-                          color: Colors.black,
-                          borderRadius: BorderRadius.circular(24),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.12),
-                              blurRadius: 20,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(24),
-                          child: AspectRatio(
-                            aspectRatio: isLandscape ? 16 / 9 : 4 / 3,
-                            child: Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                cameraContent!, // ตัวกล้อง YOLOView / หน้าโหลด
-                                // ป้ายสถานะสดที่มุมบนซ้าย
-                                Positioned(
-                                  top: 14,
-                                  left: 14,
-                                  child: _LiveStatusBadge(
-                                    hasDetections:
-                                        _controller.detectionCount > 0,
-                                  ),
+            // LayoutBuilder: รู้ความสูงจริงของพื้นที่ที่เหลือ
+            // จึงกระจายเนื้อหาให้เต็มจอได้ แทนการปล่อยช่องว่างค้างไว้ด้านล่าง
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final horizontalPadding = isLandscape ? 24.0 : 16.0;
+                final availableHeight = constraints.maxHeight.isFinite
+                    ? (constraints.maxHeight - _screenPadding * 2).clamp(
+                        0.0,
+                        double.infinity,
+                      )
+                    : 0.0;
+
+                final header = CameraInferenceOverlay(
+                  showMenuButton: widget.onMenuPressed != null,
+                  onLeadingPressed:
+                      widget.onMenuPressed ?? () => Navigator.maybePop(context),
+                );
+                final panel = CameraDetectionPanel(
+                  formalNames: _controller.detectedFormalNames,
+                  alertMessages: _controller.detectedAlertMessages,
+                  detectedNumber: _controller.detectedNumber,
+                  isLandscape: isLandscape,
+                  driverSignalResult: _controller.driverSignalResult,
+                  isPipelineStale: _controller.isRealtimePipelineStale,
+                  statusText: _controller.detectionStatus,
+                  lastDetectionConfidence: _controller.lastDetectionConfidence,
+                );
+
+                // แนวนอน: จอเตี้ยแต่กว้าง จึงวางกล้องคู่กับแผงผล ไม่ใช่วางต่อกันลงมา
+                if (isLandscape) {
+                  return Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      horizontalPadding,
+                      _screenPadding,
+                      horizontalPadding,
+                      _screenPadding,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        header,
+                        const SizedBox(height: 12),
+                        Expanded(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: _buildPreviewCard(cameraContent!),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                flex: 2,
+                                // แผงผลสูงเกินจอได้เมื่อพบหลายคลาส จึงต้องเลื่อนได้เอง
+                                child: SingleChildScrollView(
+                                  key: const Key('cameraDetectionScrollView'),
+                                  child: panel,
                                 ),
-                                // ปุ่มเปิด/ปิดกล้อง (มุมบนขวา) พร้อม Semantics
-                                Positioned(
-                                  top: 10,
-                                  right: 10,
-                                  child: Semantics(
-                                    button: true,
-                                    label: _controller.isCameraEnabled
-                                        ? 'ปิดกล้อง'
-                                        : 'เปิดกล้อง',
-                                    child: IconButton.filled(
-                                      key: const Key('cameraPowerButton'),
-                                      tooltip: _controller.isCameraEnabled
-                                          ? 'ปิดกล้อง'
-                                          : 'เปิดกล้อง',
-                                      style: IconButton.styleFrom(
-                                        backgroundColor: Colors.black54,
-                                        foregroundColor: Colors.white,
-                                      ),
-                                      icon: Icon(
-                                        _controller.isCameraEnabled
-                                            ? Icons.videocam_rounded
-                                            : Icons.videocam_off_rounded,
-                                      ),
-                                      onPressed: () =>
-                                          unawaited(_controller.toggleCamera()),
-                                    ),
-                                  ),
-                                ),
-                                // สถิติการตรวจจับด้านล่าง (DETECTIONS / FPS)
-                                Positioned(
-                                  left: 14,
-                                  right: 14,
-                                  bottom: 14,
-                                  child: DetectionStatsDisplay(
-                                    detectionCount: _controller.detectionCount,
-                                    currentFps: _controller.currentFps,
-                                  ),
-                                ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 20),
-                      // ---------- แผงผลลัพธ์การตรวจจับ (ด้านล่าง) ----------
-                      CameraDetectionPanel(
-                        formalNames: _controller.detectedFormalNames,
-                        alertMessages: _controller.detectedAlertMessages,
-                        detectedNumber: _controller.detectedNumber,
-                        isLandscape: isLandscape,
-                        isPipelineStale: _controller.isRealtimePipelineStale,
-                        statusText: _controller.detectionStatus,
-                        lastDetectionConfidence:
-                            _controller.lastDetectionConfidence,
-                      ),
-                    ],
+                      ],
+                    ),
+                  );
+                }
+
+                // แนวตั้ง: กล้องกินพื้นที่ราวครึ่งจอ ส่วนที่เหลือถูกเกลี่ยด้วย spaceBetween
+                // เพดาน 55% กันไม่ให้แผงผลด้านล่างถูกเบียดจนต้องเลื่อนหาโดยไม่จำเป็น
+                // จอเตี้ยต้องแบ่งให้กล้องน้อยลง ไม่งั้นแผงผลถูกดันตกขอบจนต้องเลื่อนหา
+                final previewHeight =
+                    (availableHeight * (availableHeight >= 720 ? 0.55 : 0.45))
+                        .clamp(180.0, 560.0);
+
+                return SingleChildScrollView(
+                  key: const Key('cameraDetectionScrollView'),
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    _screenPadding,
+                    horizontalPadding,
+                    _screenPadding,
                   ),
-                ),
-              ),
+                  child: Center(
+                    child: ConstrainedBox(
+                      // minHeight ดันเนื้อหาให้สูงเท่าจอเสมอ ส่วนที่เกินยังเลื่อนได้ตามเดิม
+                      constraints: BoxConstraints(
+                        maxWidth: 720,
+                        minHeight: availableHeight,
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          header,
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: SizedBox(
+                              height: previewHeight,
+                              child: _buildPreviewCard(cameraContent!),
+                            ),
+                          ),
+                          panel,
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
             );
           },
+        ),
+      ),
+    );
+  }
+
+  /// การ์ด preview กล้อง: ตัวภาพ + ป้ายสถานะ + ปุ่มเปิดปิดกล้อง + สถิติ
+  /// ความสูงถูกกำหนดจากภายนอก (ไม่ผูกกับ AspectRatio คงที่อีกต่อไป)
+  Widget _buildPreviewCard(Widget cameraContent) {
+    return DecoratedBox(
+      key: const Key('cameraPreviewCard'),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            cameraContent, // ตัวกล้อง YOLOView / หน้าโหลด
+            // ป้ายสถานะสดที่มุมบนซ้าย
+            Positioned(
+              top: 14,
+              left: 14,
+              child: _LiveStatusBadge(
+                hasDetections: _controller.detectionCount > 0,
+              ),
+            ),
+            // ปุ่มเปิด/ปิดกล้อง (มุมบนขวา) พร้อม Semantics
+            Positioned(
+              top: 10,
+              right: 10,
+              child: Semantics(
+                button: true,
+                label: _controller.isCameraEnabled ? 'ปิดกล้อง' : 'เปิดกล้อง',
+                child: IconButton.filled(
+                  key: const Key('cameraPowerButton'),
+                  tooltip: _controller.isCameraEnabled
+                      ? 'ปิดกล้อง'
+                      : 'เปิดกล้อง',
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.black54,
+                    foregroundColor: Colors.white,
+                  ),
+                  icon: Icon(
+                    _controller.isCameraEnabled
+                        ? Icons.videocam_rounded
+                        : Icons.videocam_off_rounded,
+                  ),
+                  onPressed: () => unawaited(_controller.toggleCamera()),
+                ),
+              ),
+            ),
+            // สถิติการตรวจจับด้านล่าง (DETECTIONS / FPS)
+            Positioned(
+              left: 14,
+              right: 14,
+              bottom: 14,
+              child: DetectionStatsDisplay(
+                detectionCount: _controller.detectionCount,
+                currentFps: _controller.currentFps,
+              ),
+            ),
+          ],
         ),
       ),
     );
