@@ -118,6 +118,11 @@ class TrafficVoiceService {
         return "ห้ามเลี้ยวซ้าย";
       case 'dont_turn_right':
         return "ห้ามเลี้ยวขวา";
+      // สถานะสังเคราะห์ไฟกะพริบจาก DetectionStabilizer (ไม่ใช่คลาสโมเดล)
+      case 'flashing_red':
+        return "ไฟแดงกะพริบ หยุดก่อน แล้วไปเมื่อปลอดภัย";
+      case 'flashing_yellow':
+        return "ไฟเหลืองกะพริบ ชะลอความเร็ว ระวังทางแยก";
       case 'go_straight_arrow':
         return "ตรงไปได้";
       case 'green_light_circle':

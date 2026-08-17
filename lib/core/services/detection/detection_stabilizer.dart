@@ -370,6 +370,16 @@ final class DetectionStabilizer {
   /// คำนวณหาคลาสที่ชนะการโหวตจากประวัติย้อนหลัง (Majority Voting)
   String? _winningClass(TrackedDetectionState track) {
     if (track._history.isEmpty) return null;
+
+    // ตรวจ "ไฟกะพริบ" ก่อนตัดสินด้วยโหวตปกติ — pattern สลับ lit↔off ราว 1 Hz
+    // ไม่มีทางได้ 4/5 โหวต และ off_light ก็ถูก flicker gate บล็อก (ถูกต้องแล้ว)
+    // ผลคือแอปเงียบสนิทตอนเจอไฟกะพริบ สถานะสังเคราะห์นี้จึงต้องชนะทั้ง
+    // majority vote และการยืนยัน off_light (return ก่อนถึงตรรกะทั้งสอง)
+    if (track.group == DetectionGroup.trafficLight) {
+      final flashingClass = _flashingClass(track);
+      if (flashingClass != null) return flashingClass;
+    }
+
     final latestClass = track._history.last.className;
     final rule = config.ruleFor(latestClass);
 
@@ -413,6 +423,66 @@ final class DetectionStabilizer {
       return null;
     }
     return candidate;
+  }
+
+  /// คลาส lit ที่รองรับการตรวจไฟกะพริบ -> คลาสสังเคราะห์ที่ได้
+  /// (เขียวกะพริบไม่ใช่สัญญาณจราจรไทย — เจอ green↔off ปล่อยตามตรรกะเดิม)
+  static const _flashingClassByLitClass = <String, String>{
+    'yellow_light': 'flashing_yellow',
+    'red_light_circle': 'flashing_red',
+  };
+
+  /// ตรวจว่า track นี้กำลัง "กะพริบ" หรือไม่: นับจำนวนการสลับระหว่าง
+  /// lit class เดิม ↔ off_light ในหน้าต่าง [DetectionAlertConfig.flashingDetectionWindow]
+  /// ล่าสุด ถ้าถึง [DetectionAlertConfig.flashingMinimumTransitions] ครั้ง
+  /// คืนคลาสสังเคราะห์ flashing_<สี> — เมื่อการสลับหยุดและคลาสเดียวอยู่ต่อเนื่อง
+  /// จนพ้นหน้าต่าง การสลับเก่าจะหลุดหน้าต่างไปเอง แล้วโหวตปกติพากลับสถานะเดิม
+  /// (ยิง DetectionEventType.changed ผ่าน _evaluateStableClass ตามปกติ)
+  String? _flashingClass(TrackedDetectionState track) {
+    final observations = track._history.toList(growable: false);
+    if (observations.length < 2) return null;
+
+    // หน้าต่างอ้างอิงจาก observation ล่าสุด (ไม่ใช่นาฬิกาจริง) เพื่อให้
+    // fps-independent เหมือนหน้าต่างกัน flicker ของ off_light
+    final reference = observations.last.timestamp;
+    final window = config.flashingDetectionWindow;
+    final transitionCounts = <String, int>{};
+    String? previousClassName;
+    for (final observation in observations) {
+      if (reference.difference(observation.timestamp) > window) {
+        continue; // นับเฉพาะการสลับที่เกิด "ภายใน" หน้าต่างเท่านั้น
+      }
+      final className = observation.className;
+      if (previousClassName != null && previousClassName != className) {
+        // การสลับนับเฉพาะคู่ lit↔off (ทั้งสองทิศทาง) — คู่อื่น เช่น แดง→เหลือง
+        // คือไฟเปลี่ยนสีจริง ไม่ใช่การกะพริบ
+        final litClassName = className == 'off_light'
+            ? previousClassName
+            : (previousClassName == 'off_light' ? className : null);
+        if (litClassName != null &&
+            _flashingClassByLitClass.containsKey(litClassName)) {
+          transitionCounts.update(
+            litClassName,
+            (count) => count + 1,
+            ifAbsent: () => 1,
+          );
+        }
+      }
+      previousClassName = className;
+    }
+
+    String? flashingLitClass;
+    var mostTransitions = 0;
+    transitionCounts.forEach((litClassName, count) {
+      if (count >= config.flashingMinimumTransitions &&
+          count > mostTransitions) {
+        mostTransitions = count;
+        flashingLitClass = litClassName;
+      }
+    });
+    return flashingLitClass == null
+        ? null
+        : _flashingClassByLitClass[flashingLitClass];
   }
 
   /// ตรวจสอบว่าคลาสผู้สมัครผ่านเกณฑ์การตรวจพบต่อเนื่องย้อนหลัง (Continuous Confirmation) หรือไม่

@@ -16,6 +16,10 @@ String videoFormalThaiName(String className) {
     'red_light_circle' => 'สัญญาณไฟจราจรสีแดง',
     'yellow_light' => 'สัญญาณไฟจราจรสีเหลือง',
 
+    // สถานะสังเคราะห์ไฟกะพริบ (สร้างโดย DetectionStabilizer ไม่ใช่คลาสโมเดล)
+    'flashing_red' => 'สัญญาณไฟแดงกะพริบ',
+    'flashing_yellow' => 'สัญญาณไฟเหลืองกะพริบ',
+
     // สัญญาณไฟเลี้ยว
     'turn_left' => 'สัญญาณไฟเลี้ยวซ้าย',
     'turn_right' => 'สัญญาณไฟเลี้ยวขวา',

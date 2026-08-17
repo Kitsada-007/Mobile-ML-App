@@ -523,6 +523,130 @@ void main() {
       expect(update!.stableDetections.single.className, 'off_light');
     });
 
+    test('alternating yellow and off yields synthetic flashing yellow', () {
+      // เกณฑ์ผ่านของงาน: ป้อน yellow, off, yellow, off, yellow ที่ track เดียวกัน
+      // ต้องได้ stable class เป็นสถานะสังเคราะห์ flashing_yellow
+      // (pattern สลับแบบนี้ไม่มีทางได้ 4/5 โหวต และ off ก็ถูก flicker gate บล็อก
+      // — ก่อนแก้ แอปจึงเงียบสนิทตอนเจอไฟกะพริบ)
+      final stabilizer = DetectionStabilizer();
+      final start = DateTime(2026);
+
+      const classNames = [
+        'yellow_light',
+        'off_light',
+        'yellow_light',
+        'off_light',
+        'yellow_light',
+      ];
+      DetectionStabilizerUpdate? update;
+      for (var frame = 0; frame < classNames.length; frame++) {
+        update = stabilizer.update([
+          detection(classNames[frame]),
+        ], timestamp: start.add(Duration(milliseconds: frame * 250)));
+      }
+
+      expect(update!.stableDetections.single.className, 'flashing_yellow');
+    });
+
+    test('alternating red and off yields synthetic flashing red', () {
+      final stabilizer = DetectionStabilizer();
+      final start = DateTime(2026);
+
+      DetectionStabilizerUpdate? update;
+      for (var frame = 0; frame < 6; frame++) {
+        final className = frame.isEven ? 'red_light_circle' : 'off_light';
+        update = stabilizer.update([
+          detection(className),
+        ], timestamp: start.add(Duration(milliseconds: frame * 250)));
+      }
+
+      expect(update!.stableDetections.single.className, 'flashing_red');
+    });
+
+    test('pure continuous off still confirms off light, never flashing', () {
+      // ห้าม regress: off ล้วนๆ ไม่มีการสลับ ต้องยังยืนยัน off_light ตามเดิม
+      // และห้ามหลุดสถานะ flashing_* ออกมา
+      final stabilizer = DetectionStabilizer();
+      final start = DateTime(2026);
+      final events = <DetectionEvent>[];
+
+      DetectionStabilizerUpdate? update;
+      for (var frame = 0; frame < 30; frame++) {
+        update = stabilizer.update([
+          detection('off_light'),
+        ], timestamp: start.add(Duration(milliseconds: frame * 250)));
+        events.addAll(update.events);
+      }
+
+      expect(update!.stableDetections.single.className, 'off_light');
+      expect(
+        events.where(
+          (event) => event.detection.className.startsWith('flashing_'),
+        ),
+        isEmpty,
+      );
+    });
+
+    test('when flashing stops, yellow returns with a changed event', () {
+      final stabilizer = DetectionStabilizer();
+      final start = DateTime(2026);
+      final events = <DetectionEvent>[];
+
+      // ช่วงกะพริบ: สลับ yellow/off 6 เฟรมที่อัตราท่อวิดีโอ (250ms/เฟรม)
+      for (var frame = 0; frame < 6; frame++) {
+        final className = frame.isEven ? 'yellow_light' : 'off_light';
+        events.addAll(
+          stabilizer.update([
+            detection(className),
+          ], timestamp: start.add(Duration(milliseconds: frame * 250))).events,
+        );
+      }
+      expect(stabilizer.stableDetections.single.className, 'flashing_yellow');
+
+      // การสลับหยุด ไฟเหลืองค้างต่อเนื่อง: เมื่อการสลับเก่าหลุดพ้นหน้าต่าง
+      // ตรวจกะพริบ (3 วิ) ต้องกลับสู่สถานะปกติพร้อม event changed
+      DetectionStabilizerUpdate? update;
+      for (var frame = 6; frame < 26; frame++) {
+        update = stabilizer.update([
+          detection('yellow_light'),
+        ], timestamp: start.add(Duration(milliseconds: frame * 250)));
+        events.addAll(update.events);
+      }
+
+      expect(update!.stableDetections.single.className, 'yellow_light');
+      expect(
+        events.where(
+          (event) =>
+              event.type == DetectionEventType.changed &&
+              event.detection.className == 'yellow_light',
+        ),
+        hasLength(1),
+      );
+    });
+
+    test('flashing state wins over off light confirmation at one track', () {
+      // สลับ red/off ยาวๆ: แม้ off จะสะสมเฟรมมากพอ ห้ามฟันธง off_light
+      // และต้องรายงาน flashing_red แทน (สถานะกะพริบชนะการยืนยัน off)
+      final stabilizer = DetectionStabilizer();
+      final start = DateTime(2026);
+
+      for (var frame = 0; frame < 40; frame++) {
+        final className = frame.isEven ? 'red_light_circle' : 'off_light';
+        stabilizer.update([
+          detection(className),
+        ], timestamp: start.add(Duration(milliseconds: frame * 250)));
+        expect(
+          stabilizer.stableDetections.where(
+            (item) => item.className == 'off_light',
+          ),
+          isEmpty,
+          reason: 'เฟรมที่ $frame: ไฟกะพริบต้องไม่ถูกรายงานเป็นไฟขัดข้อง',
+        );
+      }
+
+      expect(stabilizer.stableDetections.single.className, 'flashing_red');
+    });
+
     test('countdown ROI class never enters stable detections or events', () {
       final stabilizer = DetectionStabilizer();
       final start = DateTime(2026);

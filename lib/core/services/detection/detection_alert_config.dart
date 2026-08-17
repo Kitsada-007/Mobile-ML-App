@@ -72,6 +72,8 @@ final class DetectionAlertConfig {
     this.offLightMinimumDuration = const Duration(seconds: 6),
     int? flickerLookbackFrames,
     Duration? flickerLookbackDuration,
+    this.flashingDetectionWindow = const Duration(seconds: 3),
+    this.flashingMinimumTransitions = 2,
     this.turnHistorySize = 3,
     this.turnRequiredVotes = 3,
     this.turnMissingGracePeriod = const Duration(seconds: 1),
@@ -89,6 +91,15 @@ final class DetectionAlertConfig {
     'yellow_light',
     'green_light_circle',
     'off_light',
+  };
+
+  /// คลาสสังเคราะห์ "ไฟกะพริบ" ที่ DetectionStabilizer สร้างขึ้นเอง
+  /// เมื่อพบการสลับ lit class ↔ off_light ถี่ๆ ที่ track เดียวกัน
+  /// **ไม่ใช่คลาสจากโมเดล** — ห้ามเพิ่มลง labels.txt หรือ manifest
+  /// (เขียวกะพริบไม่ใช่สัญญาณจราจรไทย จึงมีแค่เหลือง/แดง)
+  static const flashingLightClasses = <String>{
+    'flashing_yellow',
+    'flashing_red',
   };
 
   /// คลาสวัตถุประเภทสัญญาณไฟเลี้ยว
@@ -136,12 +147,24 @@ final class DetectionAlertConfig {
   Duration get flickerLookbackDuration =>
       _flickerLookbackDuration ?? offLightMinimumDuration;
 
-  /// ระยะเวลาขั้นต่ำที่ต้องเก็บประวัติของกลุ่มไว้ (ให้หน้าต่างกัน flicker มองย้อน
-  /// ได้ครบ ไม่โดน evict ตามจำนวนเฟรมไปก่อน) — กลุ่มอื่นไม่ต้องเก็บตามเวลา
-  Duration historyRetentionFor(DetectionGroup group) =>
-      group == DetectionGroup.trafficLight
-      ? flickerLookbackDuration
-      : Duration.zero;
+  /// หน้าต่างเวลาย้อนหลังที่ใช้ตรวจ "ไฟกะพริบ" — ถ้าภายในหน้าต่างนี้ track
+  /// กลุ่มไฟจราจรมีการสลับ lit class ↔ off_light ตั้งแต่
+  /// [flashingMinimumTransitions] ครั้งขึ้นไป จะถือว่าเป็นไฟกะพริบ
+  final Duration flashingDetectionWindow;
+
+  /// จำนวนการสลับ (lit↔off) ขั้นต่ำภายใน [flashingDetectionWindow]
+  /// ที่ทำให้ตัดสินว่าเป็นไฟกะพริบ
+  final int flashingMinimumTransitions;
+
+  /// ระยะเวลาขั้นต่ำที่ต้องเก็บประวัติของกลุ่มไว้ (ให้หน้าต่างกัน flicker และ
+  /// หน้าต่างตรวจไฟกะพริบมองย้อนได้ครบ ไม่โดน evict ตามจำนวนเฟรมไปก่อน)
+  /// — กลุ่มอื่นไม่ต้องเก็บตามเวลา
+  Duration historyRetentionFor(DetectionGroup group) {
+    if (group != DetectionGroup.trafficLight) return Duration.zero;
+    return flickerLookbackDuration >= flashingDetectionWindow
+        ? flickerLookbackDuration
+        : flashingDetectionWindow;
+  }
 
   // --- คอนฟิกสัญญาณไฟเลี้ยว (Turn Signal) ---
   final int turnHistorySize;
@@ -158,6 +181,11 @@ final class DetectionAlertConfig {
   /// หาหมวดหมู่ (DetectionGroup) ของวัตถุตามชื่อคลาส
   DetectionGroup groupFor(String className) {
     if (trafficLightClasses.contains(className)) {
+      return DetectionGroup.trafficLight;
+    }
+    // คลาสสังเคราะห์ไฟกะพริบใช้กฎกลุ่มไฟจราจรเดียวกัน (priority/grace/cooldown)
+    // เพื่อให้ ruleFor ของ stable class ที่ stabilizer ส่งออกมา resolve ได้เสมอ
+    if (flashingLightClasses.contains(className)) {
       return DetectionGroup.trafficLight;
     }
     if (turnSignalClasses.contains(className)) {
@@ -239,18 +267,22 @@ final class DetectionAlertConfig {
   }
 
   /// กำหนดลำดับความสำคัญของคลาส (ตัวเลขน้อย = สำคัญมากที่สุด)
+  /// ไฟกะพริบสำคัญกว่า off_light: เป็นสถานการณ์ที่ต้องเตือนคนขับทันที
+  /// และแดงกะพริบ (ต้องหยุดก่อน) สำคัญกว่าเหลืองกะพริบ (แค่ชะลอ)
   int _priorityFor(String className) {
     return switch (className) {
-      'off_light' => 0, // สัญญาณไฟขัดข้องสำคัญสูงสุด
-      'red_light_circle' => 1, // สัญญาณไฟแดง
-      'yellow_light' => 2, // สัญญาณไฟเหลือง
-      'green_light_circle' => 3, // สัญญาณไฟเขียว
-      'turn_left' || 'turn_right' => 4, // ไฟเลี้ยว
+      'flashing_red' => 0, // ไฟแดงกะพริบ — หยุดก่อน สำคัญสูงสุด
+      'flashing_yellow' => 1, // ไฟเหลืองกะพริบ — ชะลอ ระวังทางแยก
+      'off_light' => 2, // สัญญาณไฟขัดข้อง
+      'red_light_circle' => 3, // สัญญาณไฟแดง
+      'yellow_light' => 4, // สัญญาณไฟเหลือง
+      'green_light_circle' => 5, // สัญญาณไฟเขียว
+      'turn_left' || 'turn_right' => 6, // ไฟเลี้ยว
       'dont_go_straight_arrow' ||
       'dont_turn_left' ||
-      'dont_turn_right' => 5, // ป้ายห้าม
-      'go_straight_arrow' => 6, // ป้ายตรงไป
-      _ => 7, // อื่นๆ
+      'dont_turn_right' => 7, // ป้ายห้าม
+      'go_straight_arrow' => 8, // ป้ายตรงไป
+      _ => 9, // อื่นๆ
     };
   }
 }
