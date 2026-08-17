@@ -23,10 +23,21 @@ import 'package:ultralytics_yolo/yolo.dart';
 /// Single frame analysis result — เก็บแค่ raw data จาก inference
 /// ไม่ตีความ business logic ในชั้นนี้ (ให้ controller ทำ เพื่อไม่ให้ซ้ำซ้อน)
 class FrameAnalysisResult {
-  const FrameAnalysisResult({required this.detections, this.detectedNumber});
+  const FrameAnalysisResult({
+    required this.detections,
+    this.detectedNumber,
+    this.signPresent = false,
+  });
 
   final List<YOLOResult> detections;
   final String? detectedNumber;
+
+  /// true เมื่อเฟรมนี้ "ถือว่ามีป้ายนับถอยหลัง" — ครอบคลุมทั้งเฟรมที่ตรวจเจอ
+  /// กล่อง sign_number จริง และเฟรมที่อยู่ในช่วง hold เลขล่าสุด (กรณีป้าย LED
+  /// กะพริบ/PWM ทำให้บางเฟรมตรวจไม่เจอกล่อง) — controller ต้องใช้ค่านี้เป็น
+  /// single source of truth ห้ามนับ raw detection ซ้ำเอง ไม่งั้นเลขที่ hold ไว้
+  /// จะถูกทิ้งทันทีที่ป้ายหายไป 1 เฟรม
+  final bool signPresent;
 }
 
 /// Result data from realtime video processing pipeline.
@@ -40,6 +51,46 @@ class VideoProcessingResult {
   final String finalVideoPath;
   final Map<int, FrameAnalysisResult> frameResults;
   final int targetFps;
+}
+
+/// ผลการตัดสินเลขนับถอยหลังของเฟรมเดียวจาก [CountdownHoldTracker]
+typedef CountdownHoldFrame = ({String? finalNumber, bool signPresent});
+
+/// ตัวติดตามการ hold เลขนับถอยหลังข้ามเฟรม — แยกออกมาจาก loop ประมวลผล
+/// เพื่อให้เทสต์พฤติกรรม hold ได้โดยไม่ต้องพึ่ง FFmpeg/ไฟล์จริง
+/// กติกา: เฟรมที่ stabilizer ยอมรับเลขใหม่จะเติม hold ให้เต็ม [maxHoldFrames]
+/// เฟรมถัดไปที่อ่านเลขไม่ได้จะกินโควตา hold ทีละเฟรมโดยยังคงเลขเดิมไว้
+/// (กัน motion blur / ป้าย LED กะพริบ) — หมดโควตาเมื่อไรจึงล้างเป็น null
+class CountdownHoldTracker {
+  CountdownHoldTracker({required this.maxHoldFrames});
+
+  final int maxHoldFrames;
+  String? _lastAcceptedNumber;
+  int _holdFrameCount = 0;
+
+  CountdownHoldFrame process({
+    required String? stabilizedNumber,
+    required bool hasSignDetection,
+  }) {
+    String? finalNumber;
+    if (stabilizedNumber != null && stabilizedNumber.isNotEmpty) {
+      _lastAcceptedNumber = stabilizedNumber;
+      _holdFrameCount = maxHoldFrames;
+      finalNumber = stabilizedNumber;
+    } else if (_holdFrameCount > 0 && _lastAcceptedNumber != null) {
+      _holdFrameCount--;
+      finalNumber = _lastAcceptedNumber;
+    } else {
+      _lastAcceptedNumber = null;
+      _holdFrameCount = 0;
+    }
+    // ป้าย "ถือว่ายังอยู่" ทั้งเฟรมที่เจอกล่องจริงและเฟรมที่ยังอยู่ในช่วง hold
+    // เพื่อให้ controller ไม่ทิ้งเลขที่ hold ไว้ (ดู FrameAnalysisResult.signPresent)
+    return (
+      finalNumber: finalNumber,
+      signPresent: hasSignDetection || finalNumber != null,
+    );
+  }
 }
 
 // =============================================================================
@@ -126,8 +177,7 @@ class VideoProcessingService {
       //    with realtime stabilization & decay hold for the countdown number.
       frameAnalysisService.resetTiming(); // เริ่มเก็บเวลา per-stage ใหม่
       final analysisStopwatch = Stopwatch()..start();
-      String? lastAcceptedNumber;
-      int holdFrameCount = 0;
+      final holdTracker = CountdownHoldTracker(maxHoldFrames: maxHoldFrames);
 
       int currentFrame = 0;
       for (final fileEntity in frameFiles) {
@@ -147,32 +197,32 @@ class VideoProcessingService {
           final bytes = await fileEntity.readAsBytes();
           final result = await frameAnalysisService.analyze(bytes);
 
+          // เฟรมนี้มีกล่อง sign_number จริงหรือไม่ (ยังไม่รวมช่วง hold)
+          final hasSignDetection = result.detections.any(
+            (detection) => detection.className == 'sign_number',
+          );
+
           // ---- Countdown number: stabilize + hold/decay ----
           final stabilizedNumber = countdownStabilizer.add(
             result.detectedNumber,
           );
-          String? finalNumber;
-
           if (stabilizedNumber != null && stabilizedNumber.isNotEmpty) {
-            lastAcceptedNumber = stabilizedNumber;
-            holdFrameCount = maxHoldFrames;
-            finalNumber = stabilizedNumber;
             log(stabilizedNumber.toString());
-          } else if (holdFrameCount > 0 && lastAcceptedNumber != null) {
-            holdFrameCount--;
-            finalNumber = lastAcceptedNumber;
-          } else {
-            lastAcceptedNumber = null;
-            holdFrameCount = 0;
-            finalNumber = null;
           }
+          final holdFrame = holdTracker.process(
+            stabilizedNumber: stabilizedNumber,
+            hasSignDetection: hasSignDetection,
+          );
 
           // ไม่ตีความเป็นข้อความเดียวที่นี่ — ส่ง raw detections + finalNumber
           // กลับไปให้ VideoInferenceController ตีความผ่าน SignalInterpreter
           // แบบ real-time ตอนเล่นวิดีโอแทน (single source of truth)
           frameResults[currentFrame] = FrameAnalysisResult(
             detections: result.detections,
-            detectedNumber: finalNumber,
+            detectedNumber: holdFrame.finalNumber,
+            // ช่วง hold (finalNumber ยังไม่หมดอายุ) ต้องนับว่าป้ายยังอยู่ด้วย
+            // ไม่งั้น hold logic ไม่มีผลใด ๆ ในเคสป้ายกะพริบ
+            signPresent: holdFrame.signPresent,
           );
         } catch (frameError) {
           debugPrint('Error predicting frame $currentFrame: $frameError');

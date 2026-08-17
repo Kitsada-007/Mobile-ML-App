@@ -420,6 +420,7 @@ class VideoInferenceController extends ChangeNotifier {
         _updateCurrentFrameAnalysis(
           frameResult.detections,
           frameResult.detectedNumber,
+          signPresent: frameResult.signPresent,
           timestamp: DateTime.fromMillisecondsSinceEpoch(
             position.inMilliseconds,
           ),
@@ -430,6 +431,7 @@ class VideoInferenceController extends ChangeNotifier {
         _updateCurrentFrameAnalysis(
           [],
           null,
+          signPresent: false,
           timestamp: DateTime.fromMillisecondsSinceEpoch(
             position.inMilliseconds,
           ),
@@ -443,6 +445,7 @@ class VideoInferenceController extends ChangeNotifier {
   void _updateCurrentFrameAnalysis(
     List<YOLOResult> detections,
     String? rawDetectedNumber, {
+    required bool signPresent,
     required DateTime timestamp,
   }) {
     final stableInput = detections.where(
@@ -466,10 +469,10 @@ class VideoInferenceController extends ChangeNotifier {
     final stableYoloDetections = stableDetections
         .map((detection) => detection.toYoloResult())
         .toList(growable: false);
-    final hasSignNumber = detections.any(
-      (detection) => detection.className == 'sign_number',
-    );
-    _currentDetectedNumber = hasSignNumber ? rawDetectedNumber : null;
+    // ใช้ signPresent จาก FrameAnalysisResult ตรง ๆ (single source of truth)
+    // ห้ามนับ raw detection ใหม่ที่นี่ — เฟรมช่วง hold ไม่มีกล่อง sign_number
+    // แต่ต้องยังถือว่าป้ายอยู่ ไม่งั้นเลขที่ service hold ไว้ถูกทิ้งทันที
+    _currentDetectedNumber = signPresent ? rawDetectedNumber : null;
 
     String? stableTrafficLightClassName;
     for (final detection in stableDetections) {
@@ -481,7 +484,7 @@ class VideoInferenceController extends ChangeNotifier {
       }
     }
     final countdownUpdate = _countdownAlertController.update(
-      isSignDetected: hasSignNumber,
+      isSignDetected: signPresent,
       detectedNumber: _currentDetectedNumber,
       stableTrafficLightClassName: stableTrafficLightClassName,
     );
