@@ -68,7 +68,12 @@ final class CountdownAlertController {
     }
 
     if (!isSignDetected) {
-      reset();
+      // ป้ายหายชั่วคราว (LED กะพริบ/PWM) ใช้การล้างแบบอ่อนเท่านั้น —
+      // "ห้าม" เรียก reset() เพราะจะล้าง _thresholdEventEmitted ทำให้วงจร
+      // เจอ → หาย 1 เฟรม → เจอใหม่ พูดเสียงเตือนซ้ำในการนับถอยหลังรอบเดียว
+      // flag จะถูกล้างเฉพาะเมื่อ (1) คลาสไฟที่ยืนยันแล้วเปลี่ยน (เช็คด้านบน)
+      // หรือ (2) เลขกลับขึ้นไปสูงกว่า threshold อีกครั้ง = เริ่มรอบใหม่ (เช็คด้านล่าง)
+      // ส่วน reset() ตัวเต็มยังใช้ตอนเริ่ม session ใหม่ผ่าน _resetDetectionSession
       return const CountdownAlertUpdate();
     }
 
@@ -103,6 +108,9 @@ final class CountdownAlertController {
     );
   }
 
+  /// ล้างสถานะทั้งหมดรวมถึง _thresholdEventEmitted — ใช้เฉพาะตอนเริ่ม
+  /// session ใหม่ (เลือกวิดีโอใหม่ / seek ย้อน / pause) เท่านั้น
+  /// ห้ามเรียกจากกรณีป้ายหายชั่วคราวระหว่างนับถอยหลัง (ดูคอมเมนต์ใน update)
   void reset() {
     _lastStableTrafficLightClassName = null;
     _thresholdEventEmitted = false;

@@ -91,7 +91,10 @@ void main() {
       expect(update.event, isNull);
     });
 
-    test('sign loss and a number above threshold re-arm the event', () {
+    // พฤติกรรมเดิม (ป้ายหาย = re-arm ทันที) ทำให้ป้าย LED กะพริบพูดซ้ำหลายครั้ง
+    // ในการนับถอยหลังรอบเดียว — ตอนนี้ re-arm เฉพาะเมื่อเลขกลับขึ้นเหนือ threshold
+    // (= เริ่มรอบใหม่) หรือคลาสไฟที่ยืนยันแล้วเปลี่ยนเท่านั้น
+    test('sign loss keeps the event armed; above-threshold re-arms it', () {
       final controller = CountdownAlertController();
 
       controller.update(
@@ -120,8 +123,51 @@ void main() {
         stableTrafficLightClassName: 'red_light_circle',
       );
 
-      expect(afterLoss.event, isNotNull);
+      expect(afterLoss.event, isNull);
       expect(afterAboveThreshold.event, isNotNull);
+    });
+
+    test('a flickering sign speaks the threshold alert only once', () {
+      final controller = CountdownAlertController();
+      final events = <CountdownAlertEvent>[];
+
+      // ลำดับตามเกณฑ์ผ่านของงาน: 5 → (ป้ายหาย 1 เฟรม) → 4 → 3
+      final steps = <(bool, String?)>[
+        (true, '5'),
+        (false, null),
+        (true, '4'),
+        (true, '3'),
+      ];
+      for (final (isSignDetected, number) in steps) {
+        final update = controller.update(
+          isSignDetected: isSignDetected,
+          detectedNumber: number,
+          stableTrafficLightClassName: 'red_light_circle',
+        );
+        if (update.event != null) events.add(update.event!);
+      }
+
+      expect(events, hasLength(1));
+      expect(events.single.seconds, 5);
+    });
+
+    test('full reset re-arms the event for a new session', () {
+      final controller = CountdownAlertController();
+
+      final first = controller.update(
+        isSignDetected: true,
+        detectedNumber: '5',
+        stableTrafficLightClassName: 'red_light_circle',
+      );
+      controller.reset();
+      final afterReset = controller.update(
+        isSignDetected: true,
+        detectedNumber: '5',
+        stableTrafficLightClassName: 'red_light_circle',
+      );
+
+      expect(first.event, isNotNull);
+      expect(afterReset.event, isNotNull);
     });
 
     test('a verified traffic-light change re-arms the event', () {
