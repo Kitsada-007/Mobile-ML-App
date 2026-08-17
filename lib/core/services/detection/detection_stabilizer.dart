@@ -105,6 +105,16 @@ final class DetectionObservation {
   final DateTime timestamp;
 }
 
+/// บันทึกการพบเห็น "ไฟติด" หนึ่งครั้ง (ตำแหน่ง + เวลา) — เก็บแยกจาก track
+/// เพื่อให้หลักฐานไฟติดรอดกรณี track split (กล่องเลนส์ vs กล่องโคม IoU ต่ำ)
+/// และกรณี track ไฟติดโดน expire ระหว่างช่วงมืด
+final class _LitLightSighting {
+  const _LitLightSighting({required this.box, required this.timestamp});
+
+  final Rect box;
+  final DateTime timestamp;
+}
+
 /// คลาสเก็บสถานะการติดตามวัตถุ 1 ชิ้นย้อนหลังหลายๆ เฟรม (Tracked Object State)
 final class TrackedDetectionState {
   TrackedDetectionState._({
@@ -133,9 +143,6 @@ final class TrackedDetectionState {
   /// ชื่อคลาสที่ได้รับการยืนยันว่าเสถียรแล้ว (null หากยังไม่ผ่านเกณฑ์โหวต)
   String? _stableClassName;
 
-  /// รายการประวัติการสังเกตวัตถุย้อนหลังแบบ Read-only
-  List<DetectionObservation> get history => List.unmodifiable(_history);
-
   /// เวลาล่าสุดที่พบวัตถุ
   DateTime get lastSeenAt => _lastSeenAt;
 
@@ -162,8 +169,9 @@ final class DetectionStabilizer {
   /// ตัวสร้างรหัสติดตามถัดไป
   int _nextTrackId = 1;
 
-  /// ดึงรายการวัตถุที่กำลังติดตามอยู่ทั้งหมด
-  List<TrackedDetectionState> get tracks => List.unmodifiable(_tracks.values);
+  /// ทะเบียนไฟติดล่าสุด (ระดับ stabilizer ไม่ผูกกับ track) — ใช้กัน off_light
+  /// ยืนยันผิดตอน flicker แม้หลักฐานไฟติดจะอยู่คนละ track หรือ track ตายแล้ว
+  final List<_LitLightSighting> _litLightSightings = [];
 
   /// ดึงรายการวัตถุที่ผ่านเกณฑ์ความเสถียรทั้งหมดในปัจจุบัน
   List<StableDetection> get stableDetections => _tracks.values
@@ -194,6 +202,11 @@ final class DetectionStabilizer {
             )
             .toList()
           ..sort((a, b) => b.confidence.compareTo(a.confidence));
+
+    // บันทึก "ไฟติด" ลงทะเบียนกลางก่อนเข้า matching loop เพื่อให้ off_light
+    // ในเฟรมเดียวกันเห็นหลักฐานครบ ไม่ขึ้นกับลำดับ confidence
+    _recordLitLightSightings(detections, timestamp);
+
     final matchedTrackIds = <int>{};
 
     // 3. จับคู่วัตถุใหม่เข้ากับ Track เดิม (IoU Matching) หรือสร้าง Track ใหม่
@@ -230,6 +243,35 @@ final class DetectionStabilizer {
   void reset() {
     _tracks.clear();
     _nextTrackId = 1;
+    _litLightSightings.clear();
+  }
+
+  /// เก็บตำแหน่ง+เวลาของคลาสไฟติดในเฟรมนี้ลงทะเบียนกลาง แล้ว prune รายการ
+  /// ที่พ้นหน้าต่างเวลากัน flicker — "ไฟติด" ตัดสินจากกฎ ไม่ hardcode ชื่อคลาส:
+  /// คลาสกลุ่มไฟจราจรที่ *ไม่มี* flickerLookbackDuration คือคลาสหลักฐาน
+  void _recordLitLightSightings(
+    List<YOLOResult> detections,
+    DateTime timestamp,
+  ) {
+    final retention = config.flickerLookbackDuration;
+    _litLightSightings.removeWhere(
+      (sighting) => timestamp.difference(sighting.timestamp) > retention,
+    );
+    for (final detection in detections) {
+      if (config.groupFor(detection.className) != DetectionGroup.trafficLight) {
+        continue;
+      }
+      if (config.ruleFor(detection.className).flickerLookbackDuration != null) {
+        continue; // ผู้ต้องสงสัย flicker เอง (off_light) ไม่ใช่หลักฐานไฟติด
+      }
+      _litLightSightings.add(
+        _LitLightSighting(box: _trackingBox(detection), timestamp: timestamp),
+      );
+    }
+    // เพดานแข็งกันทะเบียนบวมผิดปกติ (fps สูง + หลายดวงพร้อมกัน)
+    while (_litLightSightings.length > _maximumRetainedObservations) {
+      _litLightSightings.removeAt(0);
+    }
   }
 
   /// สร้าง Track ใหม่สำหรับวัตถุชิ้นใหม่
@@ -287,11 +329,24 @@ final class DetectionStabilizer {
         timestamp: timestamp,
       ),
     );
+    // Evict ตามจำนวนเฟรม แต่ห้ามทิ้ง observation ที่ยังอยู่ในหน้าต่างเวลา
+    // กัน flicker (ไม่งั้นหลักฐาน "ไฟเพิ่งติด" หายไปก่อนพอดี แล้ว off_light
+    // ยืนยันผิดๆ) — กลุ่มที่ retention = zero จะ evict ตามจำนวนเฟรมเหมือนเดิม
     final maximumHistorySize = config.maximumHistorySizeFor(track.group);
-    while (track._history.length > maximumHistorySize) {
+    final retention = config.historyRetentionFor(track.group);
+    while (track._history.length > maximumHistorySize &&
+        (retention == Duration.zero ||
+            timestamp.difference(track._history.first.timestamp) > retention)) {
+      track._history.removeFirst();
+    }
+    // เพดานแข็งกันบัฟเฟอร์บวมผิดปกติ (เช่น fps สูงมาก + retention ยาว)
+    while (track._history.length > _maximumRetainedObservations) {
       track._history.removeFirst();
     }
   }
+
+  /// เพดานจำนวน observation ต่อ track (30fps x หน้าต่าง 6 วิ = ~180 เผื่อสองเท่า)
+  static const int _maximumRetainedObservations = 360;
 
   /// ประมวลผลตัดสินคลาสที่เสถียรสำหรับ Track และสร้างเหตุการณ์ (DetectionEvent) หากมีการเปลี่ยนแปลง
   DetectionEvent? _evaluateStableClass(
@@ -376,6 +431,11 @@ final class DetectionStabilizer {
     // ระยะเวลาเคยผ่านทั้งที่เพิ่งเห็นไฟติดก่อนหน้าช่วงสั้นๆ)
     if (_sawOtherClassWithinLookback(track, candidate, rule)) return false;
 
+    // กัน track split/expiry: ต่อให้ history ของ track นี้มีแต่ off ล้วน
+    // ทะเบียนกลางอาจมีไฟติดที่ตำแหน่งทับซ้อนกัน (เช่น กล่องเลนส์เล็กในกล่องโคม
+    // ที่ IoU ต่ำจนแตกคนละ track หรือ track ไฟติดโดน expire ไปแล้ว)
+    if (_sawLitLightNearbyWithinLookback(track, rule)) return false;
+
     final consecutive = <DetectionObservation>[];
     for (final observation in track._history.toList().reversed) {
       if (observation.className != candidate) break;
@@ -391,21 +451,58 @@ final class DetectionStabilizer {
     return frameRequirementPassed || durationRequirementPassed;
   }
 
-  /// ตรวจว่าใน [DetectionRule.flickerLookbackFrames] เฟรมล่าสุดของ Track นี้
-  /// เคยพบคลาสอื่นนอกจากผู้สมัครหรือไม่ (ใช้เฉพาะคลาสที่กำหนด lookback เช่น off_light)
+  /// ตรวจว่าภายในหน้าต่างกัน flicker ของ Track นี้เคยพบคลาสอื่นนอกจากผู้สมัคร
+  /// หรือไม่ — หน้าต่างมีสองมิติ (ผ่านเกณฑ์เมื่อไม่เจอทั้งคู่):
+  /// - [DetectionRule.flickerLookbackFrames]: นับ N เฟรมล่าสุด
+  /// - [DetectionRule.flickerLookbackDuration]: นับตามเวลา (fps-independent
+  ///   เพราะหน้าต่างเฟรมยาวไม่เท่ากันตามอัตราเฟรมของแต่ละท่อ)
   bool _sawOtherClassWithinLookback(
     TrackedDetectionState track,
     String candidate,
     DetectionRule rule,
   ) {
-    final lookback = rule.flickerLookbackFrames;
+    final lookbackFrames = rule.flickerLookbackFrames;
+    final lookbackDuration = rule.flickerLookbackDuration;
+    if (lookbackFrames == null && lookbackDuration == null) return false;
+
+    final observations = track._history.toList(growable: false);
+    if (observations.isEmpty) return false;
+
+    // ไล่จากใหม่สุดไปเก่าสุด: timestamp ใน track เรียงตามเวลาเสมอ ทั้งสอง
+    // หน้าต่างจึงเป็น suffix — เจอตัวที่หลุดทั้งสองหน้าต่างเมื่อไหร่ หยุดได้เลย
+    final reference = observations.last.timestamp;
+    for (var index = observations.length - 1; index >= 0; index--) {
+      final observation = observations[index];
+      final withinFrames =
+          lookbackFrames != null &&
+          observations.length - index <= lookbackFrames;
+      final withinDuration =
+          lookbackDuration != null &&
+          reference.difference(observation.timestamp) <= lookbackDuration;
+      if (!withinFrames && !withinDuration) break;
+      if (observation.className != candidate) return true;
+    }
+    return false;
+  }
+
+  /// ตรวจว่าทะเบียนไฟติดกลางมีรายการที่ "ทับซ้อนเชิงพื้นที่" กับ track นี้
+  /// ภายในหน้าต่างเวลากัน flicker หรือไม่ — เกณฑ์ทับซ้อนหลวมกว่า IoU tracking
+  /// โดยตั้งใจ (แค่แตะกันหรือจุดกึ่งกลางอยู่ในกันและกันก็นับ) เพราะกล่องเลนส์
+  /// กับกล่องโคมของไฟดวงเดียวกันมี IoU ต่ำโดยธรรมชาติ
+  bool _sawLitLightNearbyWithinLookback(
+    TrackedDetectionState track,
+    DetectionRule rule,
+  ) {
+    final lookback = rule.flickerLookbackDuration;
     if (lookback == null) return false;
 
-    final history = track._history;
-    final window = history.length <= lookback
-        ? history
-        : history.skip(history.length - lookback);
-    return window.any((observation) => observation.className != candidate);
+    final candidateBox = _trackingBox(track._lastDetection);
+    final reference = track._lastSeenAt;
+    for (final sighting in _litLightSightings) {
+      if (reference.difference(sighting.timestamp) > lookback) continue;
+      if (_boxesOverlapLoosely(candidateBox, sighting.box)) return true;
+    }
+    return false;
   }
 
   /// ตรวจสอบ Track ที่หมดอายุ (ไม่พบวัตถุเกินระยะเวลาผ่อนผัน missingGracePeriod) และส่งออกเหตุการณ์ lost
@@ -463,6 +560,14 @@ Rect _trackingBox(YOLOResult detection) {
   return normalized.width > 0 && normalized.height > 0
       ? normalized
       : detection.boundingBox;
+}
+
+/// ทับซ้อนแบบหลวม: พื้นที่ตัดกัน > 0 หรือจุดกึ่งกลางของกล่องหนึ่งอยู่ในอีกกล่อง
+/// (ใช้เทียบกล่องต่างขนาดของไฟดวงเดียวกัน เช่น เลนส์เล็กในโคมใหญ่)
+bool _boxesOverlapLoosely(Rect first, Rect second) {
+  final intersection = first.intersect(second);
+  if (intersection.width > 0 && intersection.height > 0) return true;
+  return first.contains(second.center) || second.contains(first.center);
 }
 
 /// คำนวณค่า Intersection over Union (IoU) ระหว่างสองกรอบสี่เหลี่ยม

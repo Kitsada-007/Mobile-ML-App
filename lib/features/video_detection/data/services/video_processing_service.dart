@@ -7,7 +7,6 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:trffic_ilght_app/core/services/inference/countdown_reading_stabilizer.dart';
 import 'package:trffic_ilght_app/features/video_detection/data/services/video_frame_analysis_service.dart';
-import 'package:trffic_ilght_app/features/video_detection/data/services/video_label_formatter.dart';
 import 'package:ultralytics_yolo/yolo.dart';
 
 // หมายเหตุ: ไฟล์นี้ "ไม่" ประกาศ SignalInterpreter / DriverSignalResult /
@@ -35,15 +34,11 @@ class VideoProcessingResult {
   const VideoProcessingResult({
     required this.finalVideoPath,
     required this.frameResults,
-    required this.detectedClasses,
-    required this.detectedNumbers,
     this.targetFps = 5,
   });
 
   final String finalVideoPath;
   final Map<int, FrameAnalysisResult> frameResults;
-  final Set<String> detectedClasses;
-  final Set<String> detectedNumbers;
   final int targetFps;
 }
 
@@ -75,8 +70,6 @@ class VideoProcessingService {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final String inputFolder = '${directory.path}/yolo_frames_in_$timestamp';
     log(directory.toString());
-    final detectedClasses = <String>{};
-    final detectedNumbers = <String>{};
 
     final frameResults = <int, FrameAnalysisResult>{};
 
@@ -154,13 +147,6 @@ class VideoProcessingService {
           final bytes = await fileEntity.readAsBytes();
           final result = await frameAnalysisService.analyze(bytes);
 
-          // เก็บชื่อ class แบบ formal Thai name ไว้เป็น aggregate log ของทั้งวิดีโอ
-          // (ไม่ใช่สิ่งที่ใช้แสดงผลหลักให้ user เห็น — การแสดงผลหลักต่อเฟรม
-          //  เป็นหน้าที่ของ SignalInterpreter ที่ VideoInferenceController เรียกเอง)
-          for (final detection in result.detections) {
-            detectedClasses.add(videoFormalThaiName(detection.className));
-          }
-
           // ---- Countdown number: stabilize + hold/decay ----
           final stabilizedNumber = countdownStabilizer.add(
             result.detectedNumber,
@@ -172,7 +158,6 @@ class VideoProcessingService {
             holdFrameCount = maxHoldFrames;
             finalNumber = stabilizedNumber;
             log(stabilizedNumber.toString());
-            detectedNumbers.add(stabilizedNumber);
           } else if (holdFrameCount > 0 && lastAcceptedNumber != null) {
             holdFrameCount--;
             finalNumber = lastAcceptedNumber;
@@ -215,8 +200,6 @@ class VideoProcessingService {
       return VideoProcessingResult(
         finalVideoPath: videoFile.path,
         frameResults: frameResults,
-        detectedClasses: detectedClasses,
-        detectedNumbers: detectedNumbers,
         targetFps: targetFps,
       );
     } finally {

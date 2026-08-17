@@ -324,7 +324,8 @@ void main() {
     });
 
     test('light that turns off for good still raises the off light alert', () {
-      // ไฟเขียวติดจริง แล้วดับถาวร: พอเฟรมไฟเขียวพ้น lookback ต้องแจ้งเหมือนเดิม
+      // ไฟเขียวติดจริง แล้วดับถาวร: ต้องแจ้งหลังดับสนิทจนพ้นหน้าต่างเวลา 6 วิ
+      // นับจากเฟรมไฟติดสุดท้าย (ไม่ใช่ 12 เฟรมเฉยๆ ซึ่งสั้นแค่ 1.2 วิที่ 10fps)
       final stabilizer = DetectionStabilizer();
       final start = DateTime(2026);
       final events = <DetectionEvent>[];
@@ -334,12 +335,21 @@ void main() {
           detection('green_light_circle'),
         ], timestamp: start.add(Duration(milliseconds: frame * 100)));
       }
-      for (var frame = 4; frame < 16; frame++) {
+      for (var frame = 4; frame <= 64; frame++) {
         events.addAll(
           stabilizer.update([
             detection('off_light'),
           ], timestamp: start.add(Duration(milliseconds: frame * 100))).events,
         );
+        if (frame == 30) {
+          // 3 วิหลังไฟเขียวดับ: ยังอยู่ในหน้าต่างกัน flicker ต้องยังไม่ฟันธง
+          expect(
+            stabilizer.stableDetections.where(
+              (item) => item.className == 'off_light',
+            ),
+            isEmpty,
+          );
+        }
       }
 
       expect(stabilizer.stableDetections.single.className, 'off_light');
@@ -351,6 +361,166 @@ void main() {
         ),
         hasLength(1),
       );
+    });
+
+    test(
+      'video-rate dark stretch after a lit frame does not confirm off light',
+      () {
+        // อัตราเดียวกับท่อวิดีโอจริง (targetChecksPerSecond = 4 -> 250ms/เฟรม):
+        // เห็นไฟเขียว แล้วไฟ "ดูดับ" ยาว 3 วิ (12 เฟรมเต็มหน้าต่างแบบนับเฟรม)
+        // ต้องยังไม่แจ้งไฟขัดข้อง เพราะเพิ่งเห็นไฟติดเมื่อ 3 วิก่อน
+        final stabilizer = DetectionStabilizer();
+        final start = DateTime(2026);
+
+        stabilizer.update([detection('green_light_circle')], timestamp: start);
+        for (var frame = 1; frame <= 12; frame++) {
+          stabilizer.update([
+            detection('off_light'),
+          ], timestamp: start.add(Duration(milliseconds: frame * 250)));
+          expect(
+            stabilizer.stableDetections.where(
+              (item) => item.className == 'off_light',
+            ),
+            isEmpty,
+            reason: 'เฟรมที่ $frame (${frame * 250}ms): ไฟเขียวเพิ่งติดเมื่อ '
+                'ไม่ถึง 6 วิ ต้องไม่แจ้งไฟขัดข้อง',
+          );
+        }
+
+        // ดับต่อเนื่องจนพ้น 6 วิจากเฟรมไฟเขียว -> คราวนี้ดับจริง ต้องยืนยัน
+        DetectionStabilizerUpdate? update;
+        for (var frame = 13; frame <= 26; frame++) {
+          update = stabilizer.update([
+            detection('off_light'),
+          ], timestamp: start.add(Duration(milliseconds: frame * 250)));
+        }
+        expect(update!.stableDetections.single.className, 'off_light');
+      },
+    );
+
+    test(
+      'camera-rate dark burst after a lit frame does not confirm off light',
+      () {
+        // อัตรากล้องเรียลไทม์ (~30fps): 12 เฟรมมืด = แค่ 0.4 วิ
+        // สั้นกว่าจังหวะ flicker มาก ต้องไม่พอฟันธงว่าไฟขัดข้อง
+        final stabilizer = DetectionStabilizer();
+        final start = DateTime(2026);
+
+        for (var frame = 0; frame < 3; frame++) {
+          stabilizer.update([
+            detection('green_light_circle'),
+          ], timestamp: start.add(Duration(milliseconds: frame * 33)));
+        }
+        for (var frame = 3; frame < 15; frame++) {
+          stabilizer.update([
+            detection('off_light'),
+          ], timestamp: start.add(Duration(milliseconds: frame * 33)));
+          expect(
+            stabilizer.stableDetections.where(
+              (item) => item.className == 'off_light',
+            ),
+            isEmpty,
+            reason: 'เฟรมที่ $frame: มืดมาแค่ ${(frame - 2) * 33}ms '
+                'หลังเห็นไฟเขียว ต้องไม่แจ้งไฟขัดข้อง',
+          );
+        }
+      },
+    );
+
+    test(
+      'split-track flicker (lens box inside housing box) never confirms off light',
+      () {
+        // จำลอง track split จากสนามจริง: กล่องไฟเขียว = เลนส์เล็ก, กล่อง off =
+        // โคมทั้งแผง IoU ต่ำกว่าเกณฑ์ 0.2 จึงแตกคนละ track — track ของ off
+        // จะมีแต่ off ล้วน หลักฐานไฟติดอยู่คนละ track ต้องพึ่ง registry กลาง
+        final stabilizer = DetectionStabilizer();
+        final start = DateTime(2026);
+
+        for (var frame = 0; frame < 40; frame++) {
+          final isLitFrame = frame % 4 == 0; // ไฟติดโผล่ทุก 1 วิ (4fps)
+          final input = isLitFrame
+              ? detection(
+                  'green_light_circle', // เลนส์เล็กกลางโคม
+                  left: 0.45, top: 0.05, right: 0.55, bottom: 0.15,
+                )
+              : detection(
+                  'off_light', // โคมทั้งแผง (ทับซ้อนเลนส์แต่ IoU ~0.03)
+                  left: 0.2, top: 0.0, right: 0.8, bottom: 0.6,
+                );
+          stabilizer.update([
+            input,
+          ], timestamp: start.add(Duration(milliseconds: frame * 250)));
+          expect(
+            stabilizer.stableDetections.where(
+              (item) => item.className == 'off_light',
+            ),
+            isEmpty,
+            reason: 'เฟรมที่ $frame: เพิ่งเห็นไฟเขียวที่ตำแหน่งทับซ้อนกัน '
+                'ภายใน 6 วิ ต้องไม่แจ้งไฟขัดข้อง',
+          );
+        }
+      },
+    );
+
+    test(
+      'lit sighting survives track expiry and still blocks off light',
+      () {
+        // ไฟเขียวโผล่ครั้งเดียวแล้ว track โดน expire (หายเกิน grace 1 วิ)
+        // หลักฐานใน registry ต้องยังกัน off_light ได้จนพ้นหน้าต่าง 6 วิ
+        final stabilizer = DetectionStabilizer();
+        final start = DateTime(2026);
+
+        stabilizer.update([
+          detection('green_light_circle',
+              left: 0.45, top: 0.05, right: 0.55, bottom: 0.15),
+        ], timestamp: start);
+
+        // เว้นว่าง 1.5 วิ (track ไฟเขียวตาย) แล้วโคมมืดโผล่ที่เดิมยาวๆ
+        DetectionStabilizerUpdate? update;
+        for (var frame = 0; frame < 30; frame++) {
+          final timestamp = start.add(
+            Duration(milliseconds: 1500 + frame * 250),
+          );
+          update = stabilizer.update([
+            detection('off_light',
+                left: 0.2, top: 0.0, right: 0.8, bottom: 0.6),
+          ], timestamp: timestamp);
+          if (timestamp.difference(start) <= const Duration(seconds: 6)) {
+            expect(
+              stabilizer.stableDetections.where(
+                (item) => item.className == 'off_light',
+              ),
+              isEmpty,
+              reason: 'ที่ ${timestamp.difference(start).inMilliseconds}ms: '
+                  'ไฟเขียวยังอยู่ในหน้าต่าง 6 วิ แม้ track จะตายไปแล้ว',
+            );
+          }
+        }
+
+        // พ้นหน้าต่างแล้ว (เฟรมสุดท้าย = 8.75 วิ) -> ไฟดับจริง ต้องยืนยัน
+        expect(update!.stableDetections.single.className, 'off_light');
+      },
+    );
+
+    test('distant lit light does not suppress a separate dark light', () {
+      // ไฟติดอยู่คนละมุมจอ ไม่ทับซ้อนเชิงพื้นที่ -> ห้าม suppress ข้ามดวง
+      final stabilizer = DetectionStabilizer();
+      final start = DateTime(2026);
+
+      stabilizer.update([
+        detection('green_light_circle',
+            left: 0.0, top: 0.0, right: 0.1, bottom: 0.1),
+      ], timestamp: start);
+
+      DetectionStabilizerUpdate? update;
+      for (var frame = 1; frame <= 12; frame++) {
+        update = stabilizer.update([
+          detection('off_light',
+              left: 0.6, top: 0.6, right: 0.9, bottom: 0.9),
+        ], timestamp: start.add(Duration(milliseconds: frame * 100)));
+      }
+
+      expect(update!.stableDetections.single.className, 'off_light');
     });
 
     test('countdown ROI class never enters stable detections or events', () {

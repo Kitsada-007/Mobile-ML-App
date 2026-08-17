@@ -38,9 +38,6 @@ String? acceptCountdownReading(String? reading) {
 /// ค่า confidence threshold ขั้นต่ำสำหรับป้าย sign_number (ในโหมด realtime)
 const double realtimeSignConfidenceThreshold = 0.25;
 
-/// ผลการตัดสินสัญญาณไฟ: ไปได้ / หยุด / ระวัง / ไม่รู้
-enum TrafficSignalVerdict { go, stop, caution, unknown }
-
 /// แปลง threshold ที่ผู้ใช้เลือกลงไปให้ YOLO native ใช้
 /// - ค่าที่ผู้ใช้เลือกจะถูกฝังเป็นค่าที่สูงสุดเท่ากับ realtimeSignConfidenceThreshold
 ///   เพราะ native stream ต้องเห็นตั้งแต่ confidence ต่ำจึงจะปล่อยสัญญาณมาให้ฝั่ง Dart

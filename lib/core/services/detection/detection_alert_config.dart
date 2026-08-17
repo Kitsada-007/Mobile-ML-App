@@ -24,6 +24,7 @@ final class DetectionRule {
     this.minimumConsecutiveFrames,
     this.minimumContinuousDuration,
     this.flickerLookbackFrames,
+    this.flickerLookbackDuration,
   });
 
   /// จำนวนเฟรมย้อนหลังที่ใช้สะสมประวัติผลการตรวจจับ
@@ -51,6 +52,11 @@ final class DetectionRule {
   /// ใช้เฉพาะ off_light: ถ้าเห็นไฟติด (แดง/เหลือง/เขียว) ที่ IoU เดิมภายในหน้าต่างนี้
   /// = ไฟกะพริบจากกล้อง ไม่ใช่ไฟดับจริง (null = ไม่ตรวจ)
   final int? flickerLookbackFrames;
+
+  /// หน้าต่างกัน flicker แบบ "ระยะเวลา" (fps-independent): หน้าต่างเฟรมอย่างเดียว
+  /// สั้น/ยาวไม่เท่ากันตามอัตราเฟรมของแต่ละท่อ (video 4fps = 3 วิ, camera 30fps
+  /// = 0.4 วิ) จึงต้องมีหน้าต่างเวลาคุมอีกชั้น (null = ไม่ตรวจ)
+  final Duration? flickerLookbackDuration;
 }
 
 /// คลาสการตั้งค่าคอนฟิกสำหรับการกรองความเสถียร (Stabilization), การติดตามวัตถุ (Tracking) และเสียงแจ้งเตือน (Voice Alerts)
@@ -65,6 +71,7 @@ final class DetectionAlertConfig {
     this.offLightMinimumFrames = 12,
     this.offLightMinimumDuration = const Duration(seconds: 6),
     int? flickerLookbackFrames,
+    Duration? flickerLookbackDuration,
     this.turnHistorySize = 3,
     this.turnRequiredVotes = 3,
     this.turnMissingGracePeriod = const Duration(seconds: 1),
@@ -73,7 +80,8 @@ final class DetectionAlertConfig {
     this.signRequiredVotes = 3,
     this.signMissingGracePeriod = const Duration(milliseconds: 1500),
     this.signVoiceCooldown = const Duration(seconds: 8),
-  }) : _flickerLookbackFrames = flickerLookbackFrames;
+  }) : _flickerLookbackFrames = flickerLookbackFrames,
+       _flickerLookbackDuration = flickerLookbackDuration;
 
   /// คลาสวัตถุประเภทสัญญาณไฟจราจรหลัก
   static const trafficLightClasses = <String>{
@@ -118,6 +126,22 @@ final class DetectionAlertConfig {
   /// (const constructor อ้างค่า field อื่นเป็น default ไม่ได้ จึง default ผ่าน getter)
   int get flickerLookbackFrames =>
       _flickerLookbackFrames ?? offLightMinimumFrames;
+
+  /// ค่าที่ผู้ใช้ตั้งเอง (null = ใช้ค่า default ผูกกับ offLightMinimumDuration)
+  final Duration? _flickerLookbackDuration;
+
+  /// หน้าต่างเวลาที่ off_light ต้องไม่เคยเห็นไฟติดที่ตำแหน่งเดิมเลย (กัน flicker
+  /// แบบ fps-independent) — default ผูกกับ offLightMinimumDuration ตามหลัก
+  /// "ไฟดับจริงต้องดับสนิทตลอดหน้าต่างยืนยัน"
+  Duration get flickerLookbackDuration =>
+      _flickerLookbackDuration ?? offLightMinimumDuration;
+
+  /// ระยะเวลาขั้นต่ำที่ต้องเก็บประวัติของกลุ่มไว้ (ให้หน้าต่างกัน flicker มองย้อน
+  /// ได้ครบ ไม่โดน evict ตามจำนวนเฟรมไปก่อน) — กลุ่มอื่นไม่ต้องเก็บตามเวลา
+  Duration historyRetentionFor(DetectionGroup group) =>
+      group == DetectionGroup.trafficLight
+      ? flickerLookbackDuration
+      : Duration.zero;
 
   // --- คอนฟิกสัญญาณไฟเลี้ยว (Turn Signal) ---
   final int turnHistorySize;
@@ -168,6 +192,9 @@ final class DetectionAlertConfig {
             : null,
         flickerLookbackFrames: className == 'off_light'
             ? flickerLookbackFrames
+            : null,
+        flickerLookbackDuration: className == 'off_light'
+            ? flickerLookbackDuration
             : null,
       ),
       DetectionGroup.turnSignal => DetectionRule(

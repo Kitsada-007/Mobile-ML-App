@@ -84,8 +84,6 @@ class VideoInferenceController extends ChangeNotifier {
       CountdownReadingStabilizer();
 
   // ---- State สำหรับผลการตรวจจับ ----
-  final Set<String> _detectedClasses = {}; // ชุดคลาสที่ตรวจพบ (กันซ้ำ)
-  final Set<String> _detectedNumbers = {}; // ชุดตัวเลขที่ตรวจพบ (กันซ้ำ)
   Map<int, FrameAnalysisResult> _frameResults =
       {}; // ผลลัพธ์รายเฟรม (key = index เฟรม)
   int _targetFps = 5; // FPS ที่ใช้ประมวลผลวิดีโอ (ค่าเริ่มต้น 5)
@@ -106,7 +104,6 @@ class VideoInferenceController extends ChangeNotifier {
   double? _lastDetectionConfidence; // ค่า confidence สูงสุดของเฟรมล่าสุด
 
   Uint8List? _imageBytes; // ข้อมูลภาพต้นฉบับ (bytes)
-  Uint8List? _annotatedImage; // ภาพที่วาดกล่อง/ป้ายกำกับผลตรวจจับแล้ว
 
   // ---- โมเดล YOLO และบริการวิเคราะห์ ----
   YOLO? _trafficYolo; // โมเดลตรวจจับไฟจราจร
@@ -138,9 +135,6 @@ class VideoInferenceController extends ChangeNotifier {
   bool get isProcessing => _processing;
   double get progressValue => _progressValue;
   String get progressText => _progressText;
-  Set<String> get detectedClasses =>
-      Set.unmodifiable(_detectedClasses); // คืนแบบ read-only
-  Set<String> get detectedNumbers => Set.unmodifiable(_detectedNumbers);
   List<YOLOResult> get currentFrameDetections => _currentFrameDetections;
   String? get currentDetectedNumber => _currentDetectedNumber;
   String? get currentCountdownUiMessage => _currentCountdownUiMessage;
@@ -152,7 +146,6 @@ class VideoInferenceController extends ChangeNotifier {
   double? get lastDetectionConfidence => _lastDetectionConfidence;
 
   Uint8List? get imageBytes => _imageBytes;
-  Uint8List? get annotatedImage => _annotatedImage;
   VideoPlayerController? get videoController => _videoController;
   VideoPlayerController? get selectedPreviewController =>
       _selectedPreviewController;
@@ -311,9 +304,6 @@ class VideoInferenceController extends ChangeNotifier {
     _videoFile = selectedFile;
     _selectedPreviewController = previewReady ? previewController : null;
     // รีเซ็ตผลลัพธ์การตรวจจับทั้งหมด
-    _annotatedImage = null;
-    _detectedClasses.clear();
-    _detectedNumbers.clear();
     _frameResults.clear();
     _currentFrameDetections.clear();
     _resetDetectionSession(stopVoice: false);
@@ -339,12 +329,9 @@ class VideoInferenceController extends ChangeNotifier {
     _processing = true;
     _progressValue = 0.0;
     _progressText = 'กำลังเตรียมโฟลเดอร์ชั่วคราว...';
-    _detectedClasses.clear();
-    _detectedNumbers.clear();
     _frameResults.clear();
     _currentFrameDetections.clear();
     _resetDetectionSession(stopVoice: false);
-    _annotatedImage = null;
     _clearVideoController(); // ล้างวิดีโอเก่าที่เล่นอยู่
     notifyListeners();
 
@@ -368,8 +355,6 @@ class VideoInferenceController extends ChangeNotifier {
       if (_isDisposed) return;
 
       // ---- บันทึกผลการประมวลผล ----
-      _detectedClasses.addAll(result.detectedClasses);
-      _detectedNumbers.addAll(result.detectedNumbers);
       _frameResults = result.frameResults; // ผลรายเฟรม (key = frame index)
       _targetFps = result.targetFps; // FPS จริงที่ใช้
 
