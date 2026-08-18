@@ -108,6 +108,7 @@ class VideoProcessingService {
     // default 6: ค่าเดิม 4 อยู่ที่ขอบ Nyquist สำหรับไฟกะพริบ ~1 Hz
     // ทำให้การตรวจสถานะกะพริบ (flashing_*) พลาดง่ายในวิดีโอบางไฟล์
     int targetFps = 4,
+
     // จำนวนเฟรม (ที่ extract มาแล้ว) ที่ยอมให้ "hold" ค่าเลขล่าสุดไว้
     // เผื่อกรณี motion blur ทำให้บางเฟรม predict เลขไม่ได้
     // ที่ 6 fps → hold = 3/6 = 0.5s ยังครอบคลุมช่วงดับของป้าย LED PWM

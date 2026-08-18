@@ -19,7 +19,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
   bool? _isRouteCurrent;
   bool _isAppResumed = true;
 
-  /// ระยะขอบบน/ล่างของทั้งหน้า (ใช้คำนวณความสูงที่เหลือด้วย)
+  /// ระยะขอบบน/ล่างของทั้งหน้า
   static const double _screenPadding = 12;
 
   @override
@@ -59,7 +59,6 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
     if (!mounted) {
       return;
     }
-    // ล้างข้อความออกทันทีหลังหยิบมาแสดง เพื่อไม่ให้แสดงซ้ำในการแจ้งครั้งถัดไป
     final message = _controller.snackBarMessage;
     if (message != null) {
       _controller.clearSnackBarMessage();
@@ -78,7 +77,6 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // ปล่อย controller (ซึ่งจะปล่อยโมเดล/วิดีโอ/เสียงด้วย)
     _controller.removeListener(_onControllerNotification);
     _controller.dispose();
     super.dispose();
@@ -106,146 +104,125 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
                   _controller.videoController != null &&
                   _controller.videoController!.value.isInitialized;
 
-              return LayoutBuilder(
-                builder: (context, constraints) {
-                  final horizontalPadding = isLandscape ? 24.0 : 16.0;
-                  final availableHeight = constraints.maxHeight.isFinite
-                      ? (constraints.maxHeight - _screenPadding * 2).clamp(
-                          0.0,
-                          double.infinity,
-                        )
-                      : 0.0;
-                  // จอเตี้ยต้องแบ่งให้การ์ดน้อยลง ไม่งั้นแผงผลถูกดันตกขอบจนต้องเลื่อนหา
-                  final cardHeight =
-                      (availableHeight * (availableHeight >= 720 ? 0.55 : 0.45))
-                          .clamp(180.0, 560.0);
+              final horizontalPadding = isLandscape ? 24.0 : 16.0;
 
-                  final header = _VideoHeader(
-                    showModelProgress: !_controller.areModelsReady,
-                    onBack: () {
-                      unawaited(_controller.pause());
-                      Navigator.maybePop(context);
-                    },
-                  );
+              final header = _VideoHeader(
+                showModelProgress: !_controller.areModelsReady,
+                onBack: () {
+                  unawaited(_controller.pause());
+                  Navigator.maybePop(context);
+                },
+              );
 
-                  final Widget mainCard;
-                  if (hasVideoResult) {
-                    mainCard = ResultVideoSection(
-                      controller: _controller.videoController!,
-                      detections: _controller.currentFrameDetections,
-                      isVoiceEnabled: _controller.isVoiceEnabled,
-                      onTogglePlayPause: _controller.togglePlayPause,
-                      onToggleVoice: _controller.toggleVoice,
-                      onPickNewVideo: _controller.pickVideo,
-                    );
-                  } else if (_controller.isProcessing) {
-                    mainCard = _VideoProcessingCard(
-                      progressValue: _controller.progressValue,
-                      progressText: _controller.progressText,
-                      height: cardHeight,
-                    );
-                  } else {
-                    mainCard = _VideoPickerPlaceholderCard(
-                      areModelsReady: _controller.areModelsReady,
-                      onPickVideo: _controller.pickVideo,
-                      height: cardHeight,
-                    );
-                  }
+              // 1. สร้าง Widget เนื้อหาตรงกลาง (วิดีโอ / โหลดดิ้ง / ปุ่มเลือกไฟล์)
+              final Widget cardContent;
+              if (hasVideoResult) {
+                cardContent = Container(
+                  width: double.infinity, // กลับมากางให้กว้างเต็มหน้าจอ
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24),
+                    color: Colors.black,
+                  ),
+                  clipBehavior: Clip.hardEdge,
+                  // เอา Center และ AspectRatio ออก ปล่อยให้ ResultVideoSection จัดการตัวเองให้เต็มพื้นที่
+                  child: ResultVideoSection(
+                    controller: _controller.videoController!,
+                    detections: _controller.currentFrameDetections,
+                    isVoiceEnabled: _controller.isVoiceEnabled,
+                    onTogglePlayPause: _controller.togglePlayPause,
+                    onToggleVoice: _controller.toggleVoice,
+                    onPickNewVideo: _controller.pickVideo,
+                  ),
+                );
+              } else if (_controller.isProcessing) {
+                cardContent = _VideoProcessingCard(
+                  progressValue: _controller.progressValue,
+                  progressText: _controller.progressText,
+                );
+              } else {
+                cardContent = _VideoPickerPlaceholderCard(
+                  areModelsReady: _controller.areModelsReady,
+                  onPickVideo: _controller.pickVideo,
+                );
+              }
 
-                  final panel = VideoDetectionPanel(
-                    formalNames: _controller.currentFormalNames,
-                    alertMessages: _controller.currentAlertMessages,
-                    detectedNumber: _controller.currentDetectedNumber,
-                    driverSignalResult: _controller.currentDriverSignalResult,
-                    isLandscape: isLandscape,
-                    isPipelineStale:
-                        !_controller.isProcessing &&
-                        _controller.currentFrameDetections.isEmpty &&
-                        _controller.currentDetectedNumber == null,
-                    statusText: hasVideoResult
-                        ? (_controller.videoController!.value.isPlaying
-                              ? 'กำลังตรวจจับแบบเรีลไทม์'
-                              : 'หยุดชั่วคราว')
-                        : _controller.isProcessing
-                        ? _controller.progressText
-                        : 'พร้อมตรวจจับวิดีโอ',
-                    lastDetectionConfidence:
-                        _controller.lastDetectionConfidence,
-                    trafficLightClassName:
-                        _controller.stableTrafficLightClassName,
-                  );
+              // 2. แผงควบคุมด้านล่าง (คงที่เสมอ)
+              final panel = VideoDetectionPanel(
+                formalNames: _controller.currentFormalNames,
+                alertMessages: _controller.currentAlertMessages,
+                detectedNumber: _controller.currentDetectedNumber,
+                driverSignalResult: _controller.currentDriverSignalResult,
+                isLandscape: isLandscape,
+                isPipelineStale:
+                    !_controller.isProcessing &&
+                    _controller.currentFrameDetections.isEmpty &&
+                    _controller.currentDetectedNumber == null,
+                statusText: hasVideoResult
+                    ? (_controller.videoController!.value.isPlaying
+                          ? 'กำลังตรวจจับแบบเรียลไทม์'
+                          : 'หยุดชั่วคราว')
+                    : _controller.isProcessing
+                    ? _controller.progressText
+                    : 'พร้อมตรวจจับวิดีโอ',
+                lastDetectionConfidence: _controller.lastDetectionConfidence,
+                trafficLightClassName: _controller.stableTrafficLightClassName,
+              );
 
-                  // แนวนอน: จอเตี้ยแต่กว้าง จึงวางวิดีโอคู่กับแผงผล
-                  if (isLandscape) {
-                    return Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        horizontalPadding,
-                        _screenPadding,
-                        horizontalPadding,
-                        _screenPadding,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          header,
-                          const SizedBox(height: 12),
-                          Expanded(
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Expanded(
-                                  flex: 3,
-                                  // วิดีโอแนวตั้งสูงเกินจอได้ จึงให้เลื่อนดูได้แทนการล้นขอบ
-                                  child: SingleChildScrollView(child: mainCard),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  flex: 2,
-                                  child: SingleChildScrollView(
-                                    key: const Key('videoDetectionScrollView'),
-                                    child: panel,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  // แนวตั้ง: เนื้อหายาวกว่าจอได้ จึงให้เลื่อนดูได้
-                  return SingleChildScrollView(
-                    key: const Key('videoDetectionScrollView'),
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      _screenPadding,
-                      horizontalPadding,
-                      _screenPadding,
-                    ),
-                    child: Center(
-                      child: ConstrainedBox(
-                        // minHeight ดันเนื้อหาให้สูงเท่าจอเสมอ จึงไม่เหลือช่องว่างค้างด้านล่าง
-                        constraints: BoxConstraints(
-                          maxWidth: 720,
-                          minHeight: availableHeight,
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
+              // 3. แนวนอน: จัดให้อยู่ในหน้าเดียวด้วย Row + Expanded คู่
+              if (isLandscape) {
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    horizontalPadding,
+                    _screenPadding,
+                    horizontalPadding,
+                    _screenPadding,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      header,
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            header,
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              child: mainCard,
+                            Expanded(flex: 3, child: cardContent),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              flex: 2,
+                              child: SingleChildScrollView(
+                                key: const Key('videoDetectionScrollView'),
+                                child: panel,
+                              ),
                             ),
-                            panel,
                           ],
                         ),
                       ),
-                    ),
-                  );
-                },
+                    ],
+                  ),
+                );
+              }
+
+              // 4. แนวตั้ง: บังคับให้อยู่ใน 1 หน้าจอเป๊ะๆ (ไม่มี Scroll)
+              return Padding(
+                padding: EdgeInsets.fromLTRB(
+                  horizontalPadding,
+                  _screenPadding,
+                  horizontalPadding,
+                  _screenPadding,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    header,
+                    const SizedBox(height: 16),
+                    // ใช้ Expanded คลุม Card เนื้อหาหลัก
+                    // เพื่อให้มันยืดตัวกินที่ว่างตรงกลางหน้าจอ "ทั้งหมด"
+                    Expanded(child: cardContent),
+                    const SizedBox(height: 16),
+                    panel, // แผงควบคุมจะถูกดันให้ไปชิดขอบล่างพอดี
+                  ],
+                ),
               );
             },
           ),
@@ -255,7 +232,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
   }
 }
 
-/// ส่วนหัวของหน้า: ปุ่มย้อนกลับ + ชื่อหน้า + แถบโหลดโมเดล (ถ้ายังไม่พร้อม)
+/// ส่วนหัวของหน้า
 class _VideoHeader extends StatelessWidget {
   const _VideoHeader({required this.showModelProgress, required this.onBack});
 
@@ -288,10 +265,6 @@ class _VideoHeader extends StatelessWidget {
                     'ตรวจจับจากวิดีโอ',
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
                   ),
-                  Text(
-                    'Video Traffic Light Detection',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
-                  ),
                 ],
               ),
             ),
@@ -311,17 +284,15 @@ class _VideoHeader extends StatelessWidget {
   }
 }
 
-/// การ์ดแสดงความคืบหน้า (Progress) ขณะประมวลผลวิดีโอ
+/// การ์ดแสดงความคืบหน้า
 class _VideoProcessingCard extends StatelessWidget {
   const _VideoProcessingCard({
     required this.progressValue,
     required this.progressText,
-    required this.height,
   });
 
   final double progressValue;
   final String progressText;
-  final double height;
 
   @override
   Widget build(BuildContext context) {
@@ -343,81 +314,73 @@ class _VideoProcessingCard extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: SizedBox(
-          height: height,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 28.0,
-              vertical: 24.0,
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: 72,
-                  height: 72,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      SizedBox(
-                        width: 72,
-                        height: 72,
-                        child: CircularProgressIndicator(
-                          value: hasDeterminateProgress ? progressValue : null,
-                          strokeWidth: 5,
-                          color: const Color(0xFF34C759),
-                          backgroundColor: Colors.white12,
-                          strokeCap: StrokeCap.round,
-                        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28.0, vertical: 24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 72,
+                height: 72,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 72,
+                      height: 72,
+                      child: CircularProgressIndicator(
+                        value: hasDeterminateProgress ? progressValue : null,
+                        strokeWidth: 5,
+                        color: const Color(0xFF34C759),
+                        backgroundColor: Colors.white12,
+                        strokeCap: StrokeCap.round,
                       ),
-                      if (hasDeterminateProgress)
-                        Text(
-                          '$percent%',
-                          style: const TextStyle(
-                            color: Color(0xFF34C759),
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        )
-                      else
-                        const Icon(
-                          Icons.movie_creation_rounded,
-                          color: Color(0xFF34C759),
-                          size: 28,
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  progressText.isEmpty
-                      ? 'กำลังวิเคราะห์วิดีโอ...'
-                      : progressText,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    height: 1.3,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 240),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: LinearProgressIndicator(
-                      value: hasDeterminateProgress ? progressValue : null,
-                      minHeight: 6,
-                      color: const Color(0xFF34C759),
-                      backgroundColor: Colors.white12,
                     ),
+                    if (hasDeterminateProgress)
+                      Text(
+                        '$percent%',
+                        style: const TextStyle(
+                          color: Color(0xFF34C759),
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      )
+                    else
+                      const Icon(
+                        Icons.movie_creation_rounded,
+                        color: Color(0xFF34C759),
+                        size: 28,
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                progressText.isEmpty ? 'กำลังวิเคราะห์วิดีโอ...' : progressText,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  height: 1.3,
+                ),
+              ),
+              const SizedBox(height: 14),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 240),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: LinearProgressIndicator(
+                    value: hasDeterminateProgress ? progressValue : null,
+                    minHeight: 6,
+                    color: const Color(0xFF34C759),
+                    backgroundColor: Colors.white12,
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -425,17 +388,15 @@ class _VideoProcessingCard extends StatelessWidget {
   }
 }
 
-/// การ์ดชวนเลือกวิดีโอ เมื่อยังไม่เลือกไฟล์ (Placeholder)
+/// การ์ดชวนเลือกวิดีโอ
 class _VideoPickerPlaceholderCard extends StatelessWidget {
   const _VideoPickerPlaceholderCard({
     required this.areModelsReady,
     required this.onPickVideo,
-    required this.height,
   });
 
   final bool areModelsReady;
   final VoidCallback onPickVideo;
-  final double height;
 
   @override
   Widget build(BuildContext context) {
@@ -453,75 +414,66 @@ class _VideoPickerPlaceholderCard extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: SizedBox(
-          height: height,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              const DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: Center(
-                  child: Icon(
-                    Icons.video_library_rounded,
-                    size: 72,
-                    color: Colors.white24,
-                  ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
               ),
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'ตรวจจับจากไฟล์วิดีโอ (Real-Time)',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      const Text(
-                        'เลือกวิดีโอจากคลังเพื่อเริ่มการตรวจจับสัญญาณไฟสดบนวิดีโอ',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white70, fontSize: 13),
-                      ),
-                      const SizedBox(height: 20),
-                      FilledButton.icon(
-                        onPressed: areModelsReady ? onPickVideo : null,
-                        icon: const Icon(Icons.video_library_outlined),
-                        label: Text(
-                          areModelsReady
-                              ? 'เลือกวิดีโอจากคลัง'
-                              : 'กำลังโหลดโมเดล...',
-                        ),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF16A05D),
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 14,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+              child: Center(
+                child: Icon(
+                  Icons.video_library_rounded,
+                  size: 72,
+                  color: Colors.white24,
                 ),
               ),
-            ],
-          ),
+            ),
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'ตรวจจับจากไฟล์วิดีโอ',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    FilledButton.icon(
+                      onPressed: areModelsReady ? onPickVideo : null,
+                      icon: const Icon(Icons.video_library_outlined),
+                      label: Text(
+                        areModelsReady
+                            ? 'เลือกวิดีโอจากคลัง'
+                            : 'กำลังโหลดโมเดล...',
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF16A05D),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -46,11 +46,11 @@ class VideoInferenceController extends ChangeNotifier {
     @visibleForTesting DetectionStabilizer? detectionStabilizer,
     @visibleForTesting VoiceAlertController? voiceAlertController,
     @visibleForTesting CountdownAlertController? countdownAlertController,
-    // จำนวนตรวจเช็คต่อวินาที — default 6 เพราะ 4 อยู่ที่ขอบ Nyquist พอดี
+    // จำนวนตรวจเช็คต่อวินาที — default 6 เพราะ 6 อยู่ที่ขอบ Nyquist พอดี
     // สำหรับไฟกะพริบ ~1 Hz ทำให้การตรวจสถานะ flashing_* พลาดง่ายในบางไฟล์
-    // (ถ้าวัดบนเครื่องจริงแล้วเวลาประมวลผลรวมเพิ่มเกิน ~40% ให้ถอยกลับเป็น 4
+    // (ถ้าวัดบนเครื่องจริงแล้วเวลาประมวลผลรวมเพิ่มเกิน ~40% ให้ถอยกลับเป็น 6
     // ดูผล timingSummary ใน log "[video-perf]" เทียบ before/after)
-    this.targetChecksPerSecond = 6,
+    this.targetChecksPerSecond = 4,
   }) : _picker = picker ?? ImagePicker(),
        _videoValidator = videoValidator ?? const VideoInputValidator(),
        _modelManager = modelManager ?? ModelManager(),
