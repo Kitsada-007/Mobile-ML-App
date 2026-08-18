@@ -16,10 +16,7 @@ Source comments and all user-facing strings are Thai; keep new code consistent w
 
 ## Commands
 
-- `flutter pub get` — install deps
 - `flutter analyze` — static analysis (required before commit)
-- `flutter test` — full suite
-- `flutter test test/path/to/file_test.dart` — single file
 - `flutter build apk --debug --no-pub` — required after touching native or model wiring
 
 CI (`.github/workflows/ci.yml`) runs `flutter analyze` + `flutter test` on every push and PR.
@@ -29,11 +26,8 @@ Flutter 3.44.6 stable — match that locally when a failure looks version-depend
 
 ## Tech stack
 
-- Flutter / Dart SDK `^3.10.4`
 - State: `provider` only. `get` is in `pubspec.yaml` but its reactive state is unused — don't start using it.
 - ML: `ultralytics_yolo` 0.6.10 (pinned), YOLO11 `.tflite`
-- `camera`, `image_picker`, `video_player`, `image`, `ffmpeg_kit_flutter_new`, `flutter_tts`,
-  `shared_preferences`, `path_provider`, `crypto`, `package_info_plus`, `http`
 
 ## Architecture
 
