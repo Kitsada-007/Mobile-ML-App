@@ -197,30 +197,31 @@ void main() {
     expect(find.text('กำลังตรวจจับ'), findsOneWidget);
   });
 
-  testWidgets('detection panel shows countdown badge and hides countdown message when countdown > 5', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: Stack(
-            children: [
-              CameraDetectionPanel(
-                formalNames: ['สัญญาณไฟนับถอยหลัง'],
-                alertMessages: ['พบสัญญาณไฟนับถอยหลัง'],
-                detectedNumber: '12',
-                isLandscape: false,
-                statusText: 'กำลังตรวจจับ',
-              ),
-            ],
+  testWidgets(
+    'detection panel shows countdown badge and hides countdown message when countdown > 5',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: Stack(
+              children: [
+                CameraDetectionPanel(
+                  formalNames: ['สัญญาณไฟนับถอยหลัง'],
+                  alertMessages: ['พบสัญญาณไฟนับถอยหลัง'],
+                  detectedNumber: '12',
+                  isLandscape: false,
+                  statusText: 'กำลังตรวจจับ',
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    expect(find.text('พบสัญญาณไฟนับถอยหลัง'), findsNothing);
-    expect(find.text('12'), findsOneWidget);
-  });
+      expect(find.text('พบสัญญาณไฟนับถอยหลัง'), findsNothing);
+      expect(find.text('12'), findsOneWidget);
+    },
+  );
 
   testWidgets('countdown from five displays get-ready message', (tester) async {
     await tester.pumpWidget(

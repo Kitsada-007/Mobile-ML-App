@@ -105,13 +105,10 @@ class VideoProcessingService {
     // targetFps คือจำนวนครั้งที่ต้องการตรวจจับต่อวินาทีจริง ๆ
     // (ไม่ใช่ fps ของวิดีโอต้นฉบับ) — ffmpeg extract ที่ค่านี้ตรง ๆ เลย
     // ไม่มีชั้น sampling ซ้อนอีกชั้นเหมือนเวอร์ชันก่อนหน้า
-    // default 6: ค่าเดิม 4 อยู่ที่ขอบ Nyquist สำหรับไฟกะพริบ ~1 Hz
-    // ทำให้การตรวจสถานะกะพริบ (flashing_*) พลาดง่ายในวิดีโอบางไฟล์
     int targetFps = 4,
     // จำนวนเฟรม (ที่ extract มาแล้ว) ที่ยอมให้ "hold" ค่าเลขล่าสุดไว้
-    // เผื่อกรณี motion blur ทำให้บางเฟรม predict เลขไม่ได้
-    // ที่ 6 fps → hold = 3/6 = 0.5s ยังครอบคลุมช่วงดับของป้าย LED PWM
-    // (ครึ่งคาบของการกะพริบ ~1 Hz) จึงคงค่า 3 เฟรมไว้ตามเดิม
+    // เผื่อกรณี motion blur หรือป้าย LED อยู่ในจังหวะดับของ PWM ทำให้บางเฟรม
+    // predict เลขไม่ได้ — ที่ 4 fps → hold = 3/4 = 0.75s
     int maxHoldFrames = 3,
   }) async {
     final directory = await getTemporaryDirectory();

@@ -432,7 +432,7 @@ class _DetectionMessage extends StatelessWidget {
     if (name.contains('แดง') || name.contains('ห้าม')) {
       return Colors.redAccent;
     }
-    if (name.contains('เหลือง') || name.contains('กะพริบ')) {
+    if (name.contains('เหลือง')) {
       return Colors.orangeAccent;
     }
     if (name.contains('เขียว') ||

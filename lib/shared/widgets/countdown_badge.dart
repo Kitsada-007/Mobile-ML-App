@@ -10,22 +10,18 @@ class CountdownBadgePalette {
     required this.border,
     required this.number,
     required this.unit,
-    this.pulse = false,
   });
 
   final Color background;
   final Color border;
   final Color number;
   final Color unit;
-
-  /// ไฟกะพริบ (flashing_*) ให้กรอบเต้นเป็นจังหวะ เพื่อสื่อว่าไฟไม่นิ่ง
-  final bool pulse;
 }
 
 /// ป้ายตัวเลขนับถอยหลังที่ใช้ร่วมกันระหว่างหน้ากล้องและหน้าวิดีโอ
 /// สีทั้งชุดผูกกับ "คลาสไฟจราจรที่ยืนยันเสถียรแล้ว" จาก controller
-/// ห้ามเดาสีจากข้อความภาษาไทย — ต้องรับชื่อคลาสโมเดล/คลาสสังเคราะห์ตรง ๆ
-class CountdownBadge extends StatefulWidget {
+/// ห้ามเดาสีจากข้อความภาษาไทย — ต้องรับชื่อคลาสโมเดลตรง ๆ
+class CountdownBadge extends StatelessWidget {
   const CountdownBadge({
     super.key,
     required this.countdown,
@@ -35,7 +31,7 @@ class CountdownBadge extends StatefulWidget {
   /// ตัวเลขนับถอยหลัง (null = ไม่พบตัวเลข แสดง "X")
   final int? countdown;
 
-  /// คลาสไฟจราจรที่เสถียรแล้ว เช่น red_light_circle / flashing_yellow
+  /// คลาสไฟจราจรที่เสถียรแล้ว เช่น red_light_circle
   /// (null = ยังไม่ยืนยันไฟ ใช้ชุดสีกลาง)
   final String? trafficLightClassName;
 
@@ -44,34 +40,18 @@ class CountdownBadge extends StatefulWidget {
   static CountdownBadgePalette paletteFor(String? trafficLightClassName) {
     // เลขเป็นตัวอักษรใหญ่ (36px หนา) เกณฑ์ AA ของ large text คือ 3:1
     // ทุกคู่สีด้านล่างเลือกเฉดเข้มบนพื้นพาสเทลให้เกิน 4.5:1 เผื่อแสงจ้าในรถ
-    const red = CountdownBadgePalette(
-      background: Color(0xFFFFECEC),
-      border: Color(0xFFF3B6B6),
-      number: Color(0xFFB42323),
-      unit: Color(0xFF8F3131),
-    );
-    const yellow = CountdownBadgePalette(
-      background: Color(0xFFFFF6DF),
-      border: Color(0xFFF1D48F),
-      number: Color(0xFF935F00),
-      unit: Color(0xFF7A5200),
-    );
     return switch (trafficLightClassName) {
-      TrafficSignalClasses.redLightCircle => red,
-      TrafficSignalClasses.yellowLight => yellow,
-      TrafficSignalClasses.flashingRed => CountdownBadgePalette(
-        background: red.background,
-        border: red.border,
-        number: red.number,
-        unit: red.unit,
-        pulse: true,
+      TrafficSignalClasses.redLightCircle => const CountdownBadgePalette(
+        background: Color(0xFFFFECEC),
+        border: Color(0xFFF3B6B6),
+        number: Color(0xFFB42323),
+        unit: Color(0xFF8F3131),
       ),
-      TrafficSignalClasses.flashingYellow => CountdownBadgePalette(
-        background: yellow.background,
-        border: yellow.border,
-        number: yellow.number,
-        unit: yellow.unit,
-        pulse: true,
+      TrafficSignalClasses.yellowLight => const CountdownBadgePalette(
+        background: Color(0xFFFFF6DF),
+        border: Color(0xFFF1D48F),
+        number: Color(0xFF935F00),
+        unit: Color(0xFF7A5200),
       ),
       TrafficSignalClasses.greenLightCircle => const CountdownBadgePalette(
         background: Color(0xFFE8F8EE),
@@ -96,49 +76,16 @@ class CountdownBadge extends StatefulWidget {
   }
 
   @override
-  State<CountdownBadge> createState() => _CountdownBadgeState();
-}
-
-class _CountdownBadgeState extends State<CountdownBadge>
-    with SingleTickerProviderStateMixin {
-  // จังหวะกะพริบ ~1 Hz (ไป-กลับ 450ms) ใกล้จังหวะไฟกะพริบจริง
-  late final AnimationController _pulseController = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 450),
-  );
-
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    super.dispose();
-  }
-
-  /// เปิด/ปิดการเต้นของกรอบตามชุดสีและค่า disableAnimations ของระบบ
-  void _syncPulse(bool shouldPulse, bool animationsDisabled) {
-    if (shouldPulse && !animationsDisabled) {
-      if (!_pulseController.isAnimating) {
-        _pulseController.repeat(reverse: true);
-      }
-    } else if (_pulseController.isAnimating) {
-      _pulseController.stop();
-      _pulseController.value = 0;
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final palette = CountdownBadge.paletteFor(widget.trafficLightClassName);
+    final palette = paletteFor(trafficLightClassName);
     final animationsDisabled = MediaQuery.disableAnimationsOf(context);
-    _syncPulse(palette.pulse, animationsDisabled);
 
     // เปลี่ยนสีแบบ transition สั้น ๆ กันภาพกระตุกเมื่อสถานะไฟสลับ
     final transition = animationsDisabled
         ? Duration.zero
         : const Duration(milliseconds: 200);
 
-    final countdown = widget.countdown;
-    final lightLabel =
-        TrafficSignalClasses.thaiLabel[widget.trafficLightClassName];
+    final lightLabel = TrafficSignalClasses.thaiLabel[trafficLightClassName];
     // ต้องมีข้อความบอกสีไฟเสมอ (คนตาบอดสีต้องใช้ได้ ไม่พึ่งสีทางเดียว)
     final semanticsLabel = [
       ?lightLabel,
@@ -153,30 +100,16 @@ class _CountdownBadgeState extends State<CountdownBadge>
       // อยู่ใต้ liveRegion ของแผงผลเหมือนโครงสร้างเดิม
       excludeSemantics: true,
       label: semanticsLabel,
-      child: AnimatedBuilder(
-        animation: _pulseController,
-        builder: (context, child) {
-          // ไฟกะพริบ: หรี่กรอบเข้าหาสีพื้นสลับกับสีเต็ม (เฉพาะกรอบ ไม่แตะตัวเลข)
-          final borderColor = palette.pulse
-              ? Color.lerp(
-                  palette.border,
-                  palette.background,
-                  _pulseController.value,
-                )!
-              : palette.border;
-          return AnimatedContainer(
-            duration: transition,
-            width: 86,
-            height: 86,
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: palette.background,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: borderColor),
-            ),
-            child: child,
-          );
-        },
+      child: AnimatedContainer(
+        duration: transition,
+        width: 86,
+        height: 86,
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+          color: palette.background,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: palette.border),
+        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [

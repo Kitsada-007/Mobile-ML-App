@@ -25,28 +25,29 @@ void main() {
     expect(find.text('15'), findsOneWidget);
   });
 
-  testWidgets('renders countdown badge and traffic signal message when countdown > 5', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: VideoDetectionPanel(
-            formalNames: ['สัญญาณไฟนับถอยหลัง'],
-            alertMessages: ['พบสัญญาณไฟนับถอยหลัง'],
-            detectedNumber: '12',
-            isLandscape: false,
-            statusText: 'กำลังตรวจจับวิดีโอ',
+  testWidgets(
+    'renders countdown badge and traffic signal message when countdown > 5',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: VideoDetectionPanel(
+              formalNames: ['สัญญาณไฟนับถอยหลัง'],
+              alertMessages: ['พบสัญญาณไฟนับถอยหลัง'],
+              detectedNumber: '12',
+              isLandscape: false,
+              statusText: 'กำลังตรวจจับวิดีโอ',
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    // Position 1: Badge countdown number
-    expect(find.text('12'), findsOneWidget);
-    // Position 2: Countdown message is NOT displayed in Position 2 when countdown > 5
-    expect(find.text('พบสัญญาณไฟนับถอยหลัง'), findsNothing);
-  });
+      // Position 1: Badge countdown number
+      expect(find.text('12'), findsOneWidget);
+      // Position 2: Countdown message is NOT displayed in Position 2 when countdown > 5
+      expect(find.text('พบสัญญาณไฟนับถอยหลัง'), findsNothing);
+    },
+  );
 
   testWidgets('renders prepare to go message when countdown <= 5', (
     tester,
@@ -71,26 +72,30 @@ void main() {
     expect(find.text('เตรียมตัวไป'), findsOneWidget);
   });
 
-  testWidgets('renders scanning message gracefully when detectedNumber is null or invalid', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: VideoDetectionPanel(
-            formalNames: ['สัญญาณไฟนับถอยหลัง'],
-            alertMessages: ['พบสัญญาณไฟนับถอยหลัง'],
-            detectedNumber: null,
-            isLandscape: false,
-            statusText: 'กำลังตรวจจับวิดีโอ',
+  testWidgets(
+    'renders scanning message gracefully when detectedNumber is null or invalid',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: VideoDetectionPanel(
+              formalNames: ['สัญญาณไฟนับถอยหลัง'],
+              alertMessages: ['พบสัญญาณไฟนับถอยหลัง'],
+              detectedNumber: null,
+              isLandscape: false,
+              statusText: 'กำลังตรวจจับวิดีโอ',
+            ),
           ),
         ),
-      ),
-    );
+      );
 
-    // Position 1: Shows X when countdown is null
-    expect(find.text('X'), findsOneWidget);
-    // Position 2: Countdown message suppressed, displays scanning message if no other class
-    expect(find.text('กำลังตรวจจับป้ายจราจรและสัญญาณไฟในวิดีโอ...'), findsOneWidget);
-  });
+      // Position 1: Shows X when countdown is null
+      expect(find.text('X'), findsOneWidget);
+      // Position 2: Countdown message suppressed, displays scanning message if no other class
+      expect(
+        find.text('กำลังตรวจจับป้ายจราจรและสัญญาณไฟในวิดีโอ...'),
+        findsOneWidget,
+      );
+    },
+  );
 }

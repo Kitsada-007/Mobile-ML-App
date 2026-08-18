@@ -74,21 +74,24 @@ void main() {
     },
   );
 
-  test('drops an overlapping box instead of reading it as a second digit', () async {
-    // NMS ตัดกล่องซ้ำเฉพาะภายในคลาสเดียวกัน หลักเดียวที่ถูกทายเป็นทั้ง 1 และ 7
-    // จึงรอดมาทั้งคู่ ถ้าไม่ตัดออกจะกลายเป็นเลข "17" ที่ไม่มีอยู่จริง
-    final yolo = RecordingNumberYolo([
-      numberDetection('1', left: 0.30, confidence: 0.90),
-      numberDetection('7', left: 0.32, confidence: 0.50),
-    ]);
-    final service = NumberDetectionService(numberYolo: yolo);
+  test(
+    'drops an overlapping box instead of reading it as a second digit',
+    () async {
+      // NMS ตัดกล่องซ้ำเฉพาะภายในคลาสเดียวกัน หลักเดียวที่ถูกทายเป็นทั้ง 1 และ 7
+      // จึงรอดมาทั้งคู่ ถ้าไม่ตัดออกจะกลายเป็นเลข "17" ที่ไม่มีอยู่จริง
+      final yolo = RecordingNumberYolo([
+        numberDetection('1', left: 0.30, confidence: 0.90),
+        numberDetection('7', left: 0.32, confidence: 0.50),
+      ]);
+      final service = NumberDetectionService(numberYolo: yolo);
 
-    final result = await service.detect(Uint8List(0));
+      final result = await service.detect(Uint8List(0));
 
-    expect(result.number, '1');
-    expect(result.digitCount, 1);
-    expect(result.averageConfidence, closeTo(0.90, 0.001));
-  });
+      expect(result.number, '1');
+      expect(result.digitCount, 1);
+      expect(result.averageConfidence, closeTo(0.90, 0.001));
+    },
+  );
 
   test('keeps two digits that sit side by side', () async {
     final yolo = RecordingNumberYolo([

@@ -706,7 +706,8 @@ void main() {
       expect(
         controller.isRealtimePipelineStale,
         isFalse,
-        reason: 'เฟรมชุดใหม่หลังเปิดกล้องต้องถูกยอมรับ ไม่ใช่ถูกตัดเป็น outOfOrder',
+        reason:
+            'เฟรมชุดใหม่หลังเปิดกล้องต้องถูกยอมรับ ไม่ใช่ถูกตัดเป็น outOfOrder',
       );
       controller.dispose();
     },
@@ -742,25 +743,28 @@ void main() {
     controller.dispose();
   });
 
-  test('stable red light produces the stop banner from SignalInterpreter', () async {
-    final now = DateTime(2026, 8, 15, 10);
-    final controller = CameraInferenceController(
-      clock: () => now,
-      enableFreshnessWatchdog: false,
-    );
+  test(
+    'stable red light produces the stop banner from SignalInterpreter',
+    () async {
+      final now = DateTime(2026, 8, 15, 10);
+      final controller = CameraInferenceController(
+        clock: () => now,
+        enableFreshnessWatchdog: false,
+      );
 
-    for (var frameNumber = 1; frameNumber <= 5; frameNumber++) {
-      await controller.onStreamingData({
-        'frameNumber': frameNumber,
-        'timestamp': now.millisecondsSinceEpoch,
-        'detections': [_trafficLightDetectionMap('red_light_circle')],
-      });
-    }
+      for (var frameNumber = 1; frameNumber <= 5; frameNumber++) {
+        await controller.onStreamingData({
+          'frameNumber': frameNumber,
+          'timestamp': now.millisecondsSinceEpoch,
+          'detections': [_trafficLightDetectionMap('red_light_circle')],
+        });
+      }
 
-    expect(controller.driverSignalResult.action, SignalAction.stop);
-    expect(controller.driverSignalResult.message, 'ไฟแดง - หยุดรอ');
-    controller.dispose();
-  });
+      expect(controller.driverSignalResult.action, SignalAction.stop);
+      expect(controller.driverSignalResult.message, 'ไฟแดง - หยุดรอ');
+      controller.dispose();
+    },
+  );
 
   test('expiring stale results also clears the driver signal banner', () async {
     var now = DateTime(2026, 8, 15, 10);

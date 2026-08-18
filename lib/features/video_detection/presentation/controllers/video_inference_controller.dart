@@ -46,11 +46,8 @@ class VideoInferenceController extends ChangeNotifier {
     @visibleForTesting DetectionStabilizer? detectionStabilizer,
     @visibleForTesting VoiceAlertController? voiceAlertController,
     @visibleForTesting CountdownAlertController? countdownAlertController,
-    // จำนวนตรวจเช็คต่อวินาที — default 6 เพราะ 4 อยู่ที่ขอบ Nyquist พอดี
-    // สำหรับไฟกะพริบ ~1 Hz ทำให้การตรวจสถานะ flashing_* พลาดง่ายในบางไฟล์
-    // (ถ้าวัดบนเครื่องจริงแล้วเวลาประมวลผลรวมเพิ่มเกิน ~40% ให้ถอยกลับเป็น 4
-    // ดูผล timingSummary ใน log "[video-perf]" เทียบ before/after)
-    this.targetChecksPerSecond = 6,
+    // จำนวนตรวจเช็คต่อวินาที (ดูผล timingSummary ใน log "[video-perf]")
+    this.targetChecksPerSecond = 4,
   }) : _picker = picker ?? ImagePicker(),
        _videoValidator = videoValidator ?? const VideoInputValidator(),
        _modelManager = modelManager ?? ModelManager(),
@@ -129,8 +126,8 @@ class VideoInferenceController extends ChangeNotifier {
   String? get currentDetectedNumber => _currentDetectedNumber;
   String? get currentCountdownUiMessage => _currentCountdownUiMessage;
 
-  /// คลาสไฟจราจรที่ยืนยันเสถียรแล้วของเฟรมปัจจุบัน (เช่น red_light_circle,
-  /// flashing_yellow) สำหรับให้ UI เลือกสีป้ายนับถอยหลัง — null เมื่อยังไม่ยืนยัน
+  /// คลาสไฟจราจรที่ยืนยันเสถียรแล้วของเฟรมปัจจุบัน (เช่น red_light_circle)
+  /// สำหรับให้ UI เลือกสีป้ายนับถอยหลัง — null เมื่อยังไม่ยืนยัน
   String? get stableTrafficLightClassName =>
       _currentStableTrafficLightClassName;
   DriverSignalResult get currentDriverSignalResult =>
@@ -458,16 +455,13 @@ class VideoInferenceController extends ChangeNotifier {
     );
     _currentCountdownUiMessage = countdownUpdate.uiMessage;
 
-    // คลาสไฟสำหรับสีป้ายนับถอยหลัง: รวม off_light และไฟกะพริบสังเคราะห์
-    // (คนละเงื่อนไขกับ countdown ด้านบนที่จำกัดเฉพาะไฟนิ่งซึ่งมีนับถอยหลังจริง)
+    // คลาสไฟสำหรับสีป้ายนับถอยหลัง: รวม off_light ด้วย (คนละเงื่อนไขกับ
+    // countdown ด้านบนที่จำกัดเฉพาะไฟที่มีนับถอยหลังจริง)
     _currentStableTrafficLightClassName = null;
     for (final detection in stableDetections) {
       if (DetectionAlertConfig.trafficLightClasses.contains(
-            detection.className,
-          ) ||
-          DetectionAlertConfig.flashingLightClasses.contains(
-            detection.className,
-          )) {
+        detection.className,
+      )) {
         _currentStableTrafficLightClassName = detection.className;
         break;
       }

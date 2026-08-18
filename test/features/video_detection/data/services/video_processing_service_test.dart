@@ -59,21 +59,18 @@ void main() {
       expect(expired.signPresent, isFalse);
     });
 
-    test(
-      'sign box without a readable number still reports signPresent',
-      () {
-        final tracker = CountdownHoldTracker(maxHoldFrames: 3);
+    test('sign box without a readable number still reports signPresent', () {
+      final tracker = CountdownHoldTracker(maxHoldFrames: 3);
 
-        // ตรวจเจอกล่อง sign_number แต่ stabilizer ยังไม่ยอมรับเลข —
-        // ป้ายถือว่าอยู่ (กล่องจริง) แม้ยังไม่มีเลขให้แสดง
-        final result = tracker.process(
-          stabilizedNumber: null,
-          hasSignDetection: true,
-        );
-        expect(result.finalNumber, isNull);
-        expect(result.signPresent, isTrue);
-      },
-    );
+      // ตรวจเจอกล่อง sign_number แต่ stabilizer ยังไม่ยอมรับเลข —
+      // ป้ายถือว่าอยู่ (กล่องจริง) แม้ยังไม่มีเลขให้แสดง
+      final result = tracker.process(
+        stabilizedNumber: null,
+        hasSignDetection: true,
+      );
+      expect(result.finalNumber, isNull);
+      expect(result.signPresent, isTrue);
+    });
   });
 
   group('FrameAnalysisResult', () {

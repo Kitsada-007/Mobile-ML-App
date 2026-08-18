@@ -44,32 +44,11 @@ Future<void> _pumpBadge(
 
 void main() {
   group('CountdownBadge.paletteFor', () {
-    test('ไฟกะพริบใช้ชุดสีเดียวกับไฟนิ่งสีนั้น และเปิด pulse', () {
-      final red = CountdownBadge.paletteFor(
-        TrafficSignalClasses.redLightCircle,
-      );
-      final flashingRed = CountdownBadge.paletteFor(
-        TrafficSignalClasses.flashingRed,
-      );
-      expect(flashingRed.background, red.background);
-      expect(flashingRed.number, red.number);
-      expect(red.pulse, isFalse);
-      expect(flashingRed.pulse, isTrue);
-
-      final yellow = CountdownBadge.paletteFor(TrafficSignalClasses.yellowLight);
-      final flashingYellow = CountdownBadge.paletteFor(
-        TrafficSignalClasses.flashingYellow,
-      );
-      expect(flashingYellow.number, yellow.number);
-      expect(flashingYellow.pulse, isTrue);
-    });
-
     test('คลาสที่ไม่รู้จักหรือ null ได้ชุดสีกลางเดียวกัน (default ชัดเจน)', () {
       final unknown = CountdownBadge.paletteFor('some_future_class');
       final none = CountdownBadge.paletteFor(null);
       expect(unknown.background, none.background);
       expect(unknown.number, none.number);
-      expect(unknown.pulse, isFalse);
     });
   });
 
@@ -145,52 +124,6 @@ void main() {
         matchesSemantics(label: 'ไฟเขียว ไม่พบตัวเลขนับถอยหลัง'),
       );
       semantics.dispose();
-    });
-
-    testWidgets('ไฟกะพริบ: กรอบเต้นเมื่อ animation ปกติ และนิ่งเมื่อปิด animation', (
-      tester,
-    ) async {
-      await _pumpBadge(
-        tester,
-        countdown: null,
-        trafficLightClassName: TrafficSignalClasses.flashingRed,
-      );
-      // เดินเวลาให้ pulse ขยับ — ต้องไม่ throw และกรอบเปลี่ยนจากค่าตั้งต้น
-      await tester.pump(const Duration(milliseconds: 225));
-      final container = tester.widget<AnimatedContainer>(
-        find.byType(AnimatedContainer),
-      );
-      final border =
-          ((container.decoration! as BoxDecoration).border! as Border).top;
-      expect(
-        border.color,
-        isNot(CountdownBadge.paletteFor(TrafficSignalClasses.flashingRed).border),
-      );
-
-      // ปิด animation ของระบบ -> กรอบต้องค้างที่สีเต็ม (ไม่เต้น)
-      await tester.pumpWidget(
-        const MediaQuery(
-          data: MediaQueryData(disableAnimations: true),
-          child: MaterialApp(
-            home: Scaffold(
-              body: CountdownBadge(
-                countdown: null,
-                trafficLightClassName: TrafficSignalClasses.flashingRed,
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pump(const Duration(milliseconds: 225));
-      final still = tester.widget<AnimatedContainer>(
-        find.byType(AnimatedContainer),
-      );
-      final stillBorder =
-          ((still.decoration! as BoxDecoration).border! as Border).top;
-      expect(
-        stillBorder.color,
-        CountdownBadge.paletteFor(TrafficSignalClasses.flashingRed).border,
-      );
     });
   });
 }

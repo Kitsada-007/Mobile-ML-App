@@ -6,10 +6,6 @@ class TrafficSignalClasses {
   static const dontGoStraightArrow = 'dont_go_straight_arrow';
   static const dontTurnLeft = 'dont_turn_left';
   static const dontTurnRight = 'dont_turn_right';
-  // สถานะสังเคราะห์จาก DetectionStabilizer (ไม่ใช่คลาสจากโมเดล):
-  // ไฟกะพริบ ตรวจจากการสลับ lit↔off ถี่ๆ ที่ตำแหน่งเดิม
-  static const flashingRed = 'flashing_red';
-  static const flashingYellow = 'flashing_yellow';
   static const goStraightArrow = 'go_straight_arrow';
   static const greenLightCircle = 'green_light_circle';
   static const offLight = 'off_light';
@@ -23,8 +19,6 @@ class TrafficSignalClasses {
     dontGoStraightArrow: 'ห้ามตรงไป',
     dontTurnLeft: 'ห้ามเลี้ยวซ้าย',
     dontTurnRight: 'ห้ามเลี้ยวขวา',
-    flashingRed: 'ไฟแดงกะพริบ',
-    flashingYellow: 'ไฟเหลืองกะพริบ',
     goStraightArrow: 'ตรงไปได้',
     greenLightCircle: 'ไฟเขียว',
     offLight: 'ไฟขัดข้อง',
@@ -41,8 +35,6 @@ class TrafficSignalClasses {
     yellowLight: SignalCategory.lightColor,
     greenLightCircle: SignalCategory.lightColor,
     offLight: SignalCategory.lightColor,
-    flashingRed: SignalCategory.lightColor,
-    flashingYellow: SignalCategory.lightColor,
     turnLeft: SignalCategory.direction,
     turnRight: SignalCategory.direction,
     dontTurnLeft: SignalCategory.direction,
@@ -151,21 +143,6 @@ class SignalInterpreter {
     String? countdownNumberText,
   ) {
     final lightKey = light.className;
-
-    // ไฟกะพริบ (สถานะสังเคราะห์) ต้องมาก่อน branch ไฟแดง และต้อง "ไม่" เข้า
-    // เงื่อนไข countdown ด้านล่าง — ไฟกะพริบไม่มีนับถอยหลัง
-    if (lightKey == TrafficSignalClasses.flashingRed) {
-      return const DriverSignalResult(
-        message: 'ไฟแดงกะพริบ - หยุดก่อน แล้วไปเมื่อปลอดภัย',
-        action: SignalAction.caution,
-      );
-    }
-    if (lightKey == TrafficSignalClasses.flashingYellow) {
-      return const DriverSignalResult(
-        message: 'ไฟเหลืองกะพริบ - ชะลอความเร็ว ระวังทางแยก',
-        action: SignalAction.caution,
-      );
-    }
 
     // ไฟแดง = หยุดเสมอ ไม่ต้องสนใจป้ายทิศทางเลย (ความปลอดภัยมาก่อน)
     if (lightKey == TrafficSignalClasses.redLightCircle) {

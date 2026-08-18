@@ -10,7 +10,12 @@ void main() {
         'classIndex': 0,
         'className': 'red_light_circle',
         'confidence': 0.9,
-        'boundingBox': {'left': 10.0, 'top': 10.0, 'right': 50.0, 'bottom': 50.0},
+        'boundingBox': {
+          'left': 10.0,
+          'top': 10.0,
+          'right': 50.0,
+          'bottom': 50.0,
+        },
         'normalizedBox': {'left': 0.1, 'top': 0.1, 'right': 0.5, 'bottom': 0.5},
       }),
     ];

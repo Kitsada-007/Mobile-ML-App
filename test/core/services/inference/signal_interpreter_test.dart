@@ -99,41 +99,18 @@ void main() {
       expect(result.action, SignalAction.none);
     });
 
-    test('flashing red shows stop-first caution and ignores countdown', () {
-      // ไฟกะพริบไม่มีนับถอยหลัง — ส่ง countdownNumberText มาก็ต้องไม่ติดข้อความ
-      final detections = [
-        _makeDetection(TrafficSignalClasses.flashingRed, 0.9),
-      ];
+    test(
+      'interprets straight arrow and turn right when no traffic light is detected',
+      () {
+        final detections = [
+          _makeDetection(TrafficSignalClasses.goStraightArrow, 0.85),
+          _makeDetection(TrafficSignalClasses.turnRight, 0.8),
+        ];
 
-      final result = SignalInterpreter.interpret(
-        detections,
-        countdownNumberText: '3',
-      );
-      expect(result.message, 'ไฟแดงกะพริบ - หยุดก่อน แล้วไปเมื่อปลอดภัย');
-      expect(result.message, contains('กะพริบ'));
-      expect(result.action, SignalAction.caution);
-    });
-
-    test('flashing yellow shows slow-down caution', () {
-      final detections = [
-        _makeDetection(TrafficSignalClasses.flashingYellow, 0.9),
-      ];
-
-      final result = SignalInterpreter.interpret(detections);
-      expect(result.message, 'ไฟเหลืองกะพริบ - ชะลอความเร็ว ระวังทางแยก');
-      expect(result.message, contains('กะพริบ'));
-      expect(result.action, SignalAction.caution);
-    });
-
-    test('interprets straight arrow and turn right when no traffic light is detected', () {
-      final detections = [
-        _makeDetection(TrafficSignalClasses.goStraightArrow, 0.85),
-        _makeDetection(TrafficSignalClasses.turnRight, 0.8),
-      ];
-
-      final result = SignalInterpreter.interpret(detections);
-      expect(result.message, 'ตรงไปได้, เลี้ยวขวาได้');
-      expect(result.action, SignalAction.go);
-    });
+        final result = SignalInterpreter.interpret(detections);
+        expect(result.message, 'ตรงไปได้, เลี้ยวขวาได้');
+        expect(result.action, SignalAction.go);
+      },
+    );
   });
 }
