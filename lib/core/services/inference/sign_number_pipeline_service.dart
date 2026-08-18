@@ -13,7 +13,6 @@ export 'package:trffic_ilght_app/core/services/inference/sign_crop_geometry.dart
 export 'package:trffic_ilght_app/core/services/inference/sign_crop_task.dart';
 export 'package:trffic_ilght_app/core/services/inference/sign_crop_worker.dart';
 
-/// พิมพ์ log ดีบักเฉพาะในโหมด debug
 void _debugPipeline(String message) {
   if (kDebugMode) debugPrint(message);
 }

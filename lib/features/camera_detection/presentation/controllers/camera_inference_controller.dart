@@ -1,29 +1,29 @@
-import 'dart:async'; // ใช้ unawaited
-import 'dart:developer'; // ใช้ log
+import 'dart:async';
+import 'dart:developer';
 
-import 'package:flutter/foundation.dart'; // ChangeNotifier + listEquals
-import 'package:shared_preferences/shared_preferences.dart'; // เก็บค่า threshold ระหว่างเปิดปิดแอป
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trffic_ilght_app/core/services/detection/detection_alert_config.dart';
 import 'package:trffic_ilght_app/core/services/detection/detection_stabilizer.dart';
 import 'package:trffic_ilght_app/core/services/detection/traffic_detection_label_formatter.dart';
-import 'package:trffic_ilght_app/shared/models/model_types.dart'; // ประเภทโมเดล (traffic/number)
-import 'package:trffic_ilght_app/features/camera_detection/data/models/realtime_inference.dart'; // โครงสร้างเฟรมเรียลไทม์
-import 'package:trffic_ilght_app/core/services/inference/countdown_reading_stabilizer.dart'; // กันเลขสั่นไหว
-import 'package:trffic_ilght_app/core/services/inference/signal_interpreter.dart'; // ตีความผล stable เป็นคำสั่งคนขับ
-import 'package:trffic_ilght_app/features/camera_detection/data/services/latest_frame_queue.dart'; // คิวเฟรมล่าสุด
-import 'package:trffic_ilght_app/features/camera_detection/data/services/realtime_pipeline_monitor.dart'; // ติดตามสถิติ pipeline
-import 'package:trffic_ilght_app/core/services/inference/number_detection_service.dart'; // บริการตรวจจับตัวเลข
-import 'package:trffic_ilght_app/features/camera_detection/data/services/realtime_number_inference_engine.dart'; // อ่านเลขป้ายจากเฟรมสด
-import 'package:trffic_ilght_app/core/services/voice/traffic_voice_service.dart'; // เสียงประกาศไทย
+import 'package:trffic_ilght_app/shared/models/model_types.dart';
+import 'package:trffic_ilght_app/features/camera_detection/data/models/realtime_inference.dart';
+import 'package:trffic_ilght_app/core/services/inference/countdown_reading_stabilizer.dart';
+import 'package:trffic_ilght_app/core/services/inference/signal_interpreter.dart';
+import 'package:trffic_ilght_app/features/camera_detection/data/services/latest_frame_queue.dart';
+import 'package:trffic_ilght_app/features/camera_detection/data/services/realtime_pipeline_monitor.dart';
+import 'package:trffic_ilght_app/core/services/inference/number_detection_service.dart';
+import 'package:trffic_ilght_app/features/camera_detection/data/services/realtime_number_inference_engine.dart';
+import 'package:trffic_ilght_app/core/services/voice/traffic_voice_service.dart';
 import 'package:trffic_ilght_app/core/services/voice/voice_alert_controller.dart';
-import 'package:trffic_ilght_app/core/services/inference/sign_number_pipeline_service.dart'; // pipeline อ่านเลขป้าย
+import 'package:trffic_ilght_app/core/services/inference/sign_number_pipeline_service.dart';
 
-import 'package:ultralytics_yolo/widgets/yolo_controller.dart'; // ควบคุม YOLOView (กล้อง)
-import 'package:ultralytics_yolo/utils/error_handler.dart'; // จัดการ error โมเดล
-import 'package:ultralytics_yolo/yolo.dart'; // ชนิดข้อมูล YOLO
-import 'package:ultralytics_yolo/yolo_view.dart'; // วิดเจ็ตกล้อง YOLO
+import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
+import 'package:ultralytics_yolo/utils/error_handler.dart';
+import 'package:ultralytics_yolo/yolo.dart';
+import 'package:ultralytics_yolo/yolo_view.dart';
 
-import 'package:trffic_ilght_app/core/services/model_management/model_manager.dart'; // จัดการโมเดล
+import 'package:trffic_ilght_app/core/services/model_management/model_manager.dart';
 
 export 'package:trffic_ilght_app/features/camera_detection/data/models/realtime_inference.dart'
     show RealtimeInferenceDiagnostic;
@@ -56,68 +56,57 @@ double realtimeDetectionConfidenceThreshold(
     : selectedThreshold;
 
 class CameraInferenceController extends ChangeNotifier {
-  // ---- สถิติการตรวจจับ / FPS ----
-  int _detectionCount = 0; // จำนวนวัตถุที่ตรวจพบในเฟรมล่าสุด
-  double _currentFps = 0.0; // FPS ปัจจุบันที่ประมาณได้
-  int _frameCount = 0; // ตัวนับเฟรม (สำหรับคำนวณ FPS)
-  DateTime _lastFpsUpdate = DateTime.now(); // เวลาอัปเดต FPS ครั้งล่าสุด
+  int _detectionCount = 0;
+  double _currentFps = 0.0;
+  int _frameCount = 0;
+  DateTime _lastFpsUpdate = DateTime.now();
 
-  // ---- ค่า threshold ของโมเดล (ผู้ใช้ปรับได้ผ่าน slider) ----
-  double _confidenceThreshold =
-      0.5; // defult confidenceThreshold 0.5 and iouThreshold 0.45
+  double _confidenceThreshold = 0.5;
   double _iouThreshold = 0.45;
   int _numItemsThreshold = 11;
-  SliderType _activeSlider = SliderType.none; // slider ตัวไหนที่กำลังแสดงอยู่
+  SliderType _activeSlider = SliderType.none;
 
-  // ---- โมเดล ----
-  final ModelType _selectedModel = ModelType.traffic; // โมเดลหลัก = ไฟจราจร
-  bool _isModelLoading = false; // กำลังโหลดโมเดลอยู่ไหม
-  String? _modelPath; // path ของโมเดลไฟจราจร
-  String _loadingMessage = ''; // ข้อความสถานะการโหลด
-  double _downloadProgress = 0.0; // ความคืบหน้าการโหลด (0-1)
+  final ModelType _selectedModel = ModelType.traffic;
+  bool _isModelLoading = false;
+  String? _modelPath;
+  String _loadingMessage = '';
+  double _downloadProgress = 0.0;
 
-  // ---- กล้อง ----
-  double _currentZoomLevel = 1.0; // ระดับ zoom ปัจจุบัน
-  LensFacing _lensFacing = LensFacing.back; // กล้องหลังเป็นค่าเริ่มต้น
-  bool _isFrontCamera = false; // เปิดกล้องหน้ากล้องหรือไม่
-  bool _isCameraEnabled = true; // กล้องเปิดอยู่หรือไม่
+  double _currentZoomLevel = 1.0;
+  LensFacing _lensFacing = LensFacing.back;
+  bool _isFrontCamera = false;
+  bool _isCameraEnabled = true;
   bool _isCameraSuspended = false; // กล้องถูกพักตามแอป/route lifecycle หรือไม่
 
-  final _yoloController = YOLOViewController(); // ควบคุม view กล้องของ YOLO
-  late final TrafficVoiceService _voiceService; // เสียงประกาศ
-  late final ModelManager _modelManager; // จัดการโมเดล
+  final _yoloController = YOLOViewController();
+  late final TrafficVoiceService _voiceService;
+  late final ModelManager _modelManager;
 
-  // ---- ระบบเรียลไทม์ (เฟรมสตรีม) ----
-  YOLO? _digitYolo; // ตัวโมเดลตัวเลข (สำหรับอ่านป้าย)
-  String? _detectedNumber; // ตัวเลขนับถอยหลังที่ตรวจพบ
-  late final RealtimeNumberInferenceEngine
-  _numberInferenceEngine; // อ่านเลขจากเฟรม
-  late final LatestFrameQueue<RealtimeFramePacket>
-  _streamQueue; // คิวเฟรม (เก็บล่าสุด)
+  YOLO? _digitYolo;
+  String? _detectedNumber;
+  late final RealtimeNumberInferenceEngine _numberInferenceEngine;
+  late final LatestFrameQueue<RealtimeFramePacket> _streamQueue;
   late final DetectionStabilizer _detectionStabilizer;
   late final VoiceAlertController _voiceAlertController;
   static const DetectionAlertConfig _detectionConfig = DetectionAlertConfig();
-  late final RealtimeFrameFreshnessGuard
-  _frameFreshnessGuard; // กรองเฟรมเก่า/ไม่เรียง
-  late final RealtimePipelineMonitor _pipelineMonitor; // ติดตามสถิติ pipeline
+  late final RealtimeFrameFreshnessGuard _frameFreshnessGuard;
+  late final RealtimePipelineMonitor _pipelineMonitor;
   late final DateTime Function() _clock; // ฟังก์ชันเวลาที่แทรกได้ (เพื่อเทสต์)
-  late final Duration _maximumFrameAge; // อายุสูงสุดของเฟรม
-  late final bool
-  _enableFreshnessWatchdog; // เปิด watchdog เช็คเฟรมเก่าอัตโนมัติไหม
-  Timer? _freshnessWatchdog; // Timer ที่คอยล้างผลลัพธ์ที่เก่าเกินไป
+  late final Duration _maximumFrameAge;
+  late final bool _enableFreshnessWatchdog;
+  Timer? _freshnessWatchdog;
   RealtimePipelineSnapshot _pipelineSnapshot =
-      const RealtimePipelineSnapshot.empty(); // สแนปช็อตล่าสุดของ pipeline
-  DateTime? _lastFreshFrameCapturedAt; // เวลาจับภาพของเฟรมสดล่าสุด
-  bool _isRealtimePipelineStale = true; // ข้อมูลเรียลไทม์ล้าสมัยหรือไม่
-  int _nextStreamSequence = 0; // ตัวนับ sequence สำรองของเฟรม
+      const RealtimePipelineSnapshot.empty();
+  DateTime? _lastFreshFrameCapturedAt;
+  bool _isRealtimePipelineStale = true;
+  int _nextStreamSequence = 0;
 
-  bool _isDisposed = false; // ถูก dispose แล้วหรือยัง
+  bool _isDisposed = false;
   Future<void>? _loadingFuture; // งานโหลดโมเดล (กันโหลดซ้ำซ้อน)
   Future<void>? _modelRecoveryFuture; // งานกู้คืนโมเดล (กันซ้ำซ้อน)
 
-  // ---- ผลลัพธ์ที่แสดงกับผู้ใช้ (ภาษาไทย) ----
-  List<String> _detectedFormalNames = []; // ชื่อไทยทางการของวัตถุที่พบ
-  List<String> _detectedAlertMessages = []; // ข้อความเตือนภาษาไทย
+  List<String> _detectedFormalNames = [];
+  List<String> _detectedAlertMessages = [];
   double? _lastDetectionConfidence; // confidence สูงสุดของการตรวจจับเฟรมล่าสุด
 
   /// ค่าว่างของแบนเนอร์คำสั่งคนขับ (ไม่มีสัญญาณ -> แผงซ่อนแบนเนอร์)
@@ -125,10 +114,8 @@ class CameraInferenceController extends ChangeNotifier {
     message: '',
     action: SignalAction.none,
   );
-  DriverSignalResult _driverSignalResult =
-      _emptyDriverSignal; // คำสั่งคนขับจากผล stable ล่าสุด
+  DriverSignalResult _driverSignalResult = _emptyDriverSignal;
 
-  // ---------- Getters: ให้ UI อ่านค่าจากภายนอก (อ่านอย่างเดียว) ----------
   int get detectionCount => _detectionCount;
   double get currentFps => _currentFps;
   double get confidenceThreshold => _confidenceThreshold;
@@ -182,12 +169,12 @@ class CameraInferenceController extends ChangeNotifier {
           );
     return lights.isEmpty ? null : lights.first.className;
   }
+
   int? get activeTrafficLightTrackingId =>
       _stableTrafficLights.isEmpty ? null : _stableTrafficLights.first.trackId;
   RealtimePipelineSnapshot get pipelineSnapshot => _pipelineSnapshot;
   bool get isRealtimePipelineStale => _isRealtimePipelineStale;
 
-  // Getter สำหรับ List ภาษาไทย
   List<String> get detectedFormalNames => _detectedFormalNames;
   List<String> get detectedAlertMessages => _detectedAlertMessages;
   double? get lastDetectionConfidence => _lastDetectionConfidence;
@@ -195,17 +182,15 @@ class CameraInferenceController extends ChangeNotifier {
   /// แบนเนอร์คำสั่งคนขับ (เช่น "ไฟแดง - หยุดรอ") จาก [SignalInterpreter]
   DriverSignalResult get driverSignalResult => _driverSignalResult;
 
-  bool get isVoiceEnabled => _voiceService.isEnabled; // เสียงเปิดอยู่หรือไม่
+  bool get isVoiceEnabled => _voiceService.isEnabled;
 
   /// สลับเปิด/ปิดเสียงประกาศ (signature ตรงกับฝั่ง video controller)
   void toggleVoice() {
-    _voiceService.setEnabled(!_voiceService.isEnabled); // สลับสถานะ
+    _voiceService.setEnabled(!_voiceService.isEnabled);
     if (!_voiceService.isEnabled) {
-      unawaited(
-        _voiceService.stop(),
-      ); // ถ้าปิดเสียง ให้หยุดการพูดที่กำลังค้างอยู่
+      unawaited(_voiceService.stop());
     }
-    notifyListeners(); // แจ้ง UI ให้ rebuild
+    notifyListeners();
   }
 
   /// สถานะการตรวจจับโดยรวม (ใช้แสดงใน UI แบบข้อความ)
@@ -225,8 +210,7 @@ class CameraInferenceController extends ChangeNotifier {
     return 'กำลังตรวจจับ';
   }
 
-  /// Constructor
-  /// - พารามิเตอร์ @visibleForTesting: ให้ฝังปลอม (fake) แทนของจริงเพื่อเขียนเทสต์
+  /// พารามิเตอร์ @visibleForTesting: ให้ฝังปลอม (fake) แทนของจริงเพื่อเขียนเทสต์
   CameraInferenceController({
     @visibleForTesting SignNumberPipelineService? signNumberPipelineService,
     @visibleForTesting
@@ -245,7 +229,6 @@ class CameraInferenceController extends ChangeNotifier {
     _maximumFrameAge = maximumFrameAge;
     _enableFreshnessWatchdog = enableFreshnessWatchdog;
     _voiceService = voiceService ?? TrafficVoiceService();
-    // สร้างเอนจินอ่านเลข + คิวเฟรม + guard + monitor + stabilizer
     _numberInferenceEngine = RealtimeNumberInferenceEngine(
       service: signNumberPipelineService,
       detectionInterval: numberDetectionInterval,
@@ -267,7 +250,6 @@ class CameraInferenceController extends ChangeNotifier {
         );
     _isFrontCamera = _lensFacing == LensFacing.front;
 
-    // ModelManager พร้อม callback รับข้อความสถานะโหลดเส้น
     _modelManager =
         modelManager ??
         ModelManager(
@@ -281,10 +263,9 @@ class CameraInferenceController extends ChangeNotifier {
 
   /// เริ่มต้นระบบ: เปิด watchdog + โหลดค่า threshold เก็บไว้ + โหลดโมเดลทั้ง 2 ตัว
   Future<void> initialize() async {
-    _startFreshnessWatchdog(); // เริ่ม timer ล้างเฟรมเก่า
+    _startFreshnessWatchdog();
 
     try {
-      // อ่านค่า threshold ที่ผู้ใช้เคยตั้งไว้ (ถ้ามี) จาก SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       _iouThreshold = prefs.getDouble('iouThreshold') ?? 0.45;
       _confidenceThreshold = prefs.getDouble('confidenceThreshold') ?? 0.5;
@@ -293,8 +274,8 @@ class CameraInferenceController extends ChangeNotifier {
       log('Failed to load thresholds from SharedPreferences: $e');
     }
 
-    await _loadModelForPlatform(); // โหลดโมเดลไฟจราจร
-    await _loadDigitModel(); // โหลดโมเดลตัวเลข
+    await _loadModelForPlatform();
+    await _loadDigitModel();
     if (_isDisposed) return;
 
     // ตั้ง threshold ให้กับ YOLO (native) โดยค่าของ sign_number ถูกบังคับเป็นค่าต่ำสุด
@@ -326,9 +307,8 @@ class CameraInferenceController extends ChangeNotifier {
       }
       final oldDigitYolo = _digitYolo;
       _digitYolo = digitYolo;
-      await oldDigitYolo?.dispose(); // ปล่อยโมเดลตัวเก่า
+      await oldDigitYolo?.dispose();
 
-      // สร้าง pipeline อ่านตัวเลข และฝังลงในเอนจินเรียลไทม์
       final numberDetectionService = NumberDetectionService(
         numberYolo: _digitYolo!,
       );
@@ -376,14 +356,14 @@ class CameraInferenceController extends ChangeNotifier {
         failedPath: initialPath,
       );
       if (replacement == null || replacement == initialPath) rethrow;
-      return load(replacement); // ลองโหลด path ทดแทน
+      return load(replacement);
     }
   }
 
   /// จัดการ error จากโมเดลไฟจราจรที่รายงานมาจาก YOLOView
   Future<void> onModelLoadError(Object error, String failedPath) async {
     if (_isDisposed || failedPath != _modelPath) {
-      return; // ไม่ใช่โมเดลปัจจุบัน -> ข้าม
+      return;
     }
 
     final running = _modelRecoveryFuture;
@@ -419,7 +399,7 @@ class CameraInferenceController extends ChangeNotifier {
     if (replacement == null || replacement == failedPath) {
       _loadingMessage = 'Failed to recover model: $error';
     } else {
-      _modelPath = replacement; // มาโมเดลทดแทนแล้ว
+      _modelPath = replacement;
       _loadingMessage = '';
     }
     notifyListeners();
@@ -428,10 +408,9 @@ class CameraInferenceController extends ChangeNotifier {
   // รับ output model: ฟังก์ชันที่ YOLOView เรียกเมื่อมีผลเฟรมสตรีมสดจากกล้อง
   Future<void> onStreamingData(Map<String, dynamic> data) {
     if (_isDisposed || !isCameraActive) {
-      return Future.value(); // กล้องปิด -> ข้าม
+      return Future.value();
     }
 
-    // แปลงข้อมูล raw จากกล้องให้เป็น RealtimeFramePacket แล้วส่งเข้าคิว
     final packet = RealtimeFramePacket.fromMap(
       data,
       fallbackFrameNumber: ++_nextStreamSequence,
@@ -447,10 +426,10 @@ class CameraInferenceController extends ChangeNotifier {
     try {
       if (nextEnabled) {
         if (!_isCameraSuspended) {
-          await _yoloController.resume(); // เปิดกล้อง
+          await _yoloController.resume();
         }
       } else {
-        await _yoloController.pause(); // ปิดกล้อง
+        await _yoloController.pause();
       }
       _isCameraEnabled = nextEnabled;
       _resetDetectionSession();
@@ -495,15 +474,14 @@ class CameraInferenceController extends ChangeNotifier {
     if (_isDisposed || !isCameraActive) return;
 
     final processingStartedAt = _clock();
-    // ขั้นตอนที่ 1: ตรวจความสด/ลำดับของเฟรมผ่าน FreshnessGuard
     final decision = _frameFreshnessGuard.evaluate(
       packet,
       now: processingStartedAt,
     );
     if (decision != RealtimeFrameDecision.accept) {
-      _pipelineMonitor.recordRejected(decision); // บันทึกเฟรมที่ถูกปฏิเสธ
+      _pipelineMonitor.recordRejected(decision);
       if (decision == RealtimeFrameDecision.stale) {
-        _isRealtimePipelineStale = true; // เฟรมเก่า -> pipeline ล้าสมัย
+        _isRealtimePipelineStale = true;
         _clearRealtimeResults();
       }
       _refreshPipelineSnapshot(processingStartedAt);
@@ -511,14 +489,12 @@ class CameraInferenceController extends ChangeNotifier {
       return;
     }
 
-    // เฟรมผ่าน -> อัปเดตให้ pipeline "สด" ตามเวลาล่าสุด
     _lastFreshFrameCapturedAt = packet.estimatedCapturedAt;
     _isRealtimePipelineStale = false;
 
     final fps = packet.fps;
-    if (fps != null) onPerformanceMetrics(fps); // อัปเดต FPS ถ้ากล้องรายงาน
+    if (fps != null) onPerformanceMetrics(fps);
 
-    // ขั้นตอนที่ 2: ตรวจจับไฟจราจร + แปลความหมาย (เรียก pipeline หลัก)
     await onDetectionResults(
       packet.detections,
       timestamp: packet.estimatedCapturedAt,
@@ -534,19 +510,17 @@ class CameraInferenceController extends ChangeNotifier {
 
     final completedAt = _clock();
     _pipelineMonitor.recordProcessed(
-      // บันทึกสถิติการประมวลผล
       packet,
       processingStartedAt: processingStartedAt,
       completedAt: completedAt,
     );
     _refreshPipelineSnapshot(completedAt);
 
-    // ถ้าเฟรมเก่าเกินไปเมื่อประมวลผลเสร็จ -> ล้างผลลัพธ์ (แสดงว่า pipeline ล้าสมัย)
     if (packet.ageAt(completedAt) > _maximumFrameAge) {
       _isRealtimePipelineStale = true;
       _clearRealtimeResults();
     } else if (stabilizedReading != null) {
-      _applyDetectedNumber(stabilizedReading); // มีตัวเลข stable -> แสดงใน UI
+      _applyDetectedNumber(stabilizedReading);
     }
     notifyListeners();
   }
@@ -566,14 +540,12 @@ class CameraInferenceController extends ChangeNotifier {
 
     final checkedAt = now ?? _clock();
     final lastCapturedAt = _lastFreshFrameCapturedAt;
-    // ถ้ายังไม่มีเฟรมล่าสุด หรือยังไม่เกินอายุสูงสุด -> ยังใหม่พอ ไม่ต้องทำอะไร
     if (lastCapturedAt == null ||
         checkedAt.difference(lastCapturedAt) <= _maximumFrameAge) {
       return;
     }
     if (_isRealtimePipelineStale) return; // ล้าสมัยอยู่แล้ว -> ไม่ต้องทำซ้ำ
 
-    // เฟรมเก่าเกิน -> ล้างผลและตั้งสถานะล้าสมัย
     _isRealtimePipelineStale = true;
     _clearRealtimeResults();
     _refreshPipelineSnapshot(checkedAt);
@@ -626,9 +598,6 @@ class CameraInferenceController extends ChangeNotifier {
     if (stopVoice) unawaited(_voiceService.stop());
   }
 
-  // ==========================================
-  // อัปเดต onDetectionResults เพื่อดึงทุก Class และแปลภาษาไทย
-  // ==========================================
   /// รับผลการตรวจจับจากกล้อง (ผลรายเฟรม) แล้วประมวลผลเป็นขั้น:
   /// - แยก raw boxes ออกจากผล stable ที่ผ่าน tracking และ temporal smoothing
   /// - แปลชื่อคลาส stable เป็นภาษาไทย + สร้างข้อความแจ้งเตือน
@@ -713,7 +682,6 @@ class CameraInferenceController extends ChangeNotifier {
       unawaited(_voiceAlertController.handleEvents(stabilization.events));
     }
 
-    // ----- คำนวณ FPS ต่อตามปกติ -----
     _frameCount++;
     final now = DateTime.now();
     final elapsed = now.difference(_lastFpsUpdate).inMilliseconds;
@@ -819,7 +787,6 @@ class CameraInferenceController extends ChangeNotifier {
           _iouThreshold = value;
           _yoloController.setIoUThreshold(value);
           changed = true;
-          // บันทึกค่าลงเก็บถาวร (fire-and-forget พร้อม log กรณี error)
           SharedPreferences.getInstance()
               .then((prefs) {
                 prefs.setDouble('iouThreshold', value);
@@ -830,7 +797,7 @@ class CameraInferenceController extends ChangeNotifier {
         }
         break;
 
-      case SliderType.none: // ไม่มี slider เปิดอยู่ -> ไม่ทำอะไร
+      case SliderType.none:
         break;
     }
 
@@ -860,7 +827,7 @@ class CameraInferenceController extends ChangeNotifier {
     _lensFacing = _isFrontCamera ? LensFacing.front : LensFacing.back;
 
     if (_isFrontCamera) {
-      _currentZoomLevel = 1.0; // กล้องหน้ารีเซ็ต zoom
+      _currentZoomLevel = 1.0;
     }
 
     _yoloController.switchCamera();
@@ -892,7 +859,7 @@ class CameraInferenceController extends ChangeNotifier {
     if (_isDisposed) return;
 
     if (_loadingFuture != null) {
-      await _loadingFuture; // มีงานโหลดอยู่แล้ว -> รวมงาน
+      await _loadingFuture;
       return;
     }
 
@@ -921,7 +888,6 @@ class CameraInferenceController extends ChangeNotifier {
 
       if (_isDisposed) return;
 
-      // บันทึก path ที่ได้ และรีเซ็ตสถานะโหลด
       _modelPath = modelPath;
       _isModelLoading = false;
       _loadingMessage = '';
@@ -934,7 +900,6 @@ class CameraInferenceController extends ChangeNotifier {
     } catch (e) {
       if (_isDisposed) return;
 
-      // จัดการ error ให้อ่านง่าย (wrap ด้วย YOLOErrorHandler)
       final error = YOLOErrorHandler.handleError(
         e,
         'Failed to load model ${_selectedModel.modelName} for task ${_selectedModel.task.name}',
@@ -952,10 +917,10 @@ class CameraInferenceController extends ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true; // ปิด flag กันงาน async ดำเนินต่อหลังปิด
-    _freshnessWatchdog?.cancel(); // หยุด watchdog
-    _streamQueue.dispose(); // ปล่อยคิวเฟรม
+    _freshnessWatchdog?.cancel();
+    _streamQueue.dispose();
     _resetDetectionSession();
-    _numberInferenceEngine.dispose(); // ปล่อยเอนจินอ่านเลข
+    _numberInferenceEngine.dispose();
 
     final digitYolo = _digitYolo;
     final runningStream = _streamQueue.running;
@@ -967,7 +932,7 @@ class CameraInferenceController extends ChangeNotifier {
         unawaited(runningStream.whenComplete(digitYolo.dispose));
       }
     }
-    _yoloController.dispose(); // ปล่อยตัวควบคุมกล้อง
+    _yoloController.dispose();
     super.dispose();
   }
 }

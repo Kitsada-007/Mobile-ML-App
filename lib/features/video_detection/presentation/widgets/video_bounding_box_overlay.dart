@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ultralytics_yolo/yolo.dart'; // โครงสร้าง YOLOResult (ผลการตรวจจับ)
+import 'package:ultralytics_yolo/yolo.dart';
 
 /// วิดเจ็ตสำหรับวาด Bounding Box Overlay แบบ realtime บนตัวเล่นวิดีโอ
 class VideoBoundingBoxOverlay extends StatelessWidget {
@@ -9,8 +9,8 @@ class VideoBoundingBoxOverlay extends StatelessWidget {
     required this.videoSize,
   });
 
-  final List<YOLOResult> detections; // ผลการตรวจจับของเฟรมปัจจุบัน
-  final Size videoSize; // ขนาดของวิดีโอ (ใช้แปลงพิกัด)
+  final List<YOLOResult> detections;
+  final Size videoSize;
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +54,6 @@ class _BoundingBoxPainter extends CustomPainter {
     // กันกรณีขนาด canvas เป็น 0 (ไม่มีพื้นที่วาด)
     if (size.width == 0 || size.height == 0) return;
 
-    // Paint สำหรับวาดเส้นกล่อง (stroke)
     final boxPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3.0;
@@ -63,7 +62,7 @@ class _BoundingBoxPainter extends CustomPainter {
     final bgPaint = Paint()..style = PaintingStyle.fill;
 
     for (final detection in detections) {
-      final color = _getColorForClass(detection.className); // เลือกสีตามคลาส
+      final color = _getColorForClass(detection.className);
       boxPaint.color = color;
       bgPaint.color = color.withValues(alpha: 0.85);
 
@@ -88,7 +87,6 @@ class _BoundingBoxPainter extends CustomPainter {
         );
       }
 
-      // วาดกล่อง bounding box (ตามขนาดที่คำนวณได้)
       canvas.drawRect(rect, boxPaint);
       // หมายเหตุ: overlay ชั้นนี้ตั้งใจให้เบา (สีกล่องแยกตามคลาสเท่านั้น)
       // ไม่วาด label/confidence เพื่อให้ UI ไม่เละบนวิดีโอ

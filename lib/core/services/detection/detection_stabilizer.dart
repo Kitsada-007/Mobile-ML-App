@@ -27,13 +27,8 @@ final class StableDetection {
     this.classIndex = 0,
   });
 
-  /// รหัสติดตามวัตถุแบบไม่ซ้ำกัน (Track ID)
   final int trackId;
-
-  /// ดัชนีคลาส
   final int classIndex;
-
-  /// ชื่อคลาสของวัตถุที่เสถียรแล้ว
   final String className;
 
   /// ค่าความเชื่อมั่นเฉลี่ยจากการโหวต
@@ -63,13 +58,8 @@ final class DetectionEvent {
     required this.timestamp,
   });
 
-  /// ประเภทเหตุการณ์ (detected, changed, lost)
   final DetectionEventType type;
-
-  /// ข้อมูลวัตถุเสถียรที่เกี่ยวข้อง
   final StableDetection detection;
-
-  /// เวลาที่เกิดเหตุการณ์
   final DateTime timestamp;
 }
 
@@ -80,7 +70,6 @@ final class DetectionStabilizerUpdate {
     required this.events,
   });
 
-  /// รายการวัตถุที่เสถียรทั้งหมดในปัจจุบัน
   final List<StableDetection> stableDetections;
 
   /// รายการเหตุการณ์ที่เกิดขึ้นใหม่ในเฟรมนี้ (เช่น ตรวจเจอใหม่, เปลี่ยนคลาส, หายไป)
@@ -95,13 +84,8 @@ final class DetectionObservation {
     required this.timestamp,
   });
 
-  /// ชื่อคลาสที่ตรวจพบในเฟรมนั้น
   final String className;
-
-  /// ค่าความเชื่อมั่นในเฟรมนั้น
   final double confidence;
-
-  /// เวลาที่ตรวจพบ
   final DateTime timestamp;
 }
 
@@ -125,13 +109,8 @@ final class TrackedDetectionState {
   }) : _lastDetection = initialDetection,
        _lastSeenAt = timestamp;
 
-  /// รหัสติดตามวัตถุ
   final int trackId;
-
-  /// กลุ่มประเภทวัตถุ (DetectionGroup)
   final DetectionGroup group;
-
-  /// บัฟเฟอร์ประวัติการสังเกตย้อนหลัง (Queue)
   final Queue<DetectionObservation> _history = Queue();
 
   /// ข้อมูลการตรวจพบดิบครั้งล่าสุด
@@ -143,15 +122,13 @@ final class TrackedDetectionState {
   /// ชื่อคลาสที่ได้รับการยืนยันว่าเสถียรแล้ว (null หากยังไม่ผ่านเกณฑ์โหวต)
   String? _stableClassName;
 
-  /// เวลาล่าสุดที่พบวัตถุ
   DateTime get lastSeenAt => _lastSeenAt;
 
-  /// ชื่อคลาสที่เสถียร
   String? get stableClassName => _stableClassName;
 }
 
 /// ระบบจัดการความเสถียรของผลการตรวจจับ (Detection Stabilizer)
-/// 
+///
 /// ทำหน้าที่:
 /// 1. ติดตามวัตถุระหว่างเฟรมโดยใช้พิกัดตำแหน่ง (IoU - Intersection over Union Tracking)
 /// 2. กรองสัญญาณรบกวน (Flickering/Noise) โดยใช้ระบบโหวตประวัติย้อนหลัง (Majority Voting)
@@ -160,13 +137,11 @@ final class TrackedDetectionState {
 final class DetectionStabilizer {
   DetectionStabilizer({this.config = const DetectionAlertConfig()});
 
-  /// คอนฟิกสำหรับการกรองและติดตามวัตถุ
   final DetectionAlertConfig config;
 
   /// ตารางเก็บรายการวัตถุที่กำลังติดตามอยู่ (Key: trackId)
   final Map<int, TrackedDetectionState> _tracks = {};
 
-  /// ตัวสร้างรหัสติดตามถัดไป
   int _nextTrackId = 1;
 
   /// ทะเบียนไฟติดล่าสุด (ระดับ stabilizer ไม่ผูกกับ track) — ใช้กัน off_light
@@ -221,10 +196,8 @@ final class DetectionStabilizer {
           track ?? _createTrack(detection, group: group, timestamp: timestamp);
       matchedTrackIds.add(selectedTrack.trackId);
 
-      // บันทึกประวัติการสังเกตลงใน Track
       _addObservation(selectedTrack, detection, timestamp);
 
-      // ประมวลผลโหวตตัดสินคลาสที่เสถียร
       final event = _evaluateStableClass(selectedTrack, timestamp);
       if (event != null) events.add(event);
     }
@@ -239,7 +212,6 @@ final class DetectionStabilizer {
   bool hasStableClass(String className) =>
       stableDetections.any((detection) => detection.className == className);
 
-  /// ล้างข้อมูลการติดตามทั้งหมด (Reset State)
   void reset() {
     _tracks.clear();
     _nextTrackId = 1;
@@ -274,7 +246,6 @@ final class DetectionStabilizer {
     }
   }
 
-  /// สร้าง Track ใหม่สำหรับวัตถุชิ้นใหม่
   TrackedDetectionState _createTrack(
     YOLOResult detection, {
     required DetectionGroup group,
@@ -314,7 +285,6 @@ final class DetectionStabilizer {
     return bestTrack;
   }
 
-  /// เพิ่มข้อมูลสังเกตวัตถุใหม่ลงในคิวประวัติย้อนหลังของ Track นั้นๆ
   void _addObservation(
     TrackedDetectionState track,
     YOLOResult detection,
@@ -415,7 +385,6 @@ final class DetectionStabilizer {
     final candidate = ranked.first;
     final candidateRule = config.ruleFor(candidate);
 
-    // ตรวจสอบว่าโหวตถึงเกณฑ์ขั้นต่ำ (requiredVotes) หรือไม่
     if (voteCounts[candidate]! < candidateRule.requiredVotes) return null;
 
     // ตรวจสอบเกณฑ์การตรวจพบต่อเนื่อง (กรณีพิเศษ เช่น off_light)
@@ -601,7 +570,6 @@ final class DetectionStabilizer {
     }
   }
 
-  /// สร้างวัตถุ StableDetection จาก TrackedDetectionState ที่กำหนด
   StableDetection _stableDetectionFor(TrackedDetectionState track) {
     final stableClass = track._stableClassName!;
     final observations = track._history
@@ -651,4 +619,3 @@ double _intersectionOverUnion(Rect first, Rect second) {
       intersectionArea;
   return unionArea <= 0 ? 0 : intersectionArea / unionArea;
 }
-

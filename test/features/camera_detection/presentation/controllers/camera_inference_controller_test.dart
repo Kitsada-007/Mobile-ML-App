@@ -694,9 +694,9 @@ void main() {
       await feed(102);
       expect(controller.isRealtimePipelineStale, isFalse);
 
-      await controller.toggleCamera(); // ปิดกล้อง
+      await controller.toggleCamera();
       expect(controller.isCameraEnabled, isFalse);
-      await controller.toggleCamera(); // เปิดกล้องอีกครั้ง
+      await controller.toggleCamera();
       expect(controller.isCameraEnabled, isTrue);
 
       // กล้อง native เริ่มนับ frameNumber ใหม่หลัง resume

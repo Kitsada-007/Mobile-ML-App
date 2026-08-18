@@ -1,7 +1,7 @@
-import 'dart:collection'; // ใช้ Queue
-import 'dart:math' as math; // ใช้ในการคำนวณ percentile
+import 'dart:collection';
+import 'dart:math' as math;
 
-import 'package:trffic_ilght_app/features/camera_detection/data/models/realtime_inference.dart'; // โครงสร้าง RealtimeFramePacket
+import 'package:trffic_ilght_app/features/camera_detection/data/models/realtime_inference.dart';
 
 /// อายุสูงสุดของเฟรม (default) ที่ยังถือว่า "สด" (ไม่เก่าเกินไป)
 /// ถ้าเฟรมแก่กว่านี้จะถูกตัดเป็น stale
@@ -19,8 +19,8 @@ class RealtimeFrameFreshnessGuard {
     this.maximumFrameAge = defaultRealtimeMaximumFrameAge,
   });
 
-  final Duration maximumFrameAge; // อายุสูงสุดที่ยอมรับ
-  int? _lastAcceptedFrameNumber; // เลขเฟรมล่าสุดที่ผ่าน (ยอมรับ)
+  final Duration maximumFrameAge;
+  int? _lastAcceptedFrameNumber;
 
   int? get lastAcceptedFrameNumber => _lastAcceptedFrameNumber;
 
@@ -29,40 +29,37 @@ class RealtimeFrameFreshnessGuard {
     RealtimeFramePacket packet, {
     required DateTime now,
   }) {
-    // 1. เช็คอายุ: ถ้าเก่าเกิน -> stale
     if (packet.ageAt(now) > maximumFrameAge) {
       return RealtimeFrameDecision.stale;
     }
 
-    // 2. เช็คลำดับ: ถ้าเลขเฟรมน้อยกว่าหรือเท่ากับเฟรมที่ยอมรับไปแล้ว -> outOfOrder
     final lastAcceptedFrameNumber = _lastAcceptedFrameNumber;
     if (lastAcceptedFrameNumber != null &&
         packet.frameNumber <= lastAcceptedFrameNumber) {
       return RealtimeFrameDecision.outOfOrder;
     }
 
-    // 3. ผ่านทั้งหมด -> ยอมรับ และอัปเดตเลขเฟรมล่าสุด
     _lastAcceptedFrameNumber = packet.frameNumber;
     return RealtimeFrameDecision.accept;
   }
 
-  void reset() => _lastAcceptedFrameNumber = null; // รีเซ็ต (เช่นสลับกล้อง)
+  void reset() => _lastAcceptedFrameNumber = null;
 }
 
 /// สแนปช็อตรวมของข้อมูล/สถิติของ pipeline ณ เวลาหนึ่ง
 /// ใช้แสดงผลและ debug สภาพของการประมวลผลเรียลไทม์
 class RealtimePipelineSnapshot {
   const RealtimePipelineSnapshot({
-    required this.processedFrameCount, // จำนวนเฟรมที่ประมวลผลสำเร็จ
-    required this.staleFrameCount, // จำนวนเฟรมที่ถูกตัดเพราะเก่า
-    required this.outOfOrderFrameCount, // จำนวนเฟรมที่ถูกตัดเพราะไม่เรียง
-    required this.droppedFrameCount, // จำนวนเฟรมที่ถูก drop จากคิว
-    required this.endToEndLatencyP50, // latency จากจับภาพถึงเสร็จ (percentile 50)
-    required this.endToEndLatencyP95, // percentile 95
-    required this.endToEndLatencyP99, // percentile 99
-    required this.inferenceLatencyP95, // latency เฉพาะ inference (p95)
-    required this.queueLatencyP95, // latency ที่อยู่ในคิว (p95)
-    required this.latestFrameAge, // อายุของเฟรมล่าสุดที่ประมวลผล
+    required this.processedFrameCount,
+    required this.staleFrameCount,
+    required this.outOfOrderFrameCount,
+    required this.droppedFrameCount,
+    required this.endToEndLatencyP50,
+    required this.endToEndLatencyP95,
+    required this.endToEndLatencyP99,
+    required this.inferenceLatencyP95,
+    required this.queueLatencyP95,
+    required this.latestFrameAge,
   });
 
   /// สแนปช็อตตอนยังไม่มีข้อมูล (ค่าเริ่มต้นทั้งหมดเป็น 0 / zero)
@@ -78,6 +75,7 @@ class RealtimePipelineSnapshot {
       queueLatencyP95 = Duration.zero,
       latestFrameAge = Duration.zero;
 
+  /// latency ทั้งหมดวัดจาก "เวลาที่คาดว่าจับภาพ" ถึง "เวลาที่ประมวลผลเสร็จ"
   final int processedFrameCount;
   final int staleFrameCount;
   final int outOfOrderFrameCount;
@@ -101,35 +99,35 @@ class RealtimePipelineSnapshot {
 /// - คำนวณ percentile ของ latency ต่าง ๆ เพื่อดูว่าประมวลผลได้ทันหรือไม่
 class RealtimePipelineMonitor {
   RealtimePipelineMonitor({this.maximumSamples = 120})
-    : assert(maximumSamples > 0); // ต้องมีตัวอย่างอย่างน้อย 1
+    : assert(maximumSamples > 0);
 
-  final int maximumSamples; // จำนวนตัวอย่างสูงสุดที่เก็บ
-  final Queue<_RealtimePipelineSample> _samples = Queue(); // คิวเก็บตัวอย่าง
-  int _processedFrameCount = 0; // นับเฟรมที่ประมวลผลสำเร็จ
-  int _staleFrameCount = 0; // นับเฟรมเก่า
-  int _outOfOrderFrameCount = 0; // นับเฟรมไม่เรียง
+  final int maximumSamples;
+  final Queue<_RealtimePipelineSample> _samples = Queue();
+  int _processedFrameCount = 0;
+  int _staleFrameCount = 0;
+  int _outOfOrderFrameCount = 0;
 
   /// บันทึกว่าเฟรมหนึ่ง ๆ ถูกประมวลผลสำเร็จ พร้อมสถิติเวลา
   void recordProcessed(
     RealtimeFramePacket packet, {
-    required DateTime processingStartedAt, // เวลาเริ่มประมวลผลเฟรมนี้
-    required DateTime completedAt, // เวลาเสร็จสิ้น
+    required DateTime processingStartedAt,
+    required DateTime completedAt,
   }) {
     _processedFrameCount += 1;
     _samples.addLast(
       _RealtimePipelineSample(
-        capturedAt: packet.estimatedCapturedAt, // เวลาจับภาพของเฟรม
+        capturedAt: packet.estimatedCapturedAt,
         completedAt: completedAt,
         inferenceLatency: _durationFromMilliseconds(
-          packet.inferenceMilliseconds, // latency จากโมเดล
+          packet.inferenceMilliseconds,
         ),
+        // เวลาที่เฟรมค้างอยู่ในคิว = เวลาที่เริ่มประมวลผล - เวลาที่รับเฟรมมา
         queueLatency: _nonNegativeDifference(
-          processingStartedAt, // เวลาที่อยู่ในคิว = เริ่มประมวลผล - เวลาที่รับมา
+          processingStartedAt,
           packet.receivedAt,
         ),
       ),
     );
-    // ลบตัวอย่างเก่าออกถ้าเกินจำนวนสูงสุด (จำกัดหน่วยความจำ)
     while (_samples.length > maximumSamples) {
       _samples.removeFirst();
     }
@@ -139,7 +137,7 @@ class RealtimePipelineMonitor {
   void recordRejected(RealtimeFrameDecision decision) {
     switch (decision) {
       case RealtimeFrameDecision.accept:
-        return; // ไม่ใช่การปฏิเสธ
+        return;
       case RealtimeFrameDecision.stale:
         _staleFrameCount += 1;
         return;
@@ -151,10 +149,9 @@ class RealtimePipelineMonitor {
 
   /// สร้างสแนปช็อตสรุปของ pipeline ณ ขณะนี้
   RealtimePipelineSnapshot snapshot({
-    required int droppedFrameCount, // จำนวน drop (มาจากคิว)
+    required int droppedFrameCount,
     required DateTime now,
   }) {
-    // ไม่มีตัวอย่าง -> คืนสแนปช็อตเริ่มต้น
     if (_samples.isEmpty) {
       return RealtimePipelineSnapshot(
         processedFrameCount: _processedFrameCount,
@@ -170,7 +167,6 @@ class RealtimePipelineMonitor {
       );
     }
 
-    // รวบรวม latency แต่ละแบบจากตัวอย่างทั้งหมด
     final endToEndLatencies = _samples
         .map(
           (sample) =>
@@ -210,10 +206,10 @@ class RealtimePipelineMonitor {
 /// ตัวอย่าง 1 จุดข้อมูลของเฟรมที่ประมวลผล (ข้อมูลดิบสำหรับคำนวณสถิติ)
 class _RealtimePipelineSample {
   const _RealtimePipelineSample({
-    required this.capturedAt, // เวลาที่เฟรมถูกจับภาพ
-    required this.completedAt, // เวลาที่ประมวลผลเสร็จ
-    required this.inferenceLatency, // เวลาที่ใช้ใน inference (โมเดล)
-    required this.queueLatency, // เวลาที่อยู่ในคิวรอ
+    required this.capturedAt,
+    required this.completedAt,
+    required this.inferenceLatency,
+    required this.queueLatency,
   });
 
   final DateTime capturedAt;
@@ -237,10 +233,7 @@ Duration _nonNegativeDifference(DateTime later, DateTime earlier) {
 /// คำนวณ percentile ของชุด Duration (เช่น p95, p99)
 Duration _percentile(List<Duration> values, double percentile) {
   if (values.isEmpty) return Duration.zero;
-  final sorted = values.map((value) => value.inMicroseconds).toList()
-    ..sort(); // เรียงจากน้อยไปมาก
-  final index =
-      (percentile * sorted.length).ceil().clamp(1, sorted.length) -
-      1; // หา index เป้าหมาย
+  final sorted = values.map((value) => value.inMicroseconds).toList()..sort();
+  final index = (percentile * sorted.length).ceil().clamp(1, sorted.length) - 1;
   return Duration(microseconds: sorted[index]);
 }

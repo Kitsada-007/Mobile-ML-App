@@ -26,7 +26,6 @@ class VideoInputValidator {
   /// ตรวจสอบไฟล์วิดีโอ
   /// คืนค่า VideoValidationResult ที่บ่งชี้ว่าไฟล์ถูกต้องหรือไม่
   Future<VideoValidationResult> validate(File videoFile) async {
-    // ตรวจสอบขนาดไฟล์
     final sizeInBytes = await videoFile.length();
     if (sizeInBytes > maxSizeBytes) {
       final sizeInMb = sizeInBytes / (1024 * 1024);

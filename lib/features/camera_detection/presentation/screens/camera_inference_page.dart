@@ -1,13 +1,13 @@
 // Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
-import 'dart:async'; // ใช้ unawaited
+import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:trffic_ilght_app/features/camera_detection/presentation/controllers/camera_inference_controller.dart'; // Controller หลัก
-import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_detection_panel.dart'; // แผงผลลัพธ์การตรวจจับ
-import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_inference_content.dart'; // เนื้อหาหลัก (กล้อง/โหลด)
-import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_inference_overlay.dart'; // หัวหน้า (header)
-import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/detection_stats_display.dart'; // แสดงสถิติ (DETECTIONS/FPS)
+import 'package:trffic_ilght_app/features/camera_detection/presentation/controllers/camera_inference_controller.dart';
+import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_detection_panel.dart';
+import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_inference_content.dart';
+import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_inference_overlay.dart';
+import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/detection_stats_display.dart';
 
 /// หน้าเซนต์สำหรับการตรวจจับ YOLO จากกล้องแบบเรียลไทม์
 /// มีผลลัพธ์แสดงใต้ preview กล้อง
@@ -28,7 +28,7 @@ class CameraInferencePage extends StatefulWidget {
 
 class _CameraInferencePageState extends State<CameraInferencePage>
     with WidgetsBindingObserver {
-  late final CameraInferenceController _controller; // controller หลัก
+  late final CameraInferenceController _controller;
   int _rebuildKey = 0; // ตัว key ที่เพิ่มขึ้นเพื่อบังคับ rebuild YOLOView
   bool? _isRouteCurrent;
   bool _isAppResumed = true;
@@ -41,7 +41,6 @@ class _CameraInferencePageState extends State<CameraInferencePage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _controller = CameraInferenceController();
-    // เริ่มต้นระบบทั้งหมด (โหลดโมเดล ฯลฯ) — จับ error แสดง dialog แทน
     if (widget.initializeOnStart) {
       _controller.initialize().catchError((error) {
         if (mounted) {
@@ -86,13 +85,12 @@ class _CameraInferencePageState extends State<CameraInferencePage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _controller.dispose(); // ปล่อย controller (โมเดล/กล้อง/เสียง)
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // เช็คแนวนอน/แนวตั้งเพื่อปรับ layout
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
     final colorScheme = Theme.of(context).colorScheme;
@@ -100,7 +98,6 @@ class _CameraInferencePageState extends State<CameraInferencePage>
     return Scaffold(
       backgroundColor: colorScheme.surface,
       body: SafeArea(
-        // ListenableBuilder: rebuild เฉพาะส่วนเมื่อ controller มีการเปลี่ยนแปลง
         child: ListenableBuilder(
           listenable: _controller,
           // ส่วนลูกรียูส (ไม่ rebuild) — แค่กล้อง YOLOView
@@ -110,7 +107,7 @@ class _CameraInferencePageState extends State<CameraInferencePage>
             rebuildKey: _rebuildKey,
           ),
           builder: (context, cameraContent) {
-            // LayoutBuilder: รู้ความสูงจริงของพื้นที่ที่เหลือ
+            // รู้ความสูงจริงของพื้นที่ที่เหลือ
             // จึงกระจายเนื้อหาให้เต็มจอได้ แทนการปล่อยช่องว่างค้างไว้ด้านล่าง
             return LayoutBuilder(
               builder: (context, constraints) {
@@ -248,8 +245,7 @@ class _CameraInferencePageState extends State<CameraInferencePage>
         child: Stack(
           fit: StackFit.expand,
           children: [
-            cameraContent, // ตัวกล้อง YOLOView / หน้าโหลด
-            // ป้ายสถานะสดที่มุมบนซ้าย
+            cameraContent,
             Positioned(
               top: 14,
               left: 14,
@@ -257,7 +253,6 @@ class _CameraInferencePageState extends State<CameraInferencePage>
                 hasDetections: _controller.detectionCount > 0,
               ),
             ),
-            // ปุ่มเปิด/ปิดกล้อง (มุมบนขวา) พร้อม Semantics
             Positioned(
               top: 10,
               right: 10,
@@ -282,7 +277,6 @@ class _CameraInferencePageState extends State<CameraInferencePage>
                 ),
               ),
             ),
-            // สถิติการตรวจจับด้านล่าง (DETECTIONS / FPS)
             Positioned(
               left: 14,
               right: 14,
@@ -318,16 +312,16 @@ class _CameraInferencePageState extends State<CameraInferencePage>
 class _LiveStatusBadge extends StatelessWidget {
   const _LiveStatusBadge({required this.hasDetections});
 
-  final bool hasDetections; // มีการตรวจจับในเฟรมล่าสุดหรือไม่
+  final bool hasDetections;
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      liveRegion: true, // ประกาศให้ screen reader อ่านแบบสด
+      liveRegion: true,
       label: hasDetections ? 'ตรวจจับสัญญาณแล้ว' : 'กำลังตรวจจับ',
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.62), // พื้นดำโปร่งแสง
+          color: Colors.black.withValues(alpha: 0.62),
           borderRadius: BorderRadius.circular(99),
           border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
         ),
@@ -336,7 +330,6 @@ class _LiveStatusBadge extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // จุดสีเขียวแสดงสถานะพร้อม
               Container(
                 width: 9,
                 height: 9,

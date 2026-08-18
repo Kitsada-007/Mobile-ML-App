@@ -1,12 +1,13 @@
-import 'package:flutter/foundation.dart'; // Uint8List (ข้อมูลภาพไบนารี)
-import 'package:trffic_ilght_app/core/services/inference/sign_number_pipeline_service.dart'; // Pipeline อ่านตัวเลขจากป้ายไฟ
-import 'package:trffic_ilght_app/core/services/inference/yolo_result_adapter.dart'; // แปลงผล YOLO (raw) เป็น YOLOResult
-import 'package:ultralytics_yolo/ultralytics_yolo.dart'; // โมเดล YOLO
+import 'package:flutter/foundation.dart';
+import 'package:trffic_ilght_app/core/services/inference/sign_number_pipeline_service.dart';
+import 'package:trffic_ilght_app/core/services/inference/yolo_result_adapter.dart';
+import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
-// ค่า threshold เริ่มต้นสำหรับการตรวจจับไฟจราจรในวิดีโอ
-const double videoTrafficConfidenceThreshold =
-    0.25; // ต่ำสุดที่เชื่อว่าตรวจพบ (กัน false positive)
-const double videoTrafficIouThreshold = 0.45; // ค่า IoU สำหรับกลบกล่องซ้ำ (NMS)
+/// ต่ำสุดที่เชื่อว่าตรวจพบจริง (กัน false positive)
+const double videoTrafficConfidenceThreshold = 0.25;
+
+/// ค่า IoU สำหรับกลบกล่องซ้ำ (NMS)
+const double videoTrafficIouThreshold = 0.45;
 
 /// ผลลัพธ์การวิเคราะห์วิดีโอ 1 เฟรม
 class VideoFrameAnalysisResult {
@@ -16,9 +17,12 @@ class VideoFrameAnalysisResult {
     this.detectedNumber,
   });
 
-  final Uint8List outputImageBytes; // ภาพที่ annotate (วาดกล่อง) แล้ว
-  final List<YOLOResult> detections; // รายการวัตถุที่ตรวจพบในเฟรม
-  final String? detectedNumber; // ตัวเลขนับถอยหลังที่อ่านได้จากป้าย (ถ้ามี)
+  /// ภาพที่ annotate (วาดกล่อง) แล้ว
+  final Uint8List outputImageBytes;
+  final List<YOLOResult> detections;
+
+  /// ตัวเลขนับถอยหลังที่อ่านได้จากป้าย (null = อ่านไม่ได้)
+  final String? detectedNumber;
 }
 
 /// บริการวิเคราะห์เฟรมวิดีโอแบบ 2 ขั้นตอน (Dual-stage):
@@ -26,20 +30,17 @@ class VideoFrameAnalysisResult {
 /// 2. แล้วถ้าเจอบริเวณ `sign_number` (ป้ายตัวเลข) ให้รันโมเดลตัวเลขอ่านค่า
 class VideoFrameAnalysisService {
   VideoFrameAnalysisService({
-    required YOLO trafficYolo, // โมเดลตรวจจับไฟจราจร
-    required SignNumberPipelineService
-    signNumberPipeline, // pipeline อ่านตัวเลข
+    required YOLO trafficYolo,
+    required SignNumberPipelineService signNumberPipeline,
   }) : _trafficYolo = trafficYolo,
        _signNumberPipeline = signNumberPipeline;
 
-  final YOLO _trafficYolo; // โมเดลหลัก (ตรวจจับไฟจราจร)
-  final SignNumberPipelineService
-  _signNumberPipeline; // pipeline อ่านตัวเลขป้าย
+  final YOLO _trafficYolo;
+  final SignNumberPipelineService _signNumberPipeline;
 
-  // ---- ตัวสะสมเวลา (สำหรับวัดประสิทธิภาพ per-stage) ----
-  int _trafficPredictMicros = 0; // เวลารวมของ traffic model predict
-  int _signPipelineMicros = 0; // เวลารวมของ pipeline อ่านตัวเลข
-  int _analyzedFrameCount = 0; // จำนวนเฟรมที่วิเคราะห์แล้ว
+  int _trafficPredictMicros = 0;
+  int _signPipelineMicros = 0;
+  int _analyzedFrameCount = 0;
 
   /// รีเซ็ตตัวสะสมเวลา (เรียกก่อนเริ่มประมวลผลวิดีโอแต่ละไฟล์)
   void resetTiming() {
@@ -61,17 +62,14 @@ class VideoFrameAnalysisService {
   /// วิเคราะห์ภาพ 1 เฟรม (ไบต์ภาพ) และคืนผลลัพธ์การตรวจจับทั้งหมด
   Future<VideoFrameAnalysisResult> analyze(Uint8List frameBytes) async {
     final stopwatch = Stopwatch()..start();
-    // ขั้นตอนที่ 1: ตรวจจับไฟจราจรด้วยโมเดลหลัก
     final trafficResult = await _trafficYolo.predict(
       frameBytes,
       confidenceThreshold: videoTrafficConfidenceThreshold,
       iouThreshold: videoTrafficIouThreshold,
     );
     _trafficPredictMicros += stopwatch.elapsedMicroseconds;
-    // แปลงผลตรวจจับ raw เป็น list ของ YOLOResult
     final detections = parseYoloDetections(trafficResult['detections']);
 
-    // ขั้นตอนที่ 2: อ่านตัวเลขจากป้าย (ถ้าเจอบริเวณ sign_number)
     // ใช้เส้นทาง realtime (PersistentSignCropWorker): isolate เดียวที่ reuse,
     // decode ภาพครั้งเดียวได้ crop ทั้ง tight/wide — แทน analyzeSingleImage
     // ที่ spawn isolate ใหม่ + decode ซ้ำต่อ crop ทุกเฟรม
@@ -86,15 +84,15 @@ class VideoFrameAnalysisService {
     _signPipelineMicros += stopwatch.elapsedMicroseconds;
     _analyzedFrameCount += 1;
 
-    // ภาพที่ annotate แล้ว (fallback เป็นภาพต้นฉบับถ้าไม่มี)
     final annotatedImage = trafficResult['annotatedImage'];
 
     return VideoFrameAnalysisResult(
+      // ถ้า native ไม่ส่งภาพ annotate กลับมา ใช้ภาพต้นฉบับแทน
       outputImageBytes: annotatedImage is Uint8List && annotatedImage.isNotEmpty
           ? annotatedImage
           : frameBytes,
       detections: detections,
-      detectedNumber: signAnalysis.number, // ตัวเลขที่อ่านได้ (null ถ้าไม่มี)
+      detectedNumber: signAnalysis.number,
     );
   }
 }

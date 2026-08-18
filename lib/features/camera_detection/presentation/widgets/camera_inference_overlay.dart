@@ -11,9 +11,10 @@ class CameraInferenceOverlay extends StatelessWidget {
     this.showMenuButton = false,
   });
 
-  final VoidCallback onLeadingPressed; // callback กดปุ่มนำทางด้านซ้าย
-  final bool
-  showMenuButton; // true = แสดงปุ่มเมนู (อยู่ใน Drawer), false = ปุ่มย้อนกลับ
+  final VoidCallback onLeadingPressed;
+
+  /// true = แสดงปุ่มเมนู (อยู่ใน Drawer), false = ปุ่มย้อนกลับ
+  final bool showMenuButton;
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +23,6 @@ class CameraInferenceOverlay extends StatelessWidget {
     return Row(
       key: const Key('cameraPageHeader'),
       children: [
-        // ปุ่มนำทางซ้าย: เมนู (ถ้าอยู่ในหน้าหลัก) หรือย้อนกลับ
         _HeaderButton(
           key: const Key('cameraNavigationButton'),
           tooltip: showMenuButton ? 'เปิดเมนู' : 'ย้อนกลับ',
@@ -30,9 +30,9 @@ class CameraInferenceOverlay extends StatelessWidget {
           onPressed: onLeadingPressed,
         ),
         const SizedBox(width: 8),
-        const Expanded(child: _BrandBadge()), // ชื่อแอปกลางจอ
+        const Expanded(child: _BrandBadge()),
         const SizedBox(width: 8),
-        // ไอคอนแจ้งเตือน (สำรองตำแหน่งให้สมมาตรกับปุ่มขวา)
+        // สำรองตำแหน่งขนาดเท่าปุ่มซ้าย เพื่อให้ป้ายแบรนด์อยู่กึ่งกลางจริง
         SizedBox(
           width: 48,
           height: 48,
@@ -58,7 +58,7 @@ class _BrandBadge extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Semantics(
-      header: true, // ทำเครื่องหมายเป็น header สำหรับ screen reader
+      header: true,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -110,9 +110,9 @@ class _HeaderButton extends StatelessWidget {
     required this.onPressed,
   });
 
-  final String tooltip; // ข้อความ tooltip
-  final IconData icon; // ไอคอนที่แสดง
-  final VoidCallback onPressed; // callback เมื่อกด
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {

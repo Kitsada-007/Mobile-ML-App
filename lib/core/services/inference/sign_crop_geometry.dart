@@ -3,7 +3,6 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 
-// ---- ขนาด/ปัจจัยการ crop ป้ายตัวเลขนับถอยหลัง ----
 const int minimumDigitCropEdge =
     128; // ขอบสั้นขั้นต่ำของภาพที่ส่งเข้า digit model
 const int maximumDigitCropEdge =
@@ -15,7 +14,6 @@ const double wideHorizontalPaddingFactor =
     0.30; // padding แนวนอนแบบกว้าง (เผื่อตัวเลขล้นกล่อง)
 const double wideVerticalPaddingFactor = 0.15; // padding แนวตั้งแบบกว้าง
 
-/// พิมพ์ log ดีบักเฉพาะในโหมด debug
 void _debugPipeline(String message) {
   if (kDebugMode) debugPrint(message);
 }

@@ -1,4 +1,4 @@
-import 'dart:async'; // ใช้ Completer และ Future
+import 'dart:async';
 
 typedef AsyncItemProcessor<T> = Future<void> Function(T item);
 
@@ -10,30 +10,27 @@ class LatestFrameQueue<T> {
   LatestFrameQueue({required AsyncItemProcessor<T> processor})
     : _processor = processor;
 
-  final AsyncItemProcessor<T> _processor; // ฟังก์ชันประมวลผล 1 item
+  final AsyncItemProcessor<T> _processor;
 
-  T? _pendingItem; // item ที่รอประมวลผล (เก็บตัวล่าสุดเพียงตัวเดียว)
-  Future<void>? _running; // งานที่กำลังรันอยู่
-  int _droppedCount = 0; // นับจำนวน item ที่ถูกทิ้ง (drop)
-  bool _isDisposed = false; // คิวถูกปิดแล้วหรือยัง
+  T? _pendingItem;
+  Future<void>? _running;
+  int _droppedCount = 0;
+  bool _isDisposed = false;
 
   int get droppedCount => _droppedCount;
   Future<void>? get running => _running;
 
-  /// ส่ง item เข้าคิว
-  /// - ถ้ากำลังมี item ค้างอยู่ แสดงว่ามี item ใหม่แทรก -> นับ drop เพิ่ม
-  /// - ตั้ง _pendingItem เป็นตัวใหม่ (ตัวเก่าถูกแทนที่)
-  /// - ถ้ายังไม่มีงานรัน -> เริ่ม drain (ประมวลผลทีละตัว)
+  /// ส่ง item เข้าคิว — ถ้ามี item ค้างอยู่แล้ว ตัวเก่าจะถูกทิ้งและนับเป็น drop
   Future<void> submit(T item) {
-    if (_isDisposed) return Future.value(); // หลัง dispose ไม่รับงานอีก
+    if (_isDisposed) return Future.value();
 
     if (_running != null && _pendingItem != null) {
-      _droppedCount += 1; // มีงานค้างอยู่ -> item ใหม่ชนกัน
+      _droppedCount += 1;
     }
     _pendingItem = item;
 
     final running = _running;
-    if (running != null) return running; // ยังมีงานรัน -> ไม่เริ่มใหม่
+    if (running != null) return running;
 
     final completer = Completer<void>();
     _running = completer.future;
@@ -46,20 +43,22 @@ class LatestFrameQueue<T> {
     try {
       while (!_isDisposed) {
         final item = _pendingItem;
-        if (item == null) break; // งานหมดแล้ว -> หยุด
-        _pendingItem = null; // หยิบงานไปก่อน (เพื่อรับงานใหม่ระหว่างประมวลผล)
-        await _processor(item); // ประมวลผล
+        if (item == null) break;
+        // หยิบงานออกก่อนเริ่มประมวลผล เพื่อให้ submit ระหว่างนั้นเก็บงานใหม่ได้
+        _pendingItem = null;
+        await _processor(item);
       }
-      completer.complete(); // เสร็จสมบูรณ์
+      completer.complete();
     } catch (error, stackTrace) {
-      completer.completeError(error, stackTrace); // โยน error ต่อ
+      completer.completeError(error, stackTrace);
     } finally {
-      _running = null; // เคลียร์งานที่รัน เพื่อให้รอบต่อไปเริ่ม drain ใหม่ได้
+      // เคลียร์เพื่อให้ submit รอบถัดไปเริ่ม drain ใหม่ได้
+      _running = null;
     }
   }
 
   void dispose() {
     _isDisposed = true;
-    _pendingItem = null; // ทิ้งงานค้างทั้งหมด
+    _pendingItem = null;
   }
 }

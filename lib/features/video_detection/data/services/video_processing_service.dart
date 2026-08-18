@@ -15,10 +15,7 @@ import 'package:ultralytics_yolo/yolo.dart';
 // VideoInferenceController เป็นผู้เรียกใช้ตีความแบบ real-time ต่อเฟรมเอง
 // (ผ่าน TrafficVoiceService ที่มีทั้ง formal name และ alert message)
 // service ชั้นนี้มีหน้าที่แค่ extract + predict + stabilize เลขนับถอยหลัง
-// แล้วส่ง raw detections กลับไปให้ controller ตีความเท่านั้
-// =============================================================================
-// DATA MODELS
-// =============================================================================
+// แล้วส่ง raw detections กลับไปให้ controller ตีความเท่านั้น
 
 /// Single frame analysis result — เก็บแค่ raw data จาก inference
 /// ไม่ตีความ business logic ในชั้นนี้ (ให้ controller ทำ เพื่อไม่ให้ซ้ำซ้อน)
@@ -92,10 +89,6 @@ class CountdownHoldTracker {
     );
   }
 }
-
-// =============================================================================
-// VIDEO PROCESSING SERVICE
-// =============================================================================
 
 /// Service for video detection pipeline:
 /// Extracts frames at the target detection rate -> Analyzes dual-stage YOLO
@@ -179,7 +172,7 @@ class VideoProcessingService {
 
       // 2. Process every extracted frame through the dual-stage pipeline
       //    with realtime stabilization & decay hold for the countdown number.
-      frameAnalysisService.resetTiming(); // เริ่มเก็บเวลา per-stage ใหม่
+      frameAnalysisService.resetTiming();
       final analysisStopwatch = Stopwatch()..start();
       final holdTracker = CountdownHoldTracker(maxHoldFrames: maxHoldFrames);
 
@@ -192,10 +185,7 @@ class VideoProcessingService {
         if (fileEntity is! File) continue;
 
         final displayFrame = currentFrame + 1;
-        onProgress(
-          displayFrame / totalFrames,
-          'กำลังวิเคราะห์วิดีโอ...',
-        );
+        onProgress(displayFrame / totalFrames, 'กำลังวิเคราะห์วิดีโอ...');
 
         try {
           final bytes = await fileEntity.readAsBytes();
@@ -206,7 +196,6 @@ class VideoProcessingService {
             (detection) => detection.className == 'sign_number',
           );
 
-          // ---- Countdown number: stabilize + hold/decay ----
           final stabilizedNumber = countdownStabilizer.add(
             result.detectedNumber,
           );
@@ -257,7 +246,6 @@ class VideoProcessingService {
         targetFps: targetFps,
       );
     } finally {
-      // Clean up temporary input folder
       try {
         if (await inputDir.exists()) {
           await inputDir.delete(recursive: true);

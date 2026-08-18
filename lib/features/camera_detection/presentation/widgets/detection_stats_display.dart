@@ -7,8 +7,8 @@ import 'package:flutter/material.dart';
 class DetectionStatsDisplay extends StatelessWidget {
   const DetectionStatsDisplay({
     super.key,
-    required this.detectionCount, // จำนวนวัตถุที่ตรวจพบ
-    required this.currentFps, // FPS ปัจจุบัน
+    required this.detectionCount,
+    required this.currentFps,
   });
 
   final int detectionCount;
@@ -22,19 +22,18 @@ class DetectionStatsDisplay extends StatelessWidget {
         child: DecoratedBox(
           key: const Key('cameraStatusHud'),
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.7), // พื้นดำโปร่งแสง
+            color: Colors.black.withValues(alpha: 0.7),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             child: FittedBox(
-              fit: BoxFit.scaleDown, // ย่อให้พอดีเมื่อเนื้อที่น้อย
+              fit: BoxFit.scaleDown, // ย่อให้พอดีเมื่อเนื้อที่น้อย กัน overflow
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // จำนวนการตรวจจับ
                   Text(
                     'DETECTIONS: $detectionCount',
                     style: const TextStyle(
@@ -44,7 +43,6 @@ class DetectionStatsDisplay extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // FPS ปัจจุบัน
                   Text(
                     'FPS: ${currentFps.toStringAsFixed(1)}',
                     style: TextStyle(

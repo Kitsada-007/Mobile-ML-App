@@ -54,10 +54,10 @@ class TrafficVoiceService {
   Future<void> reloadSettings() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      _isEnabled = prefs.getBool('isVoiceEnabled') ?? true; // เปิด/ปิดเสียง
-      _volume = prefs.getDouble('ttsVolume') ?? 1.0; // ความดัง
-      _speed = prefs.getDouble('ttsSpeed') ?? 0.5; // ความเร็ว
-      _pitch = prefs.getDouble('ttsPitch') ?? 1.0; // ระดับเสียง
+      _isEnabled = prefs.getBool('isVoiceEnabled') ?? true;
+      _volume = prefs.getDouble('ttsVolume') ?? 1.0;
+      _speed = prefs.getDouble('ttsSpeed') ?? 0.5;
+      _pitch = prefs.getDouble('ttsPitch') ?? 1.0;
     } catch (_) {}
   }
 

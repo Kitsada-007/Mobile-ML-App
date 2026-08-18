@@ -31,7 +31,6 @@ class SettingPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
         children: [
-          // 1. General Settings Group
           _buildSectionHeader(context, 'General Settings'),
           const SizedBox(height: 8),
           _buildCardContainer(
@@ -147,7 +146,6 @@ class SettingPage extends StatelessWidget {
 
           const SizedBox(height: 20),
 
-          // 2. Advanced Options Group (Collapsible Card)
           _buildSectionHeader(context, 'Advanced Options'),
           const SizedBox(height: 8),
           Container(
@@ -210,7 +208,6 @@ class SettingPage extends StatelessWidget {
 
           const SizedBox(height: 28),
 
-          // 3. Reset Button (Danger Zone)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4.0),
             child: OutlinedButton.icon(

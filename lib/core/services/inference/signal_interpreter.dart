@@ -56,7 +56,7 @@ class TrafficSignalClasses {
 /// ผลลัพธ์สุดท้ายที่พร้อมแสดงให้ user ดู - ไม่มี class name โผล่มาเลย
 class DriverSignalResult {
   final String message; // เช่น "ไฟเขียว - ไปได้ (เลี้ยวซ้ายได้, เลี้ยวขวาได้)"
-  final SignalAction action; // go / stop / caution / none
+  final SignalAction action;
   const DriverSignalResult({required this.message, required this.action});
 
   @override

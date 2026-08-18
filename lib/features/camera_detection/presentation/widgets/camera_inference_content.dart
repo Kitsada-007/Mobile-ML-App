@@ -1,16 +1,11 @@
-import 'dart:async'; // ใช้ unawaited
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:trffic_ilght_app/features/camera_detection/presentation/controllers/camera_inference_controller.dart'; // controller
-import 'package:ultralytics_yolo/ultralytics_yolo.dart'; // YOLOView และค่าคอนฟิกสตรีม
+import 'package:trffic_ilght_app/features/camera_detection/presentation/controllers/camera_inference_controller.dart';
+import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
-// ---- ค่าคอนฟิกกล้อง/สตรีม ----
-const Size cameraAnalysisResolution = Size(
-  1280,
-  960,
-); // ความละเอียดที่ใช้วิเคราะห์
-const int cameraInferenceFrequency =
-    15; // จำนวนเฟรมที่วิเคราะห์ต่อหน่วย (กระชับ)
-const int cameraResultMaxFps = 10; // FPS สูงสุดที่กล้องส่งผลกลับมา
+const Size cameraAnalysisResolution = Size(1280, 960);
+const int cameraInferenceFrequency = 15;
+const int cameraResultMaxFps = 10;
 
 /// เนื้อหาหลักของหน้าตรวจจับกล้อง: จัดการ view กล้อง (YOLOView) และสถานะโหลด
 class CameraInferenceContent extends StatefulWidget {
@@ -28,11 +23,11 @@ class CameraInferenceContent extends StatefulWidget {
 }
 
 class _CameraInferenceContentState extends State<CameraInferenceContent> {
-  String? _modelPath; // path โมเดลปัจจุบัน
-  late YOLOTask _task; // งานของโมเดล (detect)
-  bool _isModelLoading = false; // กำลังโหลดโมเดลไหม
-  String _loadingMessage = ''; // ข้อความโหลด
-  double _downloadProgress = 0; // ความคืบหน้าการโหลด
+  String? _modelPath;
+  late YOLOTask _task;
+  bool _isModelLoading = false;
+  String _loadingMessage = '';
+  double _downloadProgress = 0;
   bool _isCameraActive = true;
 
   @override
@@ -45,7 +40,6 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
   @override
   void didUpdateWidget(CameraInferenceContent oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // ถ้า controller เปลี่ยน -> สลับ listener และอ่านสถานะใหม่
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller.removeListener(_handleControllerChanged);
       _readModelState();
@@ -134,14 +128,13 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
       );
     }
 
-    // 2. หากกล้องเปิดอยู่ ให้ Render YOLOView ตามปกติ
     if (modelPath != null) {
       return YOLOView(
         key: ValueKey('yolo_view_${widget.rebuildKey}'),
         controller: controller.yoloController,
         modelPath: modelPath,
         task: _task,
-        useGpu: true, // ใช้ GPU ถ้าฮาร์ดแวร์รองรับ
+        useGpu: true,
         streamingConfig: const YOLOStreamingConfig.custom(
           includeOriginalImage: true, // ส่งภาพต้นฉบับด้วย (ใช้ crop อ่านตัวเลข)
           maxFPS: cameraResultMaxFps,
@@ -156,7 +149,6 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
         lensFacing: controller.lensFacing,
       );
     } else {
-      // ยังไม่มี path โมเดล -> แสดงสถานะเตรียมพร้อม
       return _CameraPreparingState(
         isLoading: _isModelLoading,
         message: _loadingMessage,
@@ -174,16 +166,16 @@ class _CameraPreparingState extends StatelessWidget {
     required this.progress,
   });
 
-  final bool isLoading; // กำลังโหลดโมเดลไหม
-  final String message; // ข้อความสถานะ
+  final bool isLoading;
+  final String message;
   final double progress; // ความคืบหน้าโหลด (0-1)
 
   @override
   Widget build(BuildContext context) {
-    final hasProgress = progress > 0 && progress < 1; // มีความคืบหน้าแน่นอนไหม
+    final hasProgress = progress > 0 && progress < 1;
 
     return ColoredBox(
-      color: const Color(0xFF090909), // พื้นดำ
+      color: const Color(0xFF090909),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compact =
@@ -197,7 +189,6 @@ class _CameraPreparingState extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // วงกลมไอคอน crosshair (บอกว่า "กำลังเพ่งเล็ง")
                     Container(
                       width: compact ? 48 : 64,
                       height: compact ? 48 : 64,
@@ -212,7 +203,6 @@ class _CameraPreparingState extends StatelessWidget {
                       ),
                     ),
                     SizedBox(height: compact ? 8 : 14),
-                    // ข้อความหลัก: โหลดโมเดล / เตรียมระบบ
                     Text(
                       isLoading
                           ? 'กำลังโหลดระบบตรวจจับ'
@@ -225,7 +215,6 @@ class _CameraPreparingState extends StatelessWidget {
                       ),
                     ),
                     SizedBox(height: compact ? 4 : 6),
-                    // ข้อความรอง (รายละเอียดสถานะ)
                     Text(
                       message.isEmpty
                           ? 'กล้องจะเริ่มทำงานอัตโนมัติเมื่อโมเดลพร้อม'
@@ -239,7 +228,6 @@ class _CameraPreparingState extends StatelessWidget {
                         height: compact ? 1.25 : 1.45,
                       ),
                     ),
-                    // แสดง progress bar เฉพาะเมื่อมีความคืบหน้า
                     if (hasProgress) ...[
                       SizedBox(height: compact ? 8 : 12),
                       ClipRRect(

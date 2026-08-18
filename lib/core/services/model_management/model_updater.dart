@@ -6,10 +6,10 @@ import 'package:trffic_ilght_app/core/services/model_management/model_update_cli
 
 /// สถานะการอัปเดตของแต่ละโมเดล
 enum ModelUpdateStatus {
-  updated, // อัปเดตเป็นเวอร์ชันใหม่แล้ว
-  alreadyCurrent, // เป็นเวอร์ชันล่าสุดอยู่แล้ว
+  updated,
+  alreadyCurrent,
   incompatible, // แอปเวอร์ชันต่ำเกินไป ไม่รองรับ manifest นี้
-  failed, // อัปเดตไม่สำเร็จ
+  failed,
 }
 
 /// ผลการอัปเดตของโมเดลหนึ่งตัว

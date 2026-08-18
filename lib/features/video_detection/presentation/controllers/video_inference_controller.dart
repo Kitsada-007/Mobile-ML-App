@@ -1,29 +1,27 @@
-import 'dart:async'; // สำหรับ unawaited (สั่ง async แบบไม่รอผล)
-import 'dart:io'; // สำหรับใช้งาน File (ไฟล์วิดีโอ)
+import 'dart:async';
+import 'dart:io';
 
-import 'package:flutter/foundation.dart'; // มี ChangeNotifier + @visibleForTesting
-import 'package:image_picker/image_picker.dart'; // เลือกวิดีโอจากแกลเลอรี
+import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:trffic_ilght_app/core/services/detection/detection_alert_config.dart';
 import 'package:trffic_ilght_app/core/services/detection/detection_stabilizer.dart';
 import 'package:trffic_ilght_app/core/services/detection/traffic_detection_label_formatter.dart';
-import 'package:trffic_ilght_app/core/services/inference/countdown_reading_stabilizer.dart'; // ลดความสั่นไหวของตัวเลขนับถอยหลัง
-import 'package:trffic_ilght_app/core/services/inference/sign_number_pipeline_service.dart'; // Pipeline อ่านเลขป้าย/นับถอยหลัง
-import 'package:trffic_ilght_app/core/services/inference/signal_interpreter.dart'; // แปลผลสัญญาณไฟ -> คำสั่งคนขับ
-import 'package:trffic_ilght_app/core/services/model_management/model_manager.dart'; // จัดการ download/หา path ของโมเดล
-import 'package:trffic_ilght_app/features/video_detection/data/services/video_frame_analysis_service.dart'; // วิเคราะห์ภาพแต่ละเฟรม
-import 'package:trffic_ilght_app/features/video_detection/data/services/video_input_validator.dart'; // ตรวจสอบไฟล์วิดีโอที่เลือก
-import 'package:trffic_ilght_app/features/video_detection/data/services/video_processing_service.dart'; // ประมวลผลวิดีโอทั้งไฟล์
-import 'package:trffic_ilght_app/shared/models/model_types.dart'; // ประเภทของโมเดล (traffic / number)
-import 'package:ultralytics_yolo/ultralytics_yolo.dart'; // ไลบรารี YOLO สำหรับตรวจจับ
-import 'package:video_player/video_player.dart'; // เล่นวิดีโอใน Flutter
+import 'package:trffic_ilght_app/core/services/inference/countdown_reading_stabilizer.dart';
+import 'package:trffic_ilght_app/core/services/inference/sign_number_pipeline_service.dart';
+import 'package:trffic_ilght_app/core/services/inference/signal_interpreter.dart';
+import 'package:trffic_ilght_app/core/services/model_management/model_manager.dart';
+import 'package:trffic_ilght_app/features/video_detection/data/services/video_frame_analysis_service.dart';
+import 'package:trffic_ilght_app/features/video_detection/data/services/video_input_validator.dart';
+import 'package:trffic_ilght_app/features/video_detection/data/services/video_processing_service.dart';
+import 'package:trffic_ilght_app/shared/models/model_types.dart';
+import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+import 'package:video_player/video_player.dart';
 
-import 'package:trffic_ilght_app/core/services/voice/traffic_voice_service.dart'; // บริการเสียงประกาศภาษาไทย
+import 'package:trffic_ilght_app/core/services/voice/traffic_voice_service.dart';
 import 'package:trffic_ilght_app/core/services/voice/voice_alert_controller.dart';
 import 'package:trffic_ilght_app/core/services/voice/countdown_alert_controller.dart';
 
 /// ฟังก์ชัน factory สำหรับสร้างโมเดล YOLO ใช้กับวิดีโอ
-/// - ทำเครื่องหมาย @visibleForTesting เพื่อให้ทดสอบได้จากภายนอก package
-/// - task: YOLOTask.detect = งานตรวจจับวัตถุ
 /// - useMultiInstance: true = โหลดแบบหลาย instance (เพื่อรองรับการรันคู่ขนาน)
 @visibleForTesting
 YOLO createVideoYolo(String modelPath) {
@@ -40,11 +38,11 @@ YOLO createVideoYolo(String modelPath) {
 class VideoInferenceController extends ChangeNotifier {
   // Constructor รองรับ Dependency Injection (ส่ง services เข้ามาเองได้ เพื่อใช้ทดแทนของจริงตอนเทสต์)
   VideoInferenceController({
-    ImagePicker? picker, // ตัวเลือกวิดีโอ (default: ImagePicker จริง)
-    VideoInputValidator? videoValidator, // ตัวตรวจสอบวิดีโอ
-    ModelManager? modelManager, // ตัวจัดการโมเดล
-    VideoProcessingService? videoProcessingService, // ตัวประมวลผลวิดีโอ
-    TrafficVoiceService? voiceService, // บริการเสียง
+    ImagePicker? picker,
+    VideoInputValidator? videoValidator,
+    ModelManager? modelManager,
+    VideoProcessingService? videoProcessingService,
+    TrafficVoiceService? voiceService,
     @visibleForTesting DetectionStabilizer? detectionStabilizer,
     @visibleForTesting VoiceAlertController? voiceAlertController,
     @visibleForTesting CountdownAlertController? countdownAlertController,
@@ -53,7 +51,7 @@ class VideoInferenceController extends ChangeNotifier {
     // (ถ้าวัดบนเครื่องจริงแล้วเวลาประมวลผลรวมเพิ่มเกิน ~40% ให้ถอยกลับเป็น 4
     // ดูผล timingSummary ใน log "[video-perf]" เทียบ before/after)
     this.targetChecksPerSecond = 6,
-  }) : _picker = picker ?? ImagePicker(), // ถ้าไม่ส่งค่าใช้ default (สร้างใหม่)
+  }) : _picker = picker ?? ImagePicker(),
        _videoValidator = videoValidator ?? const VideoInputValidator(),
        _modelManager = modelManager ?? ModelManager(),
        _videoProcessingService =
@@ -71,73 +69,58 @@ class VideoInferenceController extends ChangeNotifier {
         countdownAlertController ?? CountdownAlertController();
   }
 
-  // ---- Dependencies (services ที่ใช้งาน) ----
-  final ImagePicker _picker; // เลือกวิดีโอจากแกลเลอรี
-  final VideoInputValidator _videoValidator; // ตรวจสอบความถูกต้องของไฟล์วิดีโอ
-  final ModelManager _modelManager; // หา path + จัดการโมเดล
-  final VideoProcessingService
-  _videoProcessingService; // ประมวลผลวิดีโอทั้งไฟล์
-  final TrafficVoiceService _voiceService; // พูดเสียงประกาศไทย
-  final int targetChecksPerSecond; // ความถี่ที่ต้องการตรวจต่อวินาที
+  final ImagePicker _picker;
+  final VideoInputValidator _videoValidator;
+  final ModelManager _modelManager;
+  final VideoProcessingService _videoProcessingService;
+  final TrafficVoiceService _voiceService;
+  final int targetChecksPerSecond;
   static const DetectionAlertConfig _detectionConfig = DetectionAlertConfig();
   late final DetectionStabilizer _detectionStabilizer;
   late final VoiceAlertController _voiceAlertController;
   late final CountdownAlertController _countdownAlertController;
-  // ตัวกันความสั่นไหวของตัวเลขนับถอยหลัง (ไม่ให้เลขเด้งขึ้น/ลงบ่อย)
   final CountdownReadingStabilizer _countdownStabilizer =
       CountdownReadingStabilizer();
 
-  // ---- State สำหรับผลการตรวจจับ ----
-  Map<int, FrameAnalysisResult> _frameResults =
-      {}; // ผลลัพธ์รายเฟรม (key = index เฟรม)
-  int _targetFps = 5; // FPS ที่ใช้ประมวลผลวิดีโอ (ค่าเริ่มต้น 5)
-  int _lastFrameIndex =
-      -1; // index เฟรมสุดท้ายที่แสดง (ใช้ตรวจจับว่าเฟรมเปลี่ยน)
+  Map<int, FrameAnalysisResult> _frameResults = {};
+  int _targetFps = 5;
+  int _lastFrameIndex = -1;
 
-  List<YOLOResult> _currentFrameDetections = []; // ผลตรวจจับของเฟรมที่แสดงอยู่
-  String?
-  _currentDetectedNumber; // ตัวเลขที่ตรวจพบในเฟรมปัจจุบัน (เช่น 5, 4, 3)
+  List<YOLOResult> _currentFrameDetections = [];
+  String? _currentDetectedNumber;
   String? _currentCountdownUiMessage;
   // คลาสไฟจราจรเสถียรของเฟรมปัจจุบัน (รวมคลาสสังเคราะห์ไฟกะพริบ)
   // ใช้เลือกชุดสีของป้ายนับถอยหลังใน UI เท่านั้น ไม่เกี่ยวกับ logic เสียง
   String? _currentStableTrafficLightClassName;
-  // ผลการแปลความหมายสัญญาณไฟ -> คำสั่งคนขับของเฟรมปัจจุบัน (เริ่มต้น: ไม่มี action)
   DriverSignalResult _currentDriverSignalResult = const DriverSignalResult(
     message: '',
     action: SignalAction.none,
   );
-  List<String> _currentFormalNames = []; // ชื่อไทยทางการของวัตถุที่ตรวจพบ
-  List<String> _currentAlertMessages = []; // ข้อความแจ้งเตือนภาษาไทย
-  double? _lastDetectionConfidence; // ค่า confidence สูงสุดของเฟรมล่าสุด
+  List<String> _currentFormalNames = [];
+  List<String> _currentAlertMessages = [];
+  double? _lastDetectionConfidence;
 
-  Uint8List? _imageBytes; // ข้อมูลภาพต้นฉบับ (bytes)
+  Uint8List? _imageBytes;
 
-  // ---- โมเดล YOLO และบริการวิเคราะห์ ----
-  YOLO? _trafficYolo; // โมเดลตรวจจับไฟจราจร
-  YOLO? _numberYolo; // โมเดลอ่านตัวเลข/ป้ายนับถอยหลัง
-  SignNumberPipelineService?
-  _signNumberPipeline; // pipeline อ่านเลขป้าย (ต้อง dispose เพราะมี worker isolate)
-  VideoFrameAnalysisService? _videoFrameAnalysisService; // บริการวิเคราะห์เฟรม
-  String? _trafficModelPath; // path ไฟล์โมเดล Traffic
-  String? _numberModelPath; // path ไฟล์โมเดล Number
+  YOLO? _trafficYolo;
+  YOLO? _numberYolo;
+  // ต้อง dispose เพราะมี worker isolate
+  SignNumberPipelineService? _signNumberPipeline;
+  VideoFrameAnalysisService? _videoFrameAnalysisService;
+  String? _trafficModelPath;
+  String? _numberModelPath;
 
-  // ---- สถานะการทำงาน/ความคืบหน้า ----
-  bool _areModelsReady = false; // โมเดลโหลดพร้อมแล้วหรือยัง
-  bool _processing = false; // กำลังประมวลผลวิดีโอหรือไม่
-  double _progressValue = 0.0; // ค่าความคืบหน้า 0.0 - 1.0
-  String _progressText = ''; // ข้อความอธิบายขั้นตอนที่กำลังทำ
-  String? _snackBarMessage; // ข้อความที่จะแสดงเป็น SnackBar
+  bool _areModelsReady = false;
+  bool _processing = false;
+  double _progressValue = 0.0;
+  String _progressText = '';
+  String? _snackBarMessage;
 
-  // ---- วิดีโอ ----
-  VideoPlayerController?
-  _videoController; // ตัวเล่นวิดีโอผลลัพธ์ (หลังประมวลผล)
-  VideoPlayerController?
-  _selectedPreviewController; // ตัวเล่นตัวอย่างวิดีโอที่เลือก
-  File? _videoFile; // ไฟล์วิดีโอที่ผู้ใช้เลือก
-  bool _isDisposed =
-      false; // flag บอกว่า dispose ไปแล้วหรือยัง (กันทำงานหลังปิด)
+  VideoPlayerController? _videoController;
+  VideoPlayerController? _selectedPreviewController;
+  File? _videoFile;
+  bool _isDisposed = false;
 
-  // ---------- Getters (ให้ UI อ่านค่าจากภายนอกได้ แต่แก้ไขไม่ได้) ----------
   bool get areModelsReady => _areModelsReady;
   bool get isProcessing => _processing;
   double get progressValue => _progressValue;
@@ -148,7 +131,8 @@ class VideoInferenceController extends ChangeNotifier {
 
   /// คลาสไฟจราจรที่ยืนยันเสถียรแล้วของเฟรมปัจจุบัน (เช่น red_light_circle,
   /// flashing_yellow) สำหรับให้ UI เลือกสีป้ายนับถอยหลัง — null เมื่อยังไม่ยืนยัน
-  String? get stableTrafficLightClassName => _currentStableTrafficLightClassName;
+  String? get stableTrafficLightClassName =>
+      _currentStableTrafficLightClassName;
   DriverSignalResult get currentDriverSignalResult =>
       _currentDriverSignalResult;
   List<String> get currentFormalNames => List.unmodifiable(_currentFormalNames);
@@ -163,17 +147,15 @@ class VideoInferenceController extends ChangeNotifier {
   File? get videoFile => _videoFile;
   String? get snackBarMessage => _snackBarMessage;
 
-  bool get isVoiceEnabled => _voiceService.isEnabled; // เสียงเปิดอยู่หรือไม่
+  bool get isVoiceEnabled => _voiceService.isEnabled;
 
   /// สลับเปิด/ปิดเสียงประกาศ
   void toggleVoice() {
-    _voiceService.setEnabled(!_voiceService.isEnabled); // สลับสถานะ
+    _voiceService.setEnabled(!_voiceService.isEnabled);
     if (!_voiceService.isEnabled) {
-      unawaited(
-        _voiceService.stop(),
-      ); // ถ้าปิดเสียง ให้หยุดการพูดที่กำลังค้างอยู่
+      unawaited(_voiceService.stop());
     }
-    notifyListeners(); // แจ้ง UI ให้ rebuild
+    notifyListeners();
   }
 
   /// ล้างข้อความ SnackBar (เรียกเมื่อแสดงไปแล้ว)
@@ -186,17 +168,15 @@ class VideoInferenceController extends ChangeNotifier {
     YOLO? trafficYolo;
     YOLO? numberYolo;
     try {
-      // ขอ path ของไฟล์โมเดลจาก ModelManager (download อัตโนมัติถ้ายังไม่มี)
+      // ModelManager จะ download ให้อัตโนมัติถ้ายังไม่มีไฟล์
       _trafficModelPath = await _modelManager.getModelPath(ModelType.traffic);
       _numberModelPath = await _modelManager.getModelPath(ModelType.number);
 
-      // ถ้าเจอโมเดลไม่ครบทั้ง 2 ตัว -> แจ้งเตือนแล้วหยุด
       if (_trafficModelPath == null || _numberModelPath == null) {
         _notifyMessage('ไม่พบไฟล์โมเดล Traffic หรือ Number');
         return;
       }
 
-      // โหลดโมเดลทั้งสองตัว (มี rollback ถ้า path แรกใช้ไม่ได้)
       trafficYolo = await _loadYoloWithRollback(
         ModelType.traffic,
         _trafficModelPath!,
@@ -206,7 +186,7 @@ class VideoInferenceController extends ChangeNotifier {
         _numberModelPath!,
       );
 
-      // ถ้ามีการ dispose ระหว่างโหลด -> ปล่อยโมเดลที่โหลดเสร็จแล้วออก แล้วหยุด
+      // ถ้ามีการ dispose ระหว่างรอโหลด -> ปล่อยโมเดลที่โหลดเสร็จแล้วออก แล้วหยุด
       if (_isDisposed) {
         await trafficYolo.dispose();
         await numberYolo.dispose();
@@ -219,7 +199,6 @@ class VideoInferenceController extends ChangeNotifier {
       final oldTrafficYolo = _trafficYolo;
       final oldNumberYolo = _numberYolo;
 
-      // เก็บโมเดลเข้าที่และสร้างบริการวิเคราะห์เฟรม
       _trafficYolo = trafficYolo;
       _numberYolo = numberYolo;
       _signNumberPipeline = SignNumberPipelineService(digitYolo: numberYolo);
@@ -227,7 +206,7 @@ class VideoInferenceController extends ChangeNotifier {
         trafficYolo: trafficYolo,
         signNumberPipeline: _signNumberPipeline!,
       );
-      _areModelsReady = true; // ตั้งสถานะว่าพร้อมแล้ว
+      _areModelsReady = true;
       notifyListeners();
 
       // ปล่อยของเก่า: pipeline ก่อน (มี isolate worker และใช้ numberYolo ตัวเก่าอยู่)
@@ -236,10 +215,9 @@ class VideoInferenceController extends ChangeNotifier {
       await oldTrafficYolo?.dispose();
       await oldNumberYolo?.dispose();
     } catch (e) {
-      // กรณี error: ปล่อยโมเดลที่โหลดมา (บางส่วน) แล้วแสดงข้อความผิดพลาด
       await trafficYolo?.dispose();
       await numberYolo?.dispose();
-      if (_isDisposed) return; // ถ้า dispose แล้วไม่ต้องแจ้งเตือน
+      if (_isDisposed) return;
 
       final error = YOLOErrorHandler.handleError(
         e,
@@ -256,16 +234,15 @@ class VideoInferenceController extends ChangeNotifier {
     String initialPath,
   ) async {
     try {
-      return await _loadYolo(initialPath); // ลองโหลด path แรกก่อน
+      return await _loadYolo(initialPath);
     } catch (_) {
-      // path แรกล้มเหลว -> รายงานความล้มเหลวเพื่อขอ path ทดแทน
       final replacement = await _modelManager.reportModelLoadFailure(
         modelType,
         failedPath: initialPath,
       );
       // ไม่มี path ทดแทน หรือได้ path เดิม -> โยน error เดิมต่อ
       if (replacement == null || replacement == initialPath) rethrow;
-      return _loadYolo(replacement); // ลองโหลด path ทดแทน
+      return _loadYolo(replacement);
     }
   }
 
@@ -284,19 +261,16 @@ class VideoInferenceController extends ChangeNotifier {
 
   /// เลือกวิดีโอจากแกลเลอรี แล้ว (ถ้าโมเดลพร้อม) ประมวลผลทันที
   Future<void> pickVideo() async {
-    // เปิดแกลเลอรีให้เลือกวิดีโอ
     final file = await _picker.pickVideo(source: ImageSource.gallery);
-    if (file == null) return; // ผู้ใช้ยกเลิก -> ไม่ต้องทำอะไร
+    if (file == null) return;
 
     final File selectedFile = File(file.path);
-    // ตรวจสอบความถูกต้องของไฟล์วิดีโอ (ขนาด/รูปแบบ ฯลฯ)
     final validation = await _videoValidator.validate(selectedFile);
     if (!validation.isValid) {
-      _notifyMessage(validation.errorMessage!); // แจ้งเหตุผลที่ไม่ผ่าน
+      _notifyMessage(validation.errorMessage!);
       return;
     }
 
-    // สร้างตัวเล่นตัวอย่าง (preview) สำหรับวิดีโอที่เลือก
     final previewController = VideoPlayerController.file(selectedFile);
     var previewReady = false;
     try {
@@ -304,23 +278,19 @@ class VideoInferenceController extends ChangeNotifier {
       await previewController.seekTo(Duration.zero); // ขยับไปเฟรมแรก
       previewReady = true;
     } catch (_) {
-      await previewController
-          .dispose(); // เตรียมตัวเล่นไม่สำเร็จ -> ปล่อยทรัพยากร
+      await previewController.dispose();
     }
 
-    _clearVideoController(); // ล้างวิดีโอผลลัพธ์เก่าออก
-    await _selectedPreviewController?.dispose(); // ปล่อย preview ตัวเก่า
+    _clearVideoController();
+    await _selectedPreviewController?.dispose();
 
-    // ---- ตั้งค่า state ใหม่ด้วยวิดีโอที่เลือก ----
     _videoFile = selectedFile;
     _selectedPreviewController = previewReady ? previewController : null;
-    // รีเซ็ตผลลัพธ์การตรวจจับทั้งหมด
     _frameResults.clear();
     _currentFrameDetections.clear();
     _resetDetectionSession(stopVoice: false);
     notifyListeners();
 
-    // ถ้าโมเดลโหลดพร้อมแล้ว -> เริ่มประมวลผลวิดีโอทันที (ไม่ต้องรอ)
     if (_areModelsReady) {
       unawaited(predictVideo());
     }
@@ -328,7 +298,6 @@ class VideoInferenceController extends ChangeNotifier {
 
   /// ประมวลผลวิดีโอทั้งหมด (ตรวจจับทุกเฟรม) แล้วเล่นผลลัพธ์พร้อม overlay
   Future<void> predictVideo() async {
-    // ตรวจสอบเงื่อนไขเบื้องต้น: โมเดลพร้อม + มีบริการวิเคราะห์ + มีไฟล์วิดีโอ
     if (!_areModelsReady ||
         _videoFrameAnalysisService == null ||
         _videoFile == null) {
@@ -336,18 +305,16 @@ class VideoInferenceController extends ChangeNotifier {
       return;
     }
 
-    // ---- รีเซ็ตสถานะก่อนเริ่มประมวลผล ----
     _processing = true;
     _progressValue = 0.0;
     _progressText = 'กำลังเตรียมโฟลเดอร์ชั่วคราว...';
     _frameResults.clear();
     _currentFrameDetections.clear();
     _resetDetectionSession(stopVoice: false);
-    _clearVideoController(); // ล้างวิดีโอเก่าที่เล่นอยู่
+    _clearVideoController();
     notifyListeners();
 
     try {
-      // ส่งประมวลผลวิดีโอทั้งไฟล์ โดยส่ง callback อัปเดตความคืบหน้า
       final result = await _videoProcessingService.processVideo(
         videoFile: _videoFile!,
         frameAnalysisService: _videoFrameAnalysisService!,
@@ -358,20 +325,18 @@ class VideoInferenceController extends ChangeNotifier {
           if (!_isDisposed) {
             _progressValue = progressValue;
             _progressText = progressText;
-            notifyListeners(); // ใช้ guard เพื่อไม่เรียกหลัง dispose
+            notifyListeners();
           }
         },
       );
 
       if (_isDisposed) return;
 
-      // ---- บันทึกผลการประมวลผล ----
-      _frameResults = result.frameResults; // ผลรายเฟรม (key = frame index)
-      _targetFps = result.targetFps; // FPS จริงที่ใช้
+      _frameResults = result.frameResults;
+      _targetFps = result.targetFps;
 
       _notifyMessage('Video processing completed successfully!');
 
-      // สร้างตัวเล่นวิดีโอผลลัพธ์ (ไฟล์ที่ annotate แล้ว) และตั้ง Loop
       _videoController = VideoPlayerController.file(
         File(result.finalVideoPath),
       );
@@ -379,11 +344,9 @@ class VideoInferenceController extends ChangeNotifier {
       if (_isDisposed) return;
       await _videoController!.setLooping(true);
 
-      // ปล่อย preview เก่าออก (ไม่ต้องใช้แล้ว)
       await _selectedPreviewController?.dispose();
       _selectedPreviewController = null;
 
-      // ฟังตำแหน่งการเล่น เพื่อซิงก์ overlay กับเฟรม แล้วเริ่มเล่น
       _videoController!.addListener(_onVideoPositionChanged);
       await _videoController!.play();
 
@@ -394,7 +357,6 @@ class VideoInferenceController extends ChangeNotifier {
       debugPrint('Error processing video: $e');
       _notifyMessage('Error: $e');
     } finally {
-      // ปิดสถานะการประมวลผลเสมอ (ทั้งสำเร็จและล้มเหลว)
       if (!_isDisposed) {
         _processing = false;
         notifyListeners();
@@ -404,18 +366,15 @@ class VideoInferenceController extends ChangeNotifier {
 
   /// ตำแหน่งวิดีโอเปลี่ยน -> อัปเดตผลตรวจจับ/overlay ของเฟรมนั้น
   void _onVideoPositionChanged() {
-    // เช็คความพร้อม: ยังไม่ dispose / มีวิดีโอ / วิดีโอ initialize แล้ว
     if (_isDisposed ||
         _videoController == null ||
         !_videoController!.value.isInitialized) {
       return;
     }
 
-    final position = _videoController!.value.position; // ตำแหน่งปัจจุบัน (ms)
-    // คำนวณ index เฟรมจากตำแหน่ง: index = ตำแหน่ง(ms) * FPS / 1000
+    final position = _videoController!.value.position;
     final frameIndex = (position.inMilliseconds * _targetFps / 1000).floor();
 
-    // ทำงานเฉพาะเมื่อเฟรมเปลี่ยนจากครั้งก่อน (กันงานซ้ำ)
     if (frameIndex != _lastFrameIndex) {
       // เมื่อวิดีโอวนหรือ seek ย้อน ต้องเริ่ม tracking session ใหม่
       if (frameIndex < _lastFrameIndex) {
@@ -423,7 +382,6 @@ class VideoInferenceController extends ChangeNotifier {
       }
       _lastFrameIndex = frameIndex;
 
-      // ดึงผลของเฟรมนี้จากตารางผลลัพธ์ (ถ้ามี)
       final frameResult = _frameResults[frameIndex];
       if (frameResult != null) {
         // กล่องใช้ผล raw ของเฟรมโดยตรง ส่วน summary และเสียงใช้ผล stable ด้านล่าง
@@ -437,7 +395,6 @@ class VideoInferenceController extends ChangeNotifier {
           ),
         );
       } else {
-        // ไม่มีผลสำหรับเฟรมนี้ -> ล้างการตรวจจับ
         _currentFrameDetections = [];
         _updateCurrentFrameAnalysis(
           [],
@@ -583,10 +540,10 @@ class VideoInferenceController extends ChangeNotifier {
 
   /// สลับเล่น/หยุดวิดีโอ (และหยุดเสียงเมื่อ pause)
   Future<void> togglePlayPause() async {
-    if (_videoController == null) return; // ยังไม่มีวิดีโอ -> ไม่ทำอะไร
+    if (_videoController == null) return;
     if (_videoController!.value.isPlaying) {
-      await _videoController!
-          .pause(); // เล่นอยู่ -> หยุดให้เสร็จก่อนรีเซ็ต state
+      // หยุดให้เสร็จก่อนรีเซ็ต state
+      await _videoController!.pause();
       _resetDetectionSession();
     } else {
       _resetDetectionSession();
@@ -627,9 +584,11 @@ class VideoInferenceController extends ChangeNotifier {
   /// ปล่อยทรัพยากรทั้งหมดเมื่อ controller ถูก dispose (ปิดหน้าจอ)
   @override
   void dispose() {
-    _isDisposed = true; // ปิด flag กัน async code ทำงานต่อหลัง dispose
+    _isDisposed = true; // กัน async code ทำงานต่อหลัง dispose
     _resetDetectionSession();
-    unawaited(_trafficYolo?.dispose()); // Traffic ไม่ผูกกับ pipeline ปล่อยได้เลย
+    unawaited(
+      _trafficYolo?.dispose(),
+    ); // Traffic ไม่ผูกกับ pipeline ปล่อยได้เลย
 
     // pipeline ใช้ numberYolo อยู่ และมี isolate worker ที่อาจยังทำงานค้าง
     // จึงต้องรอ pipeline.dispose() ให้จบก่อนแล้วค่อยปล่อยโมเดลที่มันใช้
@@ -650,7 +609,7 @@ class VideoInferenceController extends ChangeNotifier {
       controller.removeListener(_onVideoPositionChanged);
       unawaited(controller.pause().then((_) => controller.dispose()));
     }
-    _selectedPreviewController?.dispose(); // ล้างวิดีโอตัวอย่าง
+    _selectedPreviewController?.dispose();
     super.dispose();
   }
 }

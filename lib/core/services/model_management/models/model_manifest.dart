@@ -160,7 +160,6 @@ String _requiredString(Map<String, dynamic> json, String fieldName) {
   return value.trim();
 }
 
-/// อ่านฟิลด์ที่ต้องเป็น int
 int _requiredInt(Map<String, dynamic> json, String fieldName) {
   final value = json[fieldName];
 
