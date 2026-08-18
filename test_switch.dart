@@ -1,0 +1,1 @@
+void main() { const red1 = 'red_light_circle'; const red2 = 'red_light'; String getColor(String? light) { return switch (light) { red1 || red2 => 'RED', 'green_light' => 'GREEN', _ => 'GREY' }; } print(getColor('red_light')); print(getColor('green_light')); }

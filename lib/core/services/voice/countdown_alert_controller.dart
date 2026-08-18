@@ -48,10 +48,16 @@ final class CountdownAlertController {
 
   final CountdownAlertConfig config;
 
-  static const supportedTrafficLightClasses = <String>{
+  static Set<String> get supportedTrafficLightClasses => {
     'red_light_circle',
+    'red_light',
     'green_light_circle',
+    'green_light',
     'yellow_light',
+    'yellow_light_circle',
+    'turn_left',
+    'turn_right',
+    'go_straight_arrow',
   };
 
   String? _lastStableTrafficLightClassName;
@@ -136,20 +142,20 @@ final class CountdownAlertController {
     return null;
   }
 
-  String? _uiActionFor(String? className) {
-    return switch (className) {
-      'red_light_circle' => config.redUiAction,
-      'green_light_circle' => config.greenUiAction,
-      'yellow_light' => config.yellowUiAction,
-      _ => null,
-    };
+  String _uiActionFor(String? stableLight) {
+    if (stableLight == 'red_light_circle' || stableLight == 'red_light') return config.redUiAction;
+    if (stableLight == 'green_light_circle' || stableLight == 'green_light' || stableLight == 'turn_left' || stableLight == 'turn_right' || stableLight == 'go_straight_arrow') {
+      return config.greenUiAction;
+    }
+    if (stableLight == 'yellow_light' || stableLight == 'yellow_light_circle') return config.yellowUiAction;
+    return '';
   }
 
   String? _voiceMessageFor(String? className) {
-    return switch (className) {
-      'red_light_circle' => config.redVoiceMessage,
-      'green_light_circle' => config.greenVoiceMessage,
-      _ => null,
-    };
+    if (className == 'red_light_circle' || className == 'red_light') return config.redVoiceMessage;
+    if (className == 'green_light_circle' || className == 'green_light' || className == 'turn_left' || className == 'turn_right' || className == 'go_straight_arrow') {
+      return config.greenVoiceMessage;
+    }
+    return null;
   }
 }
