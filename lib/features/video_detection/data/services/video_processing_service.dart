@@ -106,6 +106,7 @@ class VideoProcessingService {
     // (ไม่ใช่ fps ของวิดีโอต้นฉบับ) — ffmpeg extract ที่ค่านี้ตรง ๆ เลย
     // ไม่มีชั้น sampling ซ้อนอีกชั้นเหมือนเวอร์ชันก่อนหน้า
     int targetFps = 4,
+
     // จำนวนเฟรม (ที่ extract มาแล้ว) ที่ยอมให้ "hold" ค่าเลขล่าสุดไว้
     // เผื่อกรณี motion blur หรือป้าย LED อยู่ในจังหวะดับของ PWM ทำให้บางเฟรม
     // predict เลขไม่ได้ — ที่ 4 fps → hold = 3/4 = 0.75s

@@ -28,7 +28,7 @@ void main() {
       await tester.pump();
 
       final panel = find.byKey(const Key('videoDetectionPanel'));
-      final placeholder = find.text('ตรวจจับจากไฟล์วิดีโอ (Real-Time)');
+      final placeholder = find.text('ตรวจจับจากไฟล์วิดีโอ');
 
       expect(panel, findsOneWidget);
       expect(placeholder, findsOneWidget);
@@ -53,7 +53,7 @@ void main() {
     await tester.pump();
 
     final panel = find.byKey(const Key('videoDetectionPanel'));
-    final placeholder = find.text('ตรวจจับจากไฟล์วิดีโอ (Real-Time)');
+    final placeholder = find.text('ตรวจจับจากไฟล์วิดีโอ');
 
     expect(
       tester.getTopRight(placeholder).dx,
