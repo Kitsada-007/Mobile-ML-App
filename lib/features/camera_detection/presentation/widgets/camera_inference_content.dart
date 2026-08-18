@@ -28,7 +28,12 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
   bool _isModelLoading = false;
   String _loadingMessage = '';
   double _downloadProgress = 0;
-  bool _isCameraActive = true;
+
+  /// แยกสองสาเหตุของ "กล้องไม่ทำงาน" ออกจากกัน เพราะต้องจัดการคนละแบบ:
+  /// - suspended (route/app lifecycle) -> ถอด YOLOView ทิ้งจริง คืนกล้องให้ระบบ
+  /// - ผู้ใช้กดปิด -> ห้ามถอด แค่บังจอไว้ (ดูเหตุผลใน build)
+  bool _isCameraSuspended = false;
+  bool _isCameraEnabled = true;
 
   @override
   void initState() {
@@ -54,7 +59,8 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
     _isModelLoading = widget.controller.isModelLoading;
     _loadingMessage = widget.controller.loadingMessage;
     _downloadProgress = widget.controller.downloadProgress;
-    _isCameraActive = widget.controller.isCameraActive;
+    _isCameraSuspended = widget.controller.isCameraSuspended;
+    _isCameraEnabled = widget.controller.isCameraEnabled;
   }
 
   /// เมื่อ controller แจ้งเตือน: rebuild เฉพาะเมื่อสถานะโหลดโมเดลเปลี่ยน
@@ -64,14 +70,16 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
     final nextIsModelLoading = widget.controller.isModelLoading;
     final nextLoadingMessage = widget.controller.loadingMessage;
     final nextDownloadProgress = widget.controller.downloadProgress;
-    final nextIsCameraActive = widget.controller.isCameraActive;
+    final nextIsCameraSuspended = widget.controller.isCameraSuspended;
+    final nextIsCameraEnabled = widget.controller.isCameraEnabled;
     // ถ้าไม่มีอะไรเปลี่ยน -> ไม่ต้อง rebuild (กันสะดุ้ง)
     if (nextModelPath == _modelPath &&
         nextTask == _task &&
         nextIsModelLoading == _isModelLoading &&
         nextLoadingMessage == _loadingMessage &&
         nextDownloadProgress == _downloadProgress &&
-        nextIsCameraActive == _isCameraActive) {
+        nextIsCameraSuspended == _isCameraSuspended &&
+        nextIsCameraEnabled == _isCameraEnabled) {
       return;
     }
 
@@ -81,7 +89,8 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
       _isModelLoading = nextIsModelLoading;
       _loadingMessage = nextLoadingMessage;
       _downloadProgress = nextDownloadProgress;
-      _isCameraActive = nextIsCameraActive;
+      _isCameraSuspended = nextIsCameraSuspended;
+      _isCameraEnabled = nextIsCameraEnabled;
     });
   }
 
@@ -96,73 +105,98 @@ class _CameraInferenceContentState extends State<CameraInferenceContent> {
     final modelPath = _modelPath;
     final controller = widget.controller;
 
-    // ไม่สร้าง YOLOView ขณะ route/app ถูกพัก เพื่อให้ native camera ถูกปล่อยจริง
-    if (!_isCameraActive) {
-      final isLifecyclePaused = controller.isCameraEnabled;
-      String pausedKey;
-      String pausedLabel;
-      if (isLifecyclePaused) {
-        pausedKey = 'cameraLifecyclePaused';
-        pausedLabel = 'กล้องหยุดชั่วคราว';
-      } else {
-        pausedKey = 'cameraDisabled';
-        pausedLabel = 'กล้องปิดอยู่';
-      }
-
-      return Container(
-        key: Key(pausedKey),
-        color: Colors.black,
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.videocam_off_rounded,
-                color: Colors.white54,
-                size: 48,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                pausedLabel,
-                style: const TextStyle(
-                  color: Colors.white54,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        ),
+    // ถอด YOLOView ทิ้งเฉพาะตอน route/app ถูกพัก เพื่อให้ native camera
+    // ถูกปล่อยคืนระบบจริง — กรณีนี้ผู้ใช้ออกจากหน้านี้ไปแล้ว
+    if (_isCameraSuspended) {
+      return const _CameraOffCover(
+        coverKey: Key('cameraLifecyclePaused'),
+        label: 'กล้องหยุดชั่วคราว',
       );
     }
 
-    if (modelPath != null) {
-      return YOLOView(
-        key: ValueKey('yolo_view_${widget.rebuildKey}'),
-        controller: controller.yoloController,
-        modelPath: modelPath,
-        task: _task,
-        useGpu: true,
-        streamingConfig: const YOLOStreamingConfig.custom(
-          includeOriginalImage: true, // ส่งภาพต้นฉบับด้วย (ใช้ crop อ่านตัวเลข)
-          maxFPS: cameraResultMaxFps,
-          inferenceFrequency: cameraInferenceFrequency,
-          analysisResolution: cameraAnalysisResolution,
-        ),
-        onStreamingData: (data) => unawaited(controller.onStreamingData(data)),
-        onZoomChanged: controller.onZoomChanged,
-        onModelError: (error, modelPath, _) {
-          unawaited(controller.onModelLoadError(error, modelPath));
-        },
-        lensFacing: controller.lensFacing,
-      );
-    } else {
+    if (modelPath == null) {
       return _CameraPreparingState(
         isLoading: _isModelLoading,
         message: _loadingMessage,
         progress: _downloadProgress,
       );
     }
+
+    final yoloView = YOLOView(
+      key: ValueKey('yolo_view_${widget.rebuildKey}'),
+      controller: controller.yoloController,
+      modelPath: modelPath,
+      task: _task,
+      useGpu: true,
+      streamingConfig: const YOLOStreamingConfig.custom(
+        includeOriginalImage: true, // ส่งภาพต้นฉบับด้วย (ใช้ crop อ่านตัวเลข)
+        maxFPS: cameraResultMaxFps,
+        inferenceFrequency: cameraInferenceFrequency,
+        analysisResolution: cameraAnalysisResolution,
+      ),
+      onStreamingData: (data) => unawaited(controller.onStreamingData(data)),
+      onZoomChanged: controller.onZoomChanged,
+      onModelError: (error, modelPath, _) {
+        unawaited(controller.onModelLoadError(error, modelPath));
+      },
+      lensFacing: controller.lensFacing,
+    );
+
+    if (_isCameraEnabled) {
+      return yoloView;
+    }
+
+    // ผู้ใช้กดปิดกล้องเอง: YOLOView ต้องอยู่ในต้นไม้ต่อไป แค่บังด้วยจอดำ
+    // ถ้าถอดทิ้ง native platform view จะถูกทำลาย แต่ yoloController ยังเป็น
+    // instance เดิม -> resume() ตอนกดเปิดใหม่จะยิงไปที่ view ที่ตายแล้ว
+    // สตรีมไม่กลับมาอีกเลยจนกว่าจะปิดแอปเข้าใหม่
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        yoloView,
+        const _CameraOffCover(
+          coverKey: Key('cameraDisabled'),
+          label: 'กล้องปิดอยู่',
+        ),
+      ],
+    );
+  }
+}
+
+/// จอดำทับกล้องพร้อมข้อความบอกสาเหตุ (ใช้ทั้งตอน suspended และตอนผู้ใช้กดปิด)
+class _CameraOffCover extends StatelessWidget {
+  const _CameraOffCover({required this.coverKey, required this.label});
+
+  final Key coverKey;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: coverKey,
+      color: Colors.black,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.videocam_off_rounded,
+              color: Colors.white54,
+              size: 48,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white54,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -182,20 +216,6 @@ class _CameraPreparingState extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasProgress = progress > 0 && progress < 1;
 
-    String titleText;
-    if (isLoading) {
-      titleText = 'กำลังโหลดระบบตรวจจับ';
-    } else {
-      titleText = 'กำลังเตรียมระบบตรวจจับ';
-    }
-
-    String detailText;
-    if (message.isEmpty) {
-      detailText = 'กล้องจะเริ่มทำงานอัตโนมัติเมื่อโมเดลพร้อม';
-    } else {
-      detailText = message;
-    }
-
     return ColoredBox(
       color: const Color(0xFF090909),
       child: LayoutBuilder(
@@ -203,52 +223,17 @@ class _CameraPreparingState extends StatelessWidget {
           final compact =
               constraints.maxHeight < 240; // เนื้อที่น้อย -> โหมดกะทัดรัด
 
-          // ขนาด/ระยะห่างทั้งหมดย่อลงพร้อมกันเมื่ออยู่ในโหมดกะทัดรัด
-          double outerPadding;
-          double circleSize;
-          double iconSize;
-          double gapAfterCircle;
-          double titleFontSize;
-          double gapAfterTitle;
-          int detailMaxLines;
-          double detailFontSize;
-          double detailLineHeight;
-          double gapBeforeProgress;
-          if (compact) {
-            outerPadding = 12;
-            circleSize = 48;
-            iconSize = 24;
-            gapAfterCircle = 8;
-            titleFontSize = 16;
-            gapAfterTitle = 4;
-            detailMaxLines = 2;
-            detailFontSize = 11;
-            detailLineHeight = 1.25;
-            gapBeforeProgress = 8;
-          } else {
-            outerPadding = 20;
-            circleSize = 64;
-            iconSize = 30;
-            gapAfterCircle = 14;
-            titleFontSize = 18;
-            gapAfterTitle = 6;
-            detailMaxLines = 3;
-            detailFontSize = 13;
-            detailLineHeight = 1.45;
-            gapBeforeProgress = 12;
-          }
-
           return Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 320),
               child: Padding(
-                padding: EdgeInsets.all(outerPadding),
+                padding: EdgeInsets.all(compact ? 12 : 20),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      width: circleSize,
-                      height: circleSize,
+                      width: compact ? 48 : 64,
+                      height: compact ? 48 : 64,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white24, width: 2),
@@ -256,33 +241,37 @@ class _CameraPreparingState extends StatelessWidget {
                       child: Icon(
                         Icons.center_focus_strong_rounded,
                         color: Colors.white,
-                        size: iconSize,
+                        size: compact ? 24 : 30,
                       ),
                     ),
-                    SizedBox(height: gapAfterCircle),
+                    SizedBox(height: compact ? 8 : 14),
                     Text(
-                      titleText,
+                      isLoading
+                          ? 'กำลังโหลดระบบตรวจจับ'
+                          : 'กำลังเตรียมระบบตรวจจับ',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: titleFontSize,
+                        fontSize: compact ? 16 : 18,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    SizedBox(height: gapAfterTitle),
+                    SizedBox(height: compact ? 4 : 6),
                     Text(
-                      detailText,
+                      message.isEmpty
+                          ? 'กล้องจะเริ่มทำงานอัตโนมัติเมื่อโมเดลพร้อม'
+                          : message,
                       textAlign: TextAlign.center,
-                      maxLines: detailMaxLines,
+                      maxLines: compact ? 2 : 3,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: Colors.white60,
-                        fontSize: detailFontSize,
-                        height: detailLineHeight,
+                        fontSize: compact ? 11 : 13,
+                        height: compact ? 1.25 : 1.45,
                       ),
                     ),
                     if (hasProgress) ...[
-                      SizedBox(height: gapBeforeProgress),
+                      SizedBox(height: compact ? 8 : 12),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(99),
                         child: LinearProgressIndicator(

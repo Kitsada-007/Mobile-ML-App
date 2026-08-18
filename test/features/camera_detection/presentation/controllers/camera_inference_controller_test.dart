@@ -198,26 +198,9 @@ void main() {
         (call) async => 1,
       );
 
-  test('accepts the first valid countdown reading immediately', () {
-    expect(acceptCountdownReading('12'), '12');
-  });
-
-  test('ignores an empty countdown reading', () {
-    expect(acceptCountdownReading(''), isNull);
-    expect(acceptCountdownReading(null), isNull);
-  });
-
   test('native threshold keeps sign detections down to 0.25', () {
     expect(nativeRealtimeConfidenceThreshold(0.50), 0.25);
     expect(nativeRealtimeConfidenceThreshold(0.10), 0.10);
-  });
-
-  test('downstream threshold preserves the setting for non-sign classes', () {
-    expect(realtimeDetectionConfidenceThreshold('sign_number', 0.80), 0.25);
-    expect(
-      realtimeDetectionConfidenceThreshold('red_light_circle', 0.80),
-      0.80,
-    );
   });
 
   test('real-time stream skips the Number model when no sign exists', () async {

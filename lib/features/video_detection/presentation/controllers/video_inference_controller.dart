@@ -232,6 +232,7 @@ class VideoInferenceController extends ChangeNotifier {
         trafficYolo: trafficYolo,
         signNumberPipeline: _signNumberPipeline!,
       );
+
       _areModelsReady = true;
       notifyListeners();
 

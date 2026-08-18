@@ -28,19 +28,6 @@ import 'package:trffic_ilght_app/core/services/model_management/model_manager.da
 export 'package:trffic_ilght_app/features/camera_detection/data/models/realtime_inference.dart'
     show RealtimeInferenceDiagnostic;
 
-/// ฟังก์ชันยอมรับตัวเลขนับถอยหลัง:
-/// - ตัดช่องว่างหัว/ท้าย แล้วคืน null ถ้าเป็น string ว่าง (ตัวเลขไม่ผ่านการยอมรับ)
-String? acceptCountdownReading(String? reading) {
-  if (reading == null) {
-    return null;
-  }
-  final normalized = reading.trim();
-  if (normalized.isEmpty) {
-    return null;
-  }
-  return normalized;
-}
-
 /// ค่า confidence threshold ขั้นต่ำสำหรับป้าย sign_number (ในโหมด realtime)
 const double realtimeSignConfidenceThreshold = 0.25;
 
@@ -52,18 +39,6 @@ double nativeRealtimeConfidenceThreshold(double selectedThreshold) {
     return selectedThreshold;
   }
   return realtimeSignConfidenceThreshold;
-}
-
-/// threshold ต่อคลาส: ป้าย sign_number ใช้ค่าคงที่ต่ำ (0.25) เสมอ
-/// ส่วนไฟจราจรใช้ค่าที่ผู้ใช้เลือก
-double realtimeDetectionConfidenceThreshold(
-  String className,
-  double selectedThreshold,
-) {
-  if (className == 'sign_number') {
-    return realtimeSignConfidenceThreshold;
-  }
-  return selectedThreshold;
 }
 
 class CameraInferenceController extends ChangeNotifier {
@@ -141,6 +116,7 @@ class CameraInferenceController extends ChangeNotifier {
   double get currentZoomLevel => _currentZoomLevel;
   bool get isFrontCamera => _isFrontCamera;
   bool get isCameraEnabled => _isCameraEnabled;
+  bool get isCameraSuspended => _isCameraSuspended;
   bool get isCameraActive => _isCameraEnabled && !_isCameraSuspended;
   LensFacing get lensFacing => _lensFacing;
   YOLOViewController get yoloController => _yoloController;
@@ -477,28 +453,42 @@ class CameraInferenceController extends ChangeNotifier {
   Future<void> toggleCamera() async {
     if (_isDisposed || _modelPath == null) return;
     final nextEnabled = !_isCameraEnabled;
+
+    // ตั้ง state และแจ้ง UI ให้เสร็จก่อนสั่ง native เสมอ
+    // - ตอนปิด: isCameraActive เป็น false ทันที เฟรมที่ยังค้างในท่อจะถูก
+    //   onStreamingData ปฏิเสธตั้งแต่ต้น ไม่ต้องรอ pause() ให้เสร็จก่อน
+    // - ตอนเปิด: widget ได้ rebuild ให้ YOLOView พร้อมก่อนที่ resume() จะยิงถึง
+    _isCameraEnabled = nextEnabled;
+    _resetDetectionSession();
+    // ต้องรีเซ็ต guard/monitor ด้วย ไม่ใช่แค่ตั้ง flag:
+    // กล้อง native เริ่มนับ frameNumber ใหม่หลัง resume ถ้าไม่ล้างเลขเฟรมล่าสุด
+    // เฟรมชุดใหม่จะถูกตัดเป็น outOfOrder ทั้งหมดจนกว่าจะเลยเลขเดิม
+    _resetRealtimePipeline();
+    notifyListeners();
+
     try {
       if (nextEnabled) {
-        if (!_isCameraSuspended) {
-          await _yoloController.resume();
-        }
+        // ถูกพักด้วย route/app lifecycle อยู่ -> ยังไม่ต้อง resume
+        // resumeCamera() จะสั่งให้เองเมื่อกลับมาที่หน้านี้
+        if (_isCameraSuspended) return;
+        await _yoloController.resume();
       } else {
         await _yoloController.pause();
       }
-      _isCameraEnabled = nextEnabled;
-      _resetDetectionSession();
-      // ต้องรีเซ็ต guard/monitor ด้วย ไม่ใช่แค่ตั้ง flag:
-      // กล้อง native เริ่มนับ frameNumber ใหม่หลัง resume ถ้าไม่ล้างเลขเฟรมล่าสุด
-      // เฟรมชุดใหม่จะถูกตัดเป็น outOfOrder ทั้งหมดจนกว่าจะเลยเลขเดิม
-      _resetRealtimePipeline();
-      notifyListeners();
     } catch (error) {
-      // แยกข้อความตามทิศทางที่สั่ง (เปิด/ปิด) เพื่อให้ผู้ใช้รู้ว่าคำสั่งไหนล้มเหลว
+      if (_isDisposed) return;
+
       String failureMessage;
       if (nextEnabled) {
         failureMessage = 'ไม่สามารถเปิดกล้องได้: $error';
       } else {
         failureMessage = 'ไม่สามารถปิดกล้องได้: $error';
+      }
+
+      // native ปฏิเสธคำสั่ง -> ย้อน flag กลับให้ตรงกับความจริง
+      // ข้ามการย้อนถ้าผู้ใช้กดสลับซ้ำระหว่างรอ await (state ไม่ใช่ของรอบนี้แล้ว)
+      if (_isCameraEnabled == nextEnabled) {
+        _isCameraEnabled = !nextEnabled;
       }
       _loadingMessage = failureMessage;
       notifyListeners();
@@ -644,6 +634,15 @@ class CameraInferenceController extends ChangeNotifier {
     _pipelineSnapshot = const RealtimePipelineSnapshot.empty();
     _lastFreshFrameCapturedAt = null;
     _isRealtimePipelineStale = true;
+    // เลขลำดับสำรองต้องเริ่มใหม่พร้อมกับ guard ที่ล้าง _lastAcceptedFrameNumber
+    _nextStreamSequence = 0;
+    // ค่า FPS ต้องล้างด้วย ไม่งั้นเลขเก่าค้างบนจอหลังปิดกล้อง
+    // ทำให้เข้าใจผิดว่ากล้องยังทำงานอยู่ทั้งที่สตรีมหยุดแล้ว
+    // _lastFpsUpdate สำคัญไม่แพ้กัน: ถ้าไม่รีเซ็ต elapsed รอบแรกหลังเปิดใหม่
+    // จะกลายเป็นค่ามหาศาล ทำให้ FPS ที่คำนวณได้เพี้ยนไปเลย
+    _currentFps = 0.0;
+    _frameCount = 0;
+    _lastFpsUpdate = DateTime.now();
   }
 
   /// เลขใช้สำหรับ UI เท่านั้น ส่วนเสียง sign_number มาจาก stable detected event

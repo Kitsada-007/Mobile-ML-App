@@ -94,73 +94,30 @@ class SignNumberPipelineService {
     final selectedSign = _selectBestNumberSign(detectionResults);
     if (selectedSign == null) return const SignNumberAnalysis();
 
-    final taskData = _createRealtimeFrameTaskData(
-      frameBytes: frameBytes,
-      selectedSign: selectedSign,
-      expectedFrameWidth: expectedFrameWidth,
-      expectedFrameHeight: expectedFrameHeight,
-      rotationDegrees: rotationDegrees,
-    );
-    final taskResult = await _realtimeCropProcessor.process(taskData);
-
-    if (taskResult.tightCropBytes == null) {
-      return const SignNumberAnalysis();
-    }
-
-    final tightReading = await _numberDetectionService.detect(
-      taskResult.tightCropBytes!,
-    );
-    if (tightReading.digitCount >= 2) {
-      return SignNumberAnalysis(
-        cropBytes: taskResult.tightCropBytes,
-        number: tightReading.number,
+    final firstCandidate = await _readBestCropOfTask(
+      _createRealtimeFrameTaskData(
+        frameBytes: frameBytes,
         selectedSign: selectedSign,
-      );
+        expectedFrameWidth: expectedFrameWidth,
+        expectedFrameHeight: expectedFrameHeight,
+        rotationDegrees: rotationDegrees,
+      ),
+    );
+    if (firstCandidate == null) return const SignNumberAnalysis();
+
+    // ลองหมุนอีกทิศเฉพาะตอนที่ยังไม่ได้เลขและยังพอเดามุมหมุนใหม่ได้:
+    // ถ้ารู้มุมจริงอยู่แล้ว (rotationDegrees) หรือไม่รู้ขนาดเฟรมที่คาดหวัง
+    // worker จะคำนวณได้ crop ชุดเดิม ลองไปก็เสีย inference เปล่า
+    final bool shouldRetryRotated =
+        firstCandidate.reading.number == null &&
+        rotationDegrees == null &&
+        expectedFrameWidth != null &&
+        expectedFrameHeight != null;
+    if (!shouldRetryRotated) {
+      return _toAnalysis(firstCandidate, selectedSign);
     }
 
-    final NumberDetectionResult wideReading;
-    if (taskResult.wideCropBytes == null) {
-      wideReading = const NumberDetectionResult();
-    } else {
-      wideReading = await _numberDetectionService.detect(
-        taskResult.wideCropBytes!,
-      );
-    }
-
-    final NumberDetectionResult preferred;
-    if (wideReading.digitCount != tightReading.digitCount) {
-      if (wideReading.digitCount > tightReading.digitCount) {
-        preferred = wideReading;
-      } else {
-        preferred = tightReading;
-      }
-    } else {
-      if (wideReading.averageConfidence > tightReading.averageConfidence) {
-        preferred = wideReading;
-      } else {
-        preferred = tightReading;
-      }
-    }
-
-    final Uint8List? selectedBytes;
-    if (preferred == wideReading) {
-      selectedBytes = taskResult.wideCropBytes;
-    } else {
-      selectedBytes = taskResult.tightCropBytes;
-    }
-
-    if (preferred.number != null ||
-        rotationDegrees != null ||
-        expectedFrameWidth == null ||
-        expectedFrameHeight == null) {
-      return SignNumberAnalysis(
-        cropBytes: selectedBytes,
-        number: preferred.number,
-        selectedSign: selectedSign,
-      );
-    }
-
-    final altResult = await _realtimeCropProcessor.process(
+    final rotatedCandidate = await _readBestCropOfTask(
       _createRealtimeFrameTaskData(
         frameBytes: frameBytes,
         selectedSign: selectedSign,
@@ -169,60 +126,41 @@ class SignNumberPipelineService {
         runAlternative: true,
       ),
     );
+    if (rotatedCandidate == null) return const SignNumberAnalysis();
 
-    if (altResult.tightCropBytes == null) {
-      return const SignNumberAnalysis();
-    }
+    return _toAnalysis(rotatedCandidate, selectedSign);
+  }
 
-    final altTightReading = await _numberDetectionService.detect(
-      altResult.tightCropBytes!,
+  /// สั่ง worker crop 1 รอบ (ได้ทั้ง tight/wide จากการ decode ครั้งเดียว)
+  /// แล้วอ่านเลขจาก crop ที่ได้
+  ///
+  /// คืน null เมื่อ crop ไม่สำเร็จ เพื่อให้ผู้เรียกแยกออกจากกรณี crop สำเร็จ
+  /// แต่อ่านเลขไม่ได้ ซึ่งยังต้องคืน cropBytes ออกไปให้ UI ใช้ดูปัญหา
+  Future<_DigitCandidate?> _readBestCropOfTask(
+    RealtimeFrameTaskData taskData,
+  ) async {
+    final taskResult = await _realtimeCropProcessor.process(taskData);
+    if (taskResult.tightCropBytes == null) return null;
+
+    final tightReading = await _numberDetectionService.detect(
+      taskResult.tightCropBytes!,
     );
-    if (altTightReading.digitCount >= 2) {
-      return SignNumberAnalysis(
-        cropBytes: altResult.tightCropBytes,
-        number: altTightReading.number,
-        selectedSign: selectedSign,
-      );
-    }
-
-    final NumberDetectionResult altWideReading;
-    if (altResult.wideCropBytes == null) {
-      altWideReading = const NumberDetectionResult();
-    } else {
-      altWideReading = await _numberDetectionService.detect(
-        altResult.wideCropBytes!,
-      );
-    }
-
-    final NumberDetectionResult altPreferred;
-    if (altWideReading.digitCount != altTightReading.digitCount) {
-      if (altWideReading.digitCount > altTightReading.digitCount) {
-        altPreferred = altWideReading;
-      } else {
-        altPreferred = altTightReading;
-      }
-    } else {
-      final altWideConfidence = altWideReading.averageConfidence;
-      final altTightConfidence = altTightReading.averageConfidence;
-      if (altWideConfidence > altTightConfidence) {
-        altPreferred = altWideReading;
-      } else {
-        altPreferred = altTightReading;
-      }
-    }
-
-    final Uint8List? altSelectedBytes;
-    if (altPreferred == altWideReading) {
-      altSelectedBytes = altResult.wideCropBytes;
-    } else {
-      altSelectedBytes = altResult.tightCropBytes;
-    }
-
-    return SignNumberAnalysis(
-      cropBytes: altSelectedBytes,
-      number: altPreferred.number,
-      selectedSign: selectedSign,
+    final tightCandidate = _DigitCandidate(
+      cropBytes: taskResult.tightCropBytes,
+      reading: tightReading,
     );
+    // ครบ 2 หลักแล้วไม่ต้องอ่าน wide ต่อ — ประหยัด inference 1 ครั้งต่อเฟรม
+    if (tightReading.digitCount >= 2) return tightCandidate;
+    if (taskResult.wideCropBytes == null) return tightCandidate;
+
+    final wideReading = await _numberDetectionService.detect(
+      taskResult.wideCropBytes!,
+    );
+    final wideCandidate = _DigitCandidate(
+      cropBytes: taskResult.wideCropBytes,
+      reading: wideReading,
+    );
+    return _preferDigitCandidate(tightCandidate, wideCandidate);
   }
 
   Future<void> dispose() => _realtimeCropProcessor.dispose();
@@ -233,34 +171,13 @@ class SignNumberPipelineService {
     required Uint8List frameBytes,
     required List<YOLOResult> detectionResults,
   }) async {
-    final signResults = detectionResults
-        .where((result) => result.className == 'sign_number')
-        .toList();
-
-    if (signResults.isEmpty) {
+    final sign = _selectBestNumberSign(detectionResults);
+    if (sign == null) {
       _debugPipeline('ไม่พบคลาส sign_number');
       return const SignNumberAnalysis();
     }
 
-    signResults.sort((a, b) => b.confidence.compareTo(a.confidence));
-
-    final sign = signResults.first;
-    final normalizedRect = sign.normalizedBox;
-
-    final bool normalizedIsValid =
-        normalizedRect.left >= 0 &&
-        normalizedRect.top >= 0 &&
-        normalizedRect.right > normalizedRect.left &&
-        normalizedRect.bottom > normalizedRect.top &&
-        normalizedRect.right <= 1.01 &&
-        normalizedRect.bottom <= 1.01;
-
-    final Rect rect;
-    if (normalizedIsValid) {
-      rect = normalizedRect;
-    } else {
-      rect = sign.boundingBox;
-    }
+    final rect = _resolveCropRect(sign);
 
     _debugPipeline('Normalized box: ${sign.normalizedBox}');
     _debugPipeline('Bounding box: ${sign.boundingBox}');
@@ -274,11 +191,7 @@ class SignNumberPipelineService {
     );
 
     if (tightCandidate.reading.digitCount >= 2) {
-      return SignNumberAnalysis(
-        cropBytes: tightCandidate.cropBytes,
-        number: tightCandidate.reading.number,
-        selectedSign: sign,
-      );
+      return _toAnalysis(tightCandidate, sign);
     }
 
     final wideCandidate = await _analyzeCrop(
@@ -292,11 +205,7 @@ class SignNumberPipelineService {
       wideCandidate,
     );
 
-    return SignNumberAnalysis(
-      cropBytes: selectedCandidate.cropBytes,
-      number: selectedCandidate.reading.number,
-      selectedSign: sign,
-    );
+    return _toAnalysis(selectedCandidate, sign);
   }
 
   /// ลองวิเคราะห์ 1 crop (เป็น background isolate ผ่าน compute) แล้วเก็บผล
@@ -325,24 +234,6 @@ class SignNumberPipelineService {
     final reading = await _numberDetectionService.detect(processedBytes);
     return _DigitCandidate(cropBytes: processedBytes, reading: reading);
   }
-
-  /// เลือก crop ที่ดีกว่าระหว่างแน่น (tight) กับกว้าง (wide):
-  /// หลักมากกว่า -> ใช้; หลักเท่ากัน -> ใช้ค่าที่ confidence เฉลี่ยสูงกว่า
-  _DigitCandidate _preferDigitCandidate(
-    _DigitCandidate tight,
-    _DigitCandidate wide,
-  ) {
-    final tightDigitCount = tight.reading.digitCount;
-    final wideDigitCount = wide.reading.digitCount;
-    if (wideDigitCount != tightDigitCount) {
-      if (wideDigitCount > tightDigitCount) return wide;
-      return tight;
-    }
-    final tightConfidence = tight.reading.averageConfidence;
-    final wideConfidence = wide.reading.averageConfidence;
-    if (wideConfidence > tightConfidence) return wide;
-    return tight;
-  }
 }
 
 /// เลือกป้าย sign_number ที่มีความมั่นใจสูงสุดจากผลการตรวจจับ (หรือ null ถ้าไม่พบ)
@@ -355,6 +246,53 @@ YOLOResult? _selectBestNumberSign(List<YOLOResult> detectionResults) {
   return signResults.first;
 }
 
+/// เลือกกล่องพิกัดที่จะใช้ crop: ใช้ normalizedBox เมื่อค่าอยู่ในช่วงที่สมเหตุสมผล
+/// (เผื่อถึง 1.01 เพราะกล่องที่ชนขอบภาพพอดีอาจเกิน 1.0 นิดหน่อยจาก floating-point)
+/// ไม่งั้นถอยไปใช้ boundingBox ซึ่งเป็นพิกัดพิกเซล
+Rect _resolveCropRect(YOLOResult sign) {
+  final normalizedRect = sign.normalizedBox;
+  final normalizedIsValid =
+      normalizedRect.left >= 0 &&
+      normalizedRect.top >= 0 &&
+      normalizedRect.right > normalizedRect.left &&
+      normalizedRect.bottom > normalizedRect.top &&
+      normalizedRect.right <= 1.01 &&
+      normalizedRect.bottom <= 1.01;
+  if (normalizedIsValid) return normalizedRect;
+  return sign.boundingBox;
+}
+
+/// เลือก crop ที่ดีกว่าระหว่างแน่น (tight) กับกว้าง (wide):
+/// หลักมากกว่า -> ใช้; หลักเท่ากัน -> ใช้ค่าที่ confidence เฉลี่ยสูงกว่า
+/// เสมอกันทั้งสองอย่างให้ tight ชนะ เพราะ crop แน่นมีสิ่งรบกวนรอบเลขน้อยกว่า
+_DigitCandidate _preferDigitCandidate(
+  _DigitCandidate tight,
+  _DigitCandidate wide,
+) {
+  final tightDigitCount = tight.reading.digitCount;
+  final wideDigitCount = wide.reading.digitCount;
+  if (wideDigitCount != tightDigitCount) {
+    if (wideDigitCount > tightDigitCount) return wide;
+    return tight;
+  }
+  final tightConfidence = tight.reading.averageConfidence;
+  final wideConfidence = wide.reading.averageConfidence;
+  if (wideConfidence > tightConfidence) return wide;
+  return tight;
+}
+
+/// แปลงผลที่เลือกได้ให้เป็นรูปแบบที่ส่งออกนอก service
+SignNumberAnalysis _toAnalysis(
+  _DigitCandidate candidate,
+  YOLOResult selectedSign,
+) {
+  return SignNumberAnalysis(
+    cropBytes: candidate.cropBytes,
+    number: candidate.reading.number,
+    selectedSign: selectedSign,
+  );
+}
+
 RealtimeFrameTaskData _createRealtimeFrameTaskData({
   required Uint8List frameBytes,
   required YOLOResult selectedSign,
@@ -363,20 +301,7 @@ RealtimeFrameTaskData _createRealtimeFrameTaskData({
   int? rotationDegrees,
   bool runAlternative = false,
 }) {
-  final normalizedRect = selectedSign.normalizedBox;
-  final normalizedIsValid =
-      normalizedRect.left >= 0 &&
-      normalizedRect.top >= 0 &&
-      normalizedRect.right > normalizedRect.left &&
-      normalizedRect.bottom > normalizedRect.top &&
-      normalizedRect.right <= 1.01 &&
-      normalizedRect.bottom <= 1.01;
-  final Rect rect;
-  if (normalizedIsValid) {
-    rect = normalizedRect;
-  } else {
-    rect = selectedSign.boundingBox;
-  }
+  final rect = _resolveCropRect(selectedSign);
 
   return RealtimeFrameTaskData(
     frameBytes: frameBytes,
