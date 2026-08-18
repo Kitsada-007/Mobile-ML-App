@@ -42,24 +42,13 @@ class CameraInferenceOverlay extends StatelessWidget {
         const SizedBox(width: 8),
         const Expanded(child: _BrandBadge()),
         const SizedBox(width: 8),
-        // สำรองตำแหน่งขนาดเท่าปุ่มซ้าย เพื่อให้ป้ายแบรนด์อยู่กึ่งกลางจริง
-        SizedBox(
-          width: 48,
-          height: 48,
-          child: Center(
-            child: Icon(
-              Icons.notifications_none_rounded,
-              color: colorScheme.onSurface,
-              semanticLabel: 'การแจ้งเตือน',
-            ),
-          ),
-        ),
+        const SizedBox(width: 48, height: 48),
       ],
     );
   }
 }
 
-/// ป้ายแบรนด์ (ชื่อไทย + ภาษาอังกฤษ + ชื่อเล่น)
+/// ป้ายแบรนด์ (โลโก้ + ชื่อแอป + คำอธิบายสั้น)
 class _BrandBadge extends StatelessWidget {
   const _BrandBadge();
 
@@ -72,21 +61,25 @@ class _BrandBadge extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            'ระบบตรวจจับไฟจราจร',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: colorScheme.onSurface,
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.4,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Image.asset('assets/images/app.png', width: 28, height: 28),
+              const SizedBox(width: 8),
+              Text(
+                'Berng Fai',
+                style: TextStyle(
+                  color: colorScheme.onSurface,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.4,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 2),
           Text(
-            'Traffic Light Detection',
+            'Live Traffic Detection',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
@@ -94,15 +87,6 @@ class _BrandBadge extends StatelessWidget {
               color: colorScheme.onSurfaceVariant,
               fontSize: 12,
               fontWeight: FontWeight.w500,
-            ),
-          ),
-          const Text(
-            'Berng Fai',
-            style: TextStyle(
-              color: Color(0xFF0B9A5A),
-              fontSize: 9,
-              height: 1.1,
-              fontWeight: FontWeight.w800,
             ),
           ),
         ],
