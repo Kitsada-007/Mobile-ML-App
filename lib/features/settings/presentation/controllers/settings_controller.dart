@@ -26,14 +26,64 @@ class SettingsProvider extends ChangeNotifier {
 
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    _isLightMode = prefs.getBool('isLightMode') ?? true;
-    _isVoiceEnabled = prefs.getBool('isVoiceEnabled') ?? true;
-    _iouThreshold = prefs.getDouble('iouThreshold') ?? 0.45;
-    _confidenceThreshold = prefs.getDouble('confidenceThreshold') ?? 0.5;
-    _numItemsThreshold = prefs.getInt('numItemsThreshold') ?? 11;
-    _ttsVolume = prefs.getDouble('ttsVolume') ?? 1.0;
-    _ttsSpeed = prefs.getDouble('ttsSpeed') ?? 0.6;
-    _ttsPitch = prefs.getDouble('ttsPitch') ?? 1.0;
+
+    // ค่าที่ยังไม่เคยถูกบันทึกจะได้ null กลับมา จึงต้องเทียบกับค่าเริ่มต้นทีละตัว
+    final storedIsLightMode = prefs.getBool('isLightMode');
+    if (storedIsLightMode == null) {
+      _isLightMode = true;
+    } else {
+      _isLightMode = storedIsLightMode;
+    }
+
+    final storedIsVoiceEnabled = prefs.getBool('isVoiceEnabled');
+    if (storedIsVoiceEnabled == null) {
+      _isVoiceEnabled = true;
+    } else {
+      _isVoiceEnabled = storedIsVoiceEnabled;
+    }
+
+    final storedIouThreshold = prefs.getDouble('iouThreshold');
+    if (storedIouThreshold == null) {
+      _iouThreshold = 0.45;
+    } else {
+      _iouThreshold = storedIouThreshold;
+    }
+
+    final storedConfidenceThreshold = prefs.getDouble('confidenceThreshold');
+    if (storedConfidenceThreshold == null) {
+      _confidenceThreshold = 0.5;
+    } else {
+      _confidenceThreshold = storedConfidenceThreshold;
+    }
+
+    final storedNumItemsThreshold = prefs.getInt('numItemsThreshold');
+    if (storedNumItemsThreshold == null) {
+      _numItemsThreshold = 11;
+    } else {
+      _numItemsThreshold = storedNumItemsThreshold;
+    }
+
+    final storedTtsVolume = prefs.getDouble('ttsVolume');
+    if (storedTtsVolume == null) {
+      _ttsVolume = 1.0;
+    } else {
+      _ttsVolume = storedTtsVolume;
+    }
+
+    final storedTtsSpeed = prefs.getDouble('ttsSpeed');
+    if (storedTtsSpeed == null) {
+      _ttsSpeed = 0.6;
+    } else {
+      _ttsSpeed = storedTtsSpeed;
+    }
+
+    final storedTtsPitch = prefs.getDouble('ttsPitch');
+    if (storedTtsPitch == null) {
+      _ttsPitch = 1.0;
+    } else {
+      _ttsPitch = storedTtsPitch;
+    }
+
     notifyListeners();
   }
 

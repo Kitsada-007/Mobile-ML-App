@@ -54,9 +54,17 @@ RealtimeFrameTaskResult processRealtimeFrameTask(RealtimeFrameTaskData data) {
         original.width == data.expectedFrameHeight &&
         original.height == data.expectedFrameWidth;
     if (data.runAlternative) {
-      degrees = dimensionsAreReversed ? 270 : 180;
+      if (dimensionsAreReversed) {
+        degrees = 270;
+      } else {
+        degrees = 180;
+      }
     } else {
-      degrees = dimensionsAreReversed ? 90 : 0;
+      if (dimensionsAreReversed) {
+        degrees = 90;
+      } else {
+        degrees = 0;
+      }
     }
   }
 
@@ -115,9 +123,12 @@ RealtimeFrameTaskResult processRealtimeFrameTask(RealtimeFrameTaskData data) {
     // จัดสเกลให้พอดีกับช่วงที่ digit model รองรับ
     final int shortestEdge = min(cropped.width, cropped.height);
     final int longestEdge = max(cropped.width, cropped.height);
-    double scale = shortestEdge < minimumDigitCropEdge
-        ? minimumDigitCropEdge / shortestEdge
-        : 1;
+    double scale;
+    if (shortestEdge < minimumDigitCropEdge) {
+      scale = minimumDigitCropEdge / shortestEdge;
+    } else {
+      scale = 1;
+    }
 
     if (longestEdge * scale > maximumDigitCropEdge) {
       scale = maximumDigitCropEdge / longestEdge;

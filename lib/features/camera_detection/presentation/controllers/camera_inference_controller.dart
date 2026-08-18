@@ -31,8 +31,14 @@ export 'package:trffic_ilght_app/features/camera_detection/data/models/realtime_
 /// ฟังก์ชันยอมรับตัวเลขนับถอยหลัง:
 /// - ตัดช่องว่างหัว/ท้าย แล้วคืน null ถ้าเป็น string ว่าง (ตัวเลขไม่ผ่านการยอมรับ)
 String? acceptCountdownReading(String? reading) {
-  final normalized = reading?.trim();
-  return normalized == null || normalized.isEmpty ? null : normalized;
+  if (reading == null) {
+    return null;
+  }
+  final normalized = reading.trim();
+  if (normalized.isEmpty) {
+    return null;
+  }
+  return normalized;
 }
 
 /// ค่า confidence threshold ขั้นต่ำสำหรับป้าย sign_number (ในโหมด realtime)
@@ -170,11 +176,20 @@ class CameraInferenceController extends ChangeNotifier {
           .priority;
       return firstPriority.compareTo(secondPriority);
     });
-    return lights.isEmpty ? null : lights.first.className;
+    if (lights.isEmpty) {
+      return null;
+    }
+    return lights.first.className;
   }
 
-  int? get activeTrafficLightTrackingId =>
-      _stableTrafficLights.isEmpty ? null : _stableTrafficLights.first.trackId;
+  int? get activeTrafficLightTrackingId {
+    final trafficLights = _stableTrafficLights;
+    if (trafficLights.isEmpty) {
+      return null;
+    }
+    return trafficLights.first.trackId;
+  }
+
   RealtimePipelineSnapshot get pipelineSnapshot => _pipelineSnapshot;
   bool get isRealtimePipelineStale => _isRealtimePipelineStale;
 
@@ -200,10 +215,16 @@ class CameraInferenceController extends ChangeNotifier {
   String get detectionStatus {
     if (!_isCameraEnabled) return 'กล้องปิดอยู่';
     if (_isModelLoading) {
-      return _loadingMessage.isEmpty ? 'กำลังโหลดโมเดล' : _loadingMessage;
+      if (_loadingMessage.isEmpty) {
+        return 'กำลังโหลดโมเดล';
+      }
+      return _loadingMessage;
     }
     if (_modelPath == null) {
-      return _loadingMessage.isEmpty ? 'ไม่พบโมเดล' : _loadingMessage;
+      if (_loadingMessage.isEmpty) {
+        return 'ไม่พบโมเดล';
+      }
+      return _loadingMessage;
     }
     if (_isRealtimePipelineStale) return 'กล้องไม่พร้อมหรือกำลังรอสัญญาณภาพ';
     if (_lastDetectionConfidence != null &&
@@ -228,10 +249,18 @@ class CameraInferenceController extends ChangeNotifier {
     @visibleForTesting bool enableFreshnessWatchdog = true,
     @visibleForTesting ModelManager? modelManager,
   }) {
-    _clock = clock ?? DateTime.now;
+    if (clock == null) {
+      _clock = DateTime.now;
+    } else {
+      _clock = clock;
+    }
     _maximumFrameAge = maximumFrameAge;
     _enableFreshnessWatchdog = enableFreshnessWatchdog;
-    _voiceService = voiceService ?? TrafficVoiceService();
+    if (voiceService == null) {
+      _voiceService = TrafficVoiceService();
+    } else {
+      _voiceService = voiceService;
+    }
     _numberInferenceEngine = RealtimeNumberInferenceEngine(
       service: signNumberPipelineService,
       detectionInterval: numberDetectionInterval,
@@ -243,25 +272,32 @@ class CameraInferenceController extends ChangeNotifier {
       maximumFrameAge: maximumFrameAge,
     );
     _pipelineMonitor = RealtimePipelineMonitor();
-    _detectionStabilizer =
-        detectionStabilizer ?? DetectionStabilizer(config: _detectionConfig);
-    _voiceAlertController =
-        voiceAlertController ??
-        VoiceAlertController(
-          config: _detectionConfig,
-          speakClassName: _speakStableClass,
-        );
+    if (detectionStabilizer == null) {
+      _detectionStabilizer = DetectionStabilizer(config: _detectionConfig);
+    } else {
+      _detectionStabilizer = detectionStabilizer;
+    }
+    if (voiceAlertController == null) {
+      _voiceAlertController = VoiceAlertController(
+        config: _detectionConfig,
+        speakClassName: _speakStableClass,
+      );
+    } else {
+      _voiceAlertController = voiceAlertController;
+    }
     _isFrontCamera = _lensFacing == LensFacing.front;
 
-    _modelManager =
-        modelManager ??
-        ModelManager(
-          onStatusUpdate: (message) {
-            if (_isDisposed) return;
-            _loadingMessage = message;
-            notifyListeners();
-          },
-        );
+    if (modelManager == null) {
+      _modelManager = ModelManager(
+        onStatusUpdate: (message) {
+          if (_isDisposed) return;
+          _loadingMessage = message;
+          notifyListeners();
+        },
+      );
+    } else {
+      _modelManager = modelManager;
+    }
   }
 
   /// เริ่มต้นระบบ: เปิด watchdog + โหลดค่า threshold เก็บไว้ + โหลดโมเดลทั้ง 2 ตัว
@@ -270,9 +306,24 @@ class CameraInferenceController extends ChangeNotifier {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      _iouThreshold = prefs.getDouble('iouThreshold') ?? 0.45;
-      _confidenceThreshold = prefs.getDouble('confidenceThreshold') ?? 0.5;
-      _numItemsThreshold = prefs.getInt('numItemsThreshold') ?? 11;
+      final storedIouThreshold = prefs.getDouble('iouThreshold');
+      if (storedIouThreshold == null) {
+        _iouThreshold = 0.45;
+      } else {
+        _iouThreshold = storedIouThreshold;
+      }
+      final storedConfidenceThreshold = prefs.getDouble('confidenceThreshold');
+      if (storedConfidenceThreshold == null) {
+        _confidenceThreshold = 0.5;
+      } else {
+        _confidenceThreshold = storedConfidenceThreshold;
+      }
+      final storedNumItemsThreshold = prefs.getInt('numItemsThreshold');
+      if (storedNumItemsThreshold == null) {
+        _numItemsThreshold = 11;
+      } else {
+        _numItemsThreshold = storedNumItemsThreshold;
+      }
     } catch (e) {
       log('Failed to load thresholds from SharedPreferences: $e');
     }
@@ -442,8 +493,14 @@ class CameraInferenceController extends ChangeNotifier {
       _resetRealtimePipeline();
       notifyListeners();
     } catch (error) {
-      _loadingMessage =
-          'ไม่สามารถ${nextEnabled ? 'เปิด' : 'ปิด'}กล้องได้: $error';
+      // แยกข้อความตามทิศทางที่สั่ง (เปิด/ปิด) เพื่อให้ผู้ใช้รู้ว่าคำสั่งไหนล้มเหลว
+      String failureMessage;
+      if (nextEnabled) {
+        failureMessage = 'ไม่สามารถเปิดกล้องได้: $error';
+      } else {
+        failureMessage = 'ไม่สามารถปิดกล้องได้: $error';
+      }
+      _loadingMessage = failureMessage;
       notifyListeners();
     }
   }
@@ -541,7 +598,12 @@ class CameraInferenceController extends ChangeNotifier {
   void expireStaleResults({DateTime? now}) {
     if (_isDisposed) return;
 
-    final checkedAt = now ?? _clock();
+    DateTime checkedAt;
+    if (now == null) {
+      checkedAt = _clock();
+    } else {
+      checkedAt = now;
+    }
     final lastCapturedAt = _lastFreshFrameCapturedAt;
     if (lastCapturedAt == null ||
         checkedAt.difference(lastCapturedAt) <= _maximumFrameAge) {
@@ -613,11 +675,19 @@ class CameraInferenceController extends ChangeNotifier {
     if (_isDisposed || !isCameraActive) return;
 
     var shouldNotify = false;
-    final observationTime = timestamp ?? _clock();
+    DateTime observationTime;
+    if (timestamp == null) {
+      observationTime = _clock();
+    } else {
+      observationTime = timestamp;
+    }
     final qualifiedDetections = results.where((result) {
-      final threshold = result.className == 'sign_number'
-          ? realtimeSignConfidenceThreshold
-          : _confidenceThreshold;
+      double threshold;
+      if (result.className == 'sign_number') {
+        threshold = realtimeSignConfidenceThreshold;
+      } else {
+        threshold = _confidenceThreshold;
+      }
       return result.confidence >= threshold;
     });
     final stabilization = _detectionStabilizer.update(
@@ -670,11 +740,17 @@ class CameraInferenceController extends ChangeNotifier {
     final stableConfidences = stableDetections.map(
       (detection) => detection.confidence,
     );
-    final stableConfidence = stableDetections.isEmpty
-        ? null
-        : stableConfidences.reduce(
-            (first, second) => first > second ? first : second,
-          );
+    double? stableConfidence;
+    if (stableDetections.isEmpty) {
+      stableConfidence = null;
+    } else {
+      stableConfidence = stableConfidences.reduce((first, second) {
+        if (first > second) {
+          return first;
+        }
+        return second;
+      });
+    }
 
     if (!listEquals(_detectedFormalNames, formalNames) ||
         !listEquals(_detectedAlertMessages, alertMessages) ||
@@ -733,9 +809,12 @@ class CameraInferenceController extends ChangeNotifier {
   Future<void> _speakStableClass(String className) {
     final formalName = videoFormalThaiName(className);
     final alertMessage = _voiceService.getThaiMessage(className);
-    final message = alertMessage.isEmpty
-        ? formalName
-        : '$formalName: $alertMessage';
+    String message;
+    if (alertMessage.isEmpty) {
+      message = formalName;
+    } else {
+      message = '$formalName: $alertMessage';
+    }
     return _voiceService.speak(message);
   }
 
@@ -763,7 +842,11 @@ class CameraInferenceController extends ChangeNotifier {
   void toggleSlider(SliderType type) {
     if (_isDisposed) return;
 
-    _activeSlider = _activeSlider == type ? SliderType.none : type;
+    if (_activeSlider == type) {
+      _activeSlider = SliderType.none;
+    } else {
+      _activeSlider = type;
+    }
     notifyListeners();
   }
 
@@ -836,7 +919,11 @@ class CameraInferenceController extends ChangeNotifier {
     _resetDetectionSession();
     _resetRealtimePipeline();
     _isFrontCamera = !_isFrontCamera;
-    _lensFacing = _isFrontCamera ? LensFacing.front : LensFacing.back;
+    if (_isFrontCamera) {
+      _lensFacing = LensFacing.front;
+    } else {
+      _lensFacing = LensFacing.back;
+    }
 
     if (_isFrontCamera) {
       _currentZoomLevel = 1.0;

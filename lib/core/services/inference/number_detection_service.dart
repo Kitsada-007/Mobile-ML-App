@@ -27,9 +27,11 @@ class NumberDetectionResult {
 
 /// Detects and orders digits from an already-preprocessed sign crop.
 class NumberDetectionService {
-  NumberDetectionService({required YOLO numberYolo}) : _numberYolo = numberYolo;
+  NumberDetectionService({required YOLO numberYolo}) {
+    _numberYolo = numberYolo;
+  }
 
-  final YOLO _numberYolo;
+  late final YOLO _numberYolo;
 
   Future<String?> detectNumber(Uint8List imageBytes) async {
     final result = await detect(imageBytes);
@@ -121,5 +123,6 @@ double _intersectionOverUnion(Rect first, Rect second) {
       first.width * first.height +
       second.width * second.height -
       intersectionArea;
-  return unionArea <= 0 ? 0 : intersectionArea / unionArea;
+  if (unionArea <= 0) return 0;
+  return intersectionArea / unionArea;
 }

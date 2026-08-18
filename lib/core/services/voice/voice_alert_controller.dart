@@ -8,9 +8,11 @@ final class VoiceAlertController {
   VoiceAlertController({
     required StableClassSpeaker speakClassName,
     this.config = const DetectionAlertConfig(),
-  }) : _speakClassName = speakClassName;
+  }) {
+    _speakClassName = speakClassName;
+  }
 
-  final StableClassSpeaker _speakClassName;
+  late final StableClassSpeaker _speakClassName;
   final DetectionAlertConfig config;
   final Map<String, DateTime> _lastSpokenAtByClass = {};
   bool _isSpeaking = false;

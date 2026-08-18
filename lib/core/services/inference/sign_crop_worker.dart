@@ -170,8 +170,12 @@ void _signCropWorkerEntryPoint(SendPort responsePort) async {
   requestPort.close();
 }
 
-TransferableTypedData? _transferBytes(Uint8List? bytes) =>
-    bytes == null ? null : TransferableTypedData.fromList([bytes]);
+TransferableTypedData? _transferBytes(Uint8List? bytes) {
+  if (bytes == null) return null;
+  return TransferableTypedData.fromList([bytes]);
+}
 
-Uint8List? _materializeBytes(dynamic data) =>
-    data is TransferableTypedData ? data.materialize().asUint8List() : null;
+Uint8List? _materializeBytes(dynamic data) {
+  if (data is TransferableTypedData) return data.materialize().asUint8List();
+  return null;
+}

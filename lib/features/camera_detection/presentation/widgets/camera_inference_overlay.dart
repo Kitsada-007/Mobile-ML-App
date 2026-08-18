@@ -20,13 +20,23 @@ class CameraInferenceOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
+    String navigationTooltip;
+    IconData navigationIcon;
+    if (showMenuButton) {
+      navigationTooltip = 'เปิดเมนู';
+      navigationIcon = Icons.menu_rounded;
+    } else {
+      navigationTooltip = 'ย้อนกลับ';
+      navigationIcon = Icons.arrow_back_rounded;
+    }
+
     return Row(
       key: const Key('cameraPageHeader'),
       children: [
         _HeaderButton(
           key: const Key('cameraNavigationButton'),
-          tooltip: showMenuButton ? 'เปิดเมนู' : 'ย้อนกลับ',
-          icon: showMenuButton ? Icons.menu_rounded : Icons.arrow_back_rounded,
+          tooltip: navigationTooltip,
+          icon: navigationIcon,
           onPressed: onLeadingPressed,
         ),
         const SizedBox(width: 8),

@@ -146,7 +146,13 @@ class SignalInterpreter {
 
     // ไฟแดง = หยุดเสมอ ไม่ต้องสนใจป้ายทิศทางเลย (ความปลอดภัยมาก่อน)
     if (lightKey == TrafficSignalClasses.redLightCircle) {
-      final number = int.tryParse(countdownNumberText ?? '');
+      final String countdownText;
+      if (countdownNumberText == null) {
+        countdownText = '';
+      } else {
+        countdownText = countdownNumberText;
+      }
+      final number = int.tryParse(countdownText);
       if (number != null && number >= 1 && number <= 5) {
         return DriverSignalResult(
           message: 'ไฟแดง - เตรียมออกตัว อีก $number วินาที',

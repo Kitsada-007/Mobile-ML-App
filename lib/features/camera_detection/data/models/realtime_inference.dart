@@ -29,19 +29,48 @@ class RealtimeFramePacket {
     required int fallbackFrameNumber,
     DateTime? receivedAt,
   }) {
-    final callbackReceivedAt = receivedAt ?? DateTime.now();
+    DateTime callbackReceivedAt;
+    if (receivedAt == null) {
+      callbackReceivedAt = DateTime.now();
+    } else {
+      callbackReceivedAt = receivedAt;
+    }
+
     final timestampMilliseconds = _readInt(data['timestamp']);
-    final resultProducedAt = timestampMilliseconds == null
-        ? callbackReceivedAt
-        : DateTime.fromMillisecondsSinceEpoch(timestampMilliseconds);
+    DateTime resultProducedAt;
+    if (timestampMilliseconds == null) {
+      resultProducedAt = callbackReceivedAt;
+    } else {
+      resultProducedAt = DateTime.fromMillisecondsSinceEpoch(
+        timestampMilliseconds,
+      );
+    }
+
     final processingTimeMilliseconds = _readDouble(data['processingTimeMs']);
     final detections = parseYoloDetections(data['detections']);
     final needsNumberCrop = detections.any(
       (detection) => detection.className == 'sign_number',
     );
 
+    final parsedFrameNumber = _readInt(data['frameNumber']);
+    int frameNumber;
+    if (parsedFrameNumber == null) {
+      frameNumber = fallbackFrameNumber;
+    } else {
+      frameNumber = parsedFrameNumber;
+    }
+
+    // เก็บภาพต้นฉบับเฉพาะเมื่อต้อง crop อ่านตัวเลขเท่านั้น (ประหยัดหน่วยความจำ)
+    final originalImage = data['originalImage'];
+    Uint8List? frameBytes;
+    if (needsNumberCrop && originalImage is Uint8List) {
+      frameBytes = originalImage;
+    } else {
+      frameBytes = null;
+    }
+
     return RealtimeFramePacket(
-      frameNumber: _readInt(data['frameNumber']) ?? fallbackFrameNumber,
+      frameNumber: frameNumber,
       resultProducedAt: resultProducedAt,
       // ประมาณเวลาจับภาพโดยลบเวลาประมวลผลของกล้องออกจากเวลาที่ผลลัพธ์ถูกสร้าง
       estimatedCapturedAt: resultProducedAt.subtract(
@@ -49,10 +78,7 @@ class RealtimeFramePacket {
       ),
       receivedAt: callbackReceivedAt,
       detections: detections,
-      // เก็บภาพต้นฉบับเฉพาะเมื่อต้อง crop อ่านตัวเลขเท่านั้น (ประหยัดหน่วยความจำ)
-      frameBytes: needsNumberCrop && data['originalImage'] is Uint8List
-          ? data['originalImage'] as Uint8List
-          : null,
+      frameBytes: frameBytes,
       imageWidth: _readInt(data['imageWidth']),
       imageHeight: _readInt(data['imageHeight']),
       rotationDegrees: _readInt(data['rotationDegrees']),
@@ -90,7 +116,10 @@ class RealtimeFramePacket {
   Duration ageAt(DateTime now) {
     final age = now.difference(estimatedCapturedAt);
     // กันค่าติดลบจากนาฬิกา native/Dart ที่ไม่ตรงกัน
-    return age.isNegative ? Duration.zero : age;
+    if (age.isNegative) {
+      return Duration.zero;
+    }
+    return age;
   }
 }
 
@@ -118,9 +147,23 @@ class RealtimeInferenceDiagnostic {
   bool get foundNumber => reading != null;
 }
 
-int? _readInt(Object? value) => value is num ? value.toInt() : null;
+int? _readInt(Object? value) {
+  if (value is num) {
+    return value.toInt();
+  }
+  return null;
+}
 
-double? _readDouble(Object? value) => value is num ? value.toDouble() : null;
+double? _readDouble(Object? value) {
+  if (value is num) {
+    return value.toDouble();
+  }
+  return null;
+}
 
-Duration _durationFromMilliseconds(double? value) =>
-    Duration(microseconds: value == null ? 0 : (value * 1000).round());
+Duration _durationFromMilliseconds(double? value) {
+  if (value == null) {
+    return Duration.zero;
+  }
+  return Duration(microseconds: (value * 1000).round());
+}

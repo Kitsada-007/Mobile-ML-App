@@ -36,6 +36,37 @@ class ResultVideoSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final videoSize = controller.value.size;
 
+    // สัดส่วนตามวิดีโอจริง (fallback 16:9 ถ้ายังไม่มีค่า)
+    double videoAspectRatio;
+    if (controller.value.aspectRatio == 0) {
+      videoAspectRatio = 16 / 9;
+    } else {
+      videoAspectRatio = controller.value.aspectRatio;
+    }
+
+    String playPauseTooltip;
+    IconData playPauseIcon;
+    if (controller.value.isPlaying) {
+      playPauseTooltip = 'พักวิดีโอ';
+      playPauseIcon = Icons.pause_rounded;
+    } else {
+      playPauseTooltip = 'เล่นวิดีโอ';
+      playPauseIcon = Icons.play_arrow_rounded;
+    }
+
+    String voiceTooltip;
+    Color voiceForegroundColor;
+    IconData voiceIcon;
+    if (isVoiceEnabled) {
+      voiceTooltip = 'ปิดเสียงการแจ้งเตือน';
+      voiceForegroundColor = const Color(0xFF34C759); // เขียว = เสียงเปิด
+      voiceIcon = Icons.volume_up_rounded;
+    } else {
+      voiceTooltip = 'เปิดเสียงการแจ้งเตือน';
+      voiceForegroundColor = Colors.white60;
+      voiceIcon = Icons.volume_off_rounded;
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -55,11 +86,8 @@ class ResultVideoSection extends StatelessWidget {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(24),
-            // สัดส่วนตามวิดีโอจริง (fallback 16:9 ถ้ายังไม่มีค่า)
             child: AspectRatio(
-              aspectRatio: controller.value.aspectRatio == 0
-                  ? 16 / 9
-                  : controller.value.aspectRatio,
+              aspectRatio: videoAspectRatio,
               child: Stack(
                 fit: StackFit.expand,
                 alignment: Alignment.bottomCenter,
@@ -103,37 +131,23 @@ class ResultVideoSection extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton.filled(
-                          tooltip: controller.value.isPlaying
-                              ? 'พักวิดีโอ'
-                              : 'เล่นวิดีโอ',
+                          tooltip: playPauseTooltip,
                           style: IconButton.styleFrom(
                             backgroundColor: Colors.black54,
                             foregroundColor: Colors.white,
                           ),
-                          icon: Icon(
-                            controller.value.isPlaying
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                          ),
+                          icon: Icon(playPauseIcon),
                           onPressed: onTogglePlayPause,
                         ),
                         if (onToggleVoice != null) ...[
                           const SizedBox(width: 8),
                           IconButton.filled(
-                            tooltip: isVoiceEnabled
-                                ? 'ปิดเสียงการแจ้งเตือน'
-                                : 'เปิดเสียงการแจ้งเตือน',
+                            tooltip: voiceTooltip,
                             style: IconButton.styleFrom(
                               backgroundColor: Colors.black54,
-                              foregroundColor: isVoiceEnabled
-                                  ? const Color(0xFF34C759) // เขียว = เสียงเปิด
-                                  : Colors.white60,
+                              foregroundColor: voiceForegroundColor,
                             ),
-                            icon: Icon(
-                              isVoiceEnabled
-                                  ? Icons.volume_up_rounded
-                                  : Icons.volume_off_rounded,
-                            ),
+                            icon: Icon(voiceIcon),
                             onPressed: onToggleVoice,
                           ),
                         ],
@@ -182,14 +196,30 @@ class _SelectedVideoInfoBar extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final colorScheme = Theme.of(context).colorScheme;
 
+    Color barBackgroundColor;
+    Color barBorderColor;
+    if (isDark) {
+      barBackgroundColor = const Color(0xFF1E242B);
+      barBorderColor = Colors.white12;
+    } else {
+      barBackgroundColor = const Color(0xFFF3F4F6);
+      barBorderColor = const Color(0xFFE5E7EB);
+    }
+
+    final selectedFileName = fileName;
+    String displayFileName;
+    if (selectedFileName == null) {
+      displayFileName = 'วิดีโอที่เลือก';
+    } else {
+      displayFileName = selectedFileName;
+    }
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E242B) : const Color(0xFFF3F4F6),
+        color: barBackgroundColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark ? Colors.white12 : const Color(0xFFE5E7EB),
-        ),
+        border: Border.all(color: barBorderColor),
       ),
       child: Row(
         children: [
@@ -197,7 +227,7 @@ class _SelectedVideoInfoBar extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              fileName ?? 'วิดีโอที่เลือก',
+              displayFileName,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -246,6 +276,23 @@ class _VideoLiveBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // จุดไฟสถานะ: เขียว = เล่นอยู่, ส้ม = หยุด
+    Color statusDotColor;
+    if (isPlaying) {
+      statusDotColor = const Color(0xFF34C759);
+    } else {
+      statusDotColor = Colors.orangeAccent;
+    }
+
+    String badgeText;
+    if (hasDetections) {
+      badgeText = 'ตรวจจับแล้ว';
+    } else if (isPlaying) {
+      badgeText = 'กำลังตรวจจับ';
+    } else {
+      badgeText = 'พักวิดีโอ';
+    }
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.62),
@@ -257,24 +304,17 @@ class _VideoLiveBadge extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // จุดไฟสถานะ: เขียว = เล่นอยู่, ส้ม = หยุด
             Container(
               width: 9,
               height: 9,
               decoration: BoxDecoration(
-                color: isPlaying
-                    ? const Color(0xFF34C759)
-                    : Colors.orangeAccent,
+                color: statusDotColor,
                 shape: BoxShape.circle,
               ),
             ),
             const SizedBox(width: 8),
             Text(
-              hasDetections
-                  ? 'ตรวจจับแล้ว'
-                  : isPlaying
-                  ? 'กำลังตรวจจับ'
-                  : 'พักวิดีโอ',
+              badgeText,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 13,

@@ -19,13 +19,19 @@ class RealtimeNumberInferenceEngine {
     CountdownReadingStabilizer? stabilizer,
     this.signConfidenceThreshold = 0.25,
     this.maximumDiagnostics = 20,
-  }) : _service = service,
-       _detectionInterval = detectionInterval,
-       _stabilizer = stabilizer ?? CountdownReadingStabilizer();
+  }) {
+    _service = service;
+    _detectionInterval = detectionInterval;
+    if (stabilizer == null) {
+      _stabilizer = CountdownReadingStabilizer();
+    } else {
+      _stabilizer = stabilizer;
+    }
+  }
 
   SignNumberPipelineService? _service;
-  final Duration _detectionInterval;
-  final CountdownReadingStabilizer _stabilizer;
+  late final Duration _detectionInterval;
+  late final CountdownReadingStabilizer _stabilizer;
   final double signConfidenceThreshold;
   final int maximumDiagnostics;
 
@@ -69,15 +75,19 @@ class RealtimeNumberInferenceEngine {
     final service = _service;
     final frameBytes = packet.frameBytes;
     if (service == null || frameBytes == null) {
+      String errorMessage;
+      if (service == null) {
+        errorMessage = 'Number model is not ready';
+      } else {
+        errorMessage = 'Streaming frame has no originalImage';
+      }
       _recordDiagnostic(
         RealtimeInferenceDiagnostic(
           frameNumber: packet.frameNumber,
           timestamp: packet.timestamp,
           elapsedMilliseconds: 0,
           cropByteLength: 0,
-          error: service == null
-              ? 'Number model is not ready'
-              : 'Streaming frame has no originalImage',
+          error: errorMessage,
         ),
       );
       return null;
@@ -103,15 +113,22 @@ class RealtimeNumberInferenceEngine {
 
       final reading = _normalizeReading(analysis.number);
       final stabilizedReading = _stabilizer.add(reading);
+      final cropBytes = analysis.cropBytes;
       if (reading == null) {
-        _lastFailedCropBytes = analysis.cropBytes;
+        _lastFailedCropBytes = cropBytes;
+      }
+      int cropByteLength;
+      if (cropBytes == null) {
+        cropByteLength = 0;
+      } else {
+        cropByteLength = cropBytes.length;
       }
       _recordDiagnostic(
         RealtimeInferenceDiagnostic(
           frameNumber: packet.frameNumber,
           timestamp: packet.timestamp,
           elapsedMilliseconds: stopwatch.elapsedMilliseconds,
-          cropByteLength: analysis.cropBytes?.length ?? 0,
+          cropByteLength: cropByteLength,
           reading: reading,
         ),
       );
@@ -172,6 +189,12 @@ class RealtimeNumberInferenceEngine {
 
 /// ทำความสะอาดค่าตัวเลข (ตัดช่องว่าง) — คืน null ถ้าเป็น string ว่าง
 String? _normalizeReading(String? reading) {
-  final normalized = reading?.trim();
-  return normalized == null || normalized.isEmpty ? null : normalized;
+  if (reading == null) {
+    return null;
+  }
+  final normalized = reading.trim();
+  if (normalized.isEmpty) {
+    return null;
+  }
+  return normalized;
 }

@@ -34,15 +34,22 @@ class SignNumberPipelineService {
     NumberDetectionService? numberDetectionService,
     YOLO? digitYolo,
     RealtimeSignCropProcessor? realtimeCropProcessor,
-  }) : _numberDetectionService = _resolveNumberDetectionService(
-         numberDetectionService: numberDetectionService,
-         digitYolo: digitYolo,
-       ),
-       _realtimeCropProcessor =
-           realtimeCropProcessor ?? PersistentSignCropWorker();
+  }) {
+    // ต้อง resolve service ก่อน: ถ้าอาร์กิวเมนต์ไม่ครบจะโยน ArgumentError
+    // ตั้งแต่ตรงนี้ โดยยังไม่ทันสร้าง isolate worker ทิ้งค้างไว้
+    _numberDetectionService = _resolveNumberDetectionService(
+      numberDetectionService: numberDetectionService,
+      digitYolo: digitYolo,
+    );
+    if (realtimeCropProcessor == null) {
+      _realtimeCropProcessor = PersistentSignCropWorker();
+    } else {
+      _realtimeCropProcessor = realtimeCropProcessor;
+    }
+  }
 
-  final NumberDetectionService _numberDetectionService;
-  final RealtimeSignCropProcessor _realtimeCropProcessor;
+  late final NumberDetectionService _numberDetectionService;
+  late final RealtimeSignCropProcessor _realtimeCropProcessor;
 
   /// เลือก NumberDetectionService ที่จะใช้ (ส่งตรง หรือสร้างจาก digitYolo)
   static NumberDetectionService _resolveNumberDetectionService({
@@ -111,24 +118,36 @@ class SignNumberPipelineService {
       );
     }
 
-    final wideReading = taskResult.wideCropBytes != null
-        ? await _numberDetectionService.detect(taskResult.wideCropBytes!)
-        : const NumberDetectionResult();
+    final NumberDetectionResult wideReading;
+    if (taskResult.wideCropBytes == null) {
+      wideReading = const NumberDetectionResult();
+    } else {
+      wideReading = await _numberDetectionService.detect(
+        taskResult.wideCropBytes!,
+      );
+    }
 
     final NumberDetectionResult preferred;
     if (wideReading.digitCount != tightReading.digitCount) {
-      preferred = wideReading.digitCount > tightReading.digitCount
-          ? wideReading
-          : tightReading;
+      if (wideReading.digitCount > tightReading.digitCount) {
+        preferred = wideReading;
+      } else {
+        preferred = tightReading;
+      }
     } else {
-      preferred = wideReading.averageConfidence > tightReading.averageConfidence
-          ? wideReading
-          : tightReading;
+      if (wideReading.averageConfidence > tightReading.averageConfidence) {
+        preferred = wideReading;
+      } else {
+        preferred = tightReading;
+      }
     }
 
-    final selectedBytes = preferred == wideReading
-        ? taskResult.wideCropBytes
-        : taskResult.tightCropBytes;
+    final Uint8List? selectedBytes;
+    if (preferred == wideReading) {
+      selectedBytes = taskResult.wideCropBytes;
+    } else {
+      selectedBytes = taskResult.tightCropBytes;
+    }
 
     if (preferred.number != null ||
         rotationDegrees != null ||
@@ -166,26 +185,38 @@ class SignNumberPipelineService {
       );
     }
 
-    final altWideReading = altResult.wideCropBytes != null
-        ? await _numberDetectionService.detect(altResult.wideCropBytes!)
-        : const NumberDetectionResult();
+    final NumberDetectionResult altWideReading;
+    if (altResult.wideCropBytes == null) {
+      altWideReading = const NumberDetectionResult();
+    } else {
+      altWideReading = await _numberDetectionService.detect(
+        altResult.wideCropBytes!,
+      );
+    }
 
     final NumberDetectionResult altPreferred;
     if (altWideReading.digitCount != altTightReading.digitCount) {
-      altPreferred = altWideReading.digitCount > altTightReading.digitCount
-          ? altWideReading
-          : altTightReading;
+      if (altWideReading.digitCount > altTightReading.digitCount) {
+        altPreferred = altWideReading;
+      } else {
+        altPreferred = altTightReading;
+      }
     } else {
       final altWideConfidence = altWideReading.averageConfidence;
       final altTightConfidence = altTightReading.averageConfidence;
-      altPreferred = altWideConfidence > altTightConfidence
-          ? altWideReading
-          : altTightReading;
+      if (altWideConfidence > altTightConfidence) {
+        altPreferred = altWideReading;
+      } else {
+        altPreferred = altTightReading;
+      }
     }
 
-    final altSelectedBytes = altPreferred == altWideReading
-        ? altResult.wideCropBytes
-        : altResult.tightCropBytes;
+    final Uint8List? altSelectedBytes;
+    if (altPreferred == altWideReading) {
+      altSelectedBytes = altResult.wideCropBytes;
+    } else {
+      altSelectedBytes = altResult.tightCropBytes;
+    }
 
     return SignNumberAnalysis(
       cropBytes: altSelectedBytes,
@@ -224,7 +255,12 @@ class SignNumberPipelineService {
         normalizedRect.right <= 1.01 &&
         normalizedRect.bottom <= 1.01;
 
-    final rect = normalizedIsValid ? normalizedRect : sign.boundingBox;
+    final Rect rect;
+    if (normalizedIsValid) {
+      rect = normalizedRect;
+    } else {
+      rect = sign.boundingBox;
+    }
 
     _debugPipeline('Normalized box: ${sign.normalizedBox}');
     _debugPipeline('Bounding box: ${sign.boundingBox}');
@@ -299,7 +335,8 @@ class SignNumberPipelineService {
     final tightDigitCount = tight.reading.digitCount;
     final wideDigitCount = wide.reading.digitCount;
     if (wideDigitCount != tightDigitCount) {
-      return wideDigitCount > tightDigitCount ? wide : tight;
+      if (wideDigitCount > tightDigitCount) return wide;
+      return tight;
     }
     final tightConfidence = tight.reading.averageConfidence;
     final wideConfidence = wide.reading.averageConfidence;
@@ -314,7 +351,8 @@ YOLOResult? _selectBestNumberSign(List<YOLOResult> detectionResults) {
       .where((result) => result.className == 'sign_number')
       .toList();
   signResults.sort((a, b) => b.confidence.compareTo(a.confidence));
-  return signResults.isEmpty ? null : signResults.first;
+  if (signResults.isEmpty) return null;
+  return signResults.first;
 }
 
 RealtimeFrameTaskData _createRealtimeFrameTaskData({
@@ -333,7 +371,12 @@ RealtimeFrameTaskData _createRealtimeFrameTaskData({
       normalizedRect.bottom > normalizedRect.top &&
       normalizedRect.right <= 1.01 &&
       normalizedRect.bottom <= 1.01;
-  final rect = normalizedIsValid ? normalizedRect : selectedSign.boundingBox;
+  final Rect rect;
+  if (normalizedIsValid) {
+    rect = normalizedRect;
+  } else {
+    rect = selectedSign.boundingBox;
+  }
 
   return RealtimeFrameTaskData(
     frameBytes: frameBytes,

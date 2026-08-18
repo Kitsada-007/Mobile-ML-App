@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -48,29 +49,57 @@ class VideoInferenceController extends ChangeNotifier {
     @visibleForTesting CountdownAlertController? countdownAlertController,
     // จำนวนตรวจเช็คต่อวินาที (ดูผล timingSummary ใน log "[video-perf]")
     this.targetChecksPerSecond = 4,
-  }) : _picker = picker ?? ImagePicker(),
-       _videoValidator = videoValidator ?? const VideoInputValidator(),
-       _modelManager = modelManager ?? ModelManager(),
-       _videoProcessingService =
-           videoProcessingService ?? VideoProcessingService(),
-       _voiceService = voiceService ?? TrafficVoiceService() {
-    _detectionStabilizer =
-        detectionStabilizer ?? DetectionStabilizer(config: _detectionConfig);
-    _voiceAlertController =
-        voiceAlertController ??
-        VoiceAlertController(
-          config: _detectionConfig,
-          speakClassName: _speakStableClass,
-        );
-    _countdownAlertController =
-        countdownAlertController ?? CountdownAlertController();
+  }) {
+    if (picker == null) {
+      _picker = ImagePicker();
+    } else {
+      _picker = picker;
+    }
+    if (videoValidator == null) {
+      _videoValidator = const VideoInputValidator();
+    } else {
+      _videoValidator = videoValidator;
+    }
+    if (modelManager == null) {
+      _modelManager = ModelManager();
+    } else {
+      _modelManager = modelManager;
+    }
+    if (videoProcessingService == null) {
+      _videoProcessingService = VideoProcessingService();
+    } else {
+      _videoProcessingService = videoProcessingService;
+    }
+    if (voiceService == null) {
+      _voiceService = TrafficVoiceService();
+    } else {
+      _voiceService = voiceService;
+    }
+    if (detectionStabilizer == null) {
+      _detectionStabilizer = DetectionStabilizer(config: _detectionConfig);
+    } else {
+      _detectionStabilizer = detectionStabilizer;
+    }
+    if (voiceAlertController == null) {
+      _voiceAlertController = VoiceAlertController(
+        config: _detectionConfig,
+        speakClassName: _speakStableClass,
+      );
+    } else {
+      _voiceAlertController = voiceAlertController;
+    }
+    if (countdownAlertController == null) {
+      _countdownAlertController = CountdownAlertController();
+    } else {
+      _countdownAlertController = countdownAlertController;
+    }
   }
 
-  final ImagePicker _picker;
-  final VideoInputValidator _videoValidator;
-  final ModelManager _modelManager;
-  final VideoProcessingService _videoProcessingService;
-  final TrafficVoiceService _voiceService;
+  late final ImagePicker _picker;
+  late final VideoInputValidator _videoValidator;
+  late final ModelManager _modelManager;
+  late final VideoProcessingService _videoProcessingService;
+  late final TrafficVoiceService _voiceService;
   final int targetChecksPerSecond;
   static const DetectionAlertConfig _detectionConfig = DetectionAlertConfig();
   late final DetectionStabilizer _detectionStabilizer;
@@ -232,7 +261,11 @@ class VideoInferenceController extends ChangeNotifier {
   ) async {
     try {
       return await _loadYolo(initialPath);
-    } catch (_) {
+    } catch (error, stackTrace) {
+      log(
+        'โหลดโมเดล $modelType จาก $initialPath ไม่สำเร็จ กำลังขอ path สำรอง: $error',
+        stackTrace: stackTrace,
+      );
       final replacement = await _modelManager.reportModelLoadFailure(
         modelType,
         failedPath: initialPath,
@@ -274,7 +307,11 @@ class VideoInferenceController extends ChangeNotifier {
       await previewController.initialize();
       await previewController.seekTo(Duration.zero); // ขยับไปเฟรมแรก
       previewReady = true;
-    } catch (_) {
+    } catch (error, stackTrace) {
+      log(
+        'เตรียมตัวอย่างวิดีโอที่เลือกไม่สำเร็จ: $error',
+        stackTrace: stackTrace,
+      );
       await previewController.dispose();
     }
 
@@ -282,7 +319,11 @@ class VideoInferenceController extends ChangeNotifier {
     await _selectedPreviewController?.dispose();
 
     _videoFile = selectedFile;
-    _selectedPreviewController = previewReady ? previewController : null;
+    if (previewReady) {
+      _selectedPreviewController = previewController;
+    } else {
+      _selectedPreviewController = null;
+    }
     _frameResults.clear();
     _currentFrameDetections.clear();
     _resetDetectionSession(stopVoice: false);
@@ -441,7 +482,11 @@ class VideoInferenceController extends ChangeNotifier {
     // ใช้ signPresent จาก FrameAnalysisResult ตรง ๆ (single source of truth)
     // ห้ามนับ raw detection ใหม่ที่นี่ — เฟรมช่วง hold ไม่มีกล่อง sign_number
     // แต่ต้องยังถือว่าป้ายอยู่ ไม่งั้นเลขที่ service hold ไว้ถูกทิ้งทันที
-    _currentDetectedNumber = signPresent ? rawDetectedNumber : null;
+    if (signPresent) {
+      _currentDetectedNumber = rawDetectedNumber;
+    } else {
+      _currentDetectedNumber = null;
+    }
 
     String? stableTrafficLightClassName;
     for (final detection in stableDetections) {
@@ -491,9 +536,12 @@ class VideoInferenceController extends ChangeNotifier {
       final confidences = stableDetections.map(
         (detection) => detection.confidence,
       );
-      _lastDetectionConfidence = confidences.reduce(
-        (first, second) => first > second ? first : second,
-      );
+      _lastDetectionConfidence = confidences.reduce((first, second) {
+        if (first > second) {
+          return first;
+        }
+        return second;
+      });
     }
 
     final shouldAnnounce =
@@ -516,9 +564,12 @@ class VideoInferenceController extends ChangeNotifier {
   Future<void> _speakStableClass(String className) {
     final formalName = videoFormalThaiName(className);
     final alertMessage = _voiceService.getThaiMessage(className);
-    final message = alertMessage.isEmpty
-        ? formalName
-        : '$formalName: $alertMessage';
+    String message;
+    if (alertMessage.isEmpty) {
+      message = formalName;
+    } else {
+      message = '$formalName: $alertMessage';
+    }
     return _voiceService.speak(message);
   }
 
@@ -601,10 +652,19 @@ class VideoInferenceController extends ChangeNotifier {
     final numberYolo = _numberYolo;
     _signNumberPipeline = null;
     _numberYolo = null;
+    Future<void> pipelineDisposal;
+    if (pipeline == null) {
+      pipelineDisposal = Future<void>.value();
+    } else {
+      pipelineDisposal = pipeline.dispose();
+    }
     unawaited(
-      (pipeline?.dispose() ?? Future<void>.value()).then(
-        (_) => numberYolo?.dispose() ?? Future<void>.value(),
-      ),
+      pipelineDisposal.then<void>((_) {
+        if (numberYolo == null) {
+          return Future<void>.value();
+        }
+        return numberYolo.dispose();
+      }),
     );
     if (_videoController != null) {
       final controller = _videoController!;

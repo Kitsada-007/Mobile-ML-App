@@ -90,7 +90,10 @@ class RealtimePipelineSnapshot {
   /// อัตราส่วนของเฟรมที่ถูก drop (0-1) เทียบกับที่ประมวลผลสำเร็จทั้งหมด
   double get droppedFrameRatio {
     final total = processedFrameCount + droppedFrameCount;
-    return total == 0 ? 0 : droppedFrameCount / total;
+    if (total == 0) {
+      return 0;
+    }
+    return droppedFrameCount / total;
   }
 }
 
@@ -98,8 +101,9 @@ class RealtimePipelineSnapshot {
 /// - เก็บบันทึกตัวอย่าง (samples) ของเฟรมที่ประมวลผลไว้ (จำกัดจำนวน)
 /// - คำนวณ percentile ของ latency ต่าง ๆ เพื่อดูว่าประมวลผลได้ทันหรือไม่
 class RealtimePipelineMonitor {
-  RealtimePipelineMonitor({this.maximumSamples = 120})
-    : assert(maximumSamples > 0);
+  RealtimePipelineMonitor({this.maximumSamples = 120}) {
+    assert(maximumSamples > 0);
+  }
 
   final int maximumSamples;
   final Queue<_RealtimePipelineSample> _samples = Queue();
@@ -219,15 +223,21 @@ class _RealtimePipelineSample {
 }
 
 /// แปลงค่าเป็นมิลลิวินาทีเป็น Duration (กันค่าติดลบ/ลบที่ null)
-Duration _durationFromMilliseconds(double? value) => Duration(
-  microseconds: value == null ? 0 : math.max(0, (value * 1000).round()),
-);
+Duration _durationFromMilliseconds(double? value) {
+  if (value == null) {
+    return Duration.zero;
+  }
+  return Duration(microseconds: math.max(0, (value * 1000).round()));
+}
 
 /// คำนวณผลต่าง "ไม่เป็นลบ" ระหว่าง 2 เวลา
 /// (ถ้า later < earlier เช่นค่านาฬิกาไม่ตรง -> คืน Duration.zero)
 Duration _nonNegativeDifference(DateTime later, DateTime earlier) {
   final difference = later.difference(earlier);
-  return difference.isNegative ? Duration.zero : difference;
+  if (difference.isNegative) {
+    return Duration.zero;
+  }
+  return difference;
 }
 
 /// คำนวณ percentile ของชุด Duration (เช่น p95, p99)

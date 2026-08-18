@@ -24,7 +24,12 @@ final class RemoteModelUpdateBootstrap {
 
   /// เช็คครั้งเดียวต่อเซสชัน (ครั้งถัดไปจะคืนผลเดิม)
   static Future<ModelUpdateReport?> checkOnce() {
-    return _sessionCheck ??= _performCheck();
+    var sessionCheck = _sessionCheck;
+    if (sessionCheck == null) {
+      sessionCheck = _performCheck();
+      _sessionCheck = sessionCheck;
+    }
+    return sessionCheck;
   }
 
   static Future<ModelUpdateReport?> _performCheck() async {

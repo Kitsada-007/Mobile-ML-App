@@ -287,13 +287,21 @@ class SettingPage extends StatelessWidget {
 
   BoxDecoration _cardBoxDecoration(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    Color cardColor;
+    Color cardBorderColor;
+    if (isDark) {
+      cardColor = const Color(0xFF1E202C);
+      cardBorderColor = Colors.white10;
+    } else {
+      cardColor = const Color(0xFFF7F8FA);
+      cardBorderColor = Colors.black.withValues(alpha: 0.05);
+    }
+
     return BoxDecoration(
-      color: isDark ? const Color(0xFF1E202C) : const Color(0xFFF7F8FA),
+      color: cardColor,
       borderRadius: BorderRadius.circular(16),
-      border: Border.all(
-        color: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
-        width: 1,
-      ),
+      border: Border.all(color: cardBorderColor, width: 1),
     );
   }
 
@@ -410,6 +418,18 @@ class SettingMenuItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    // แถวที่ถูกไฮไลต์ใช้พื้นหลังอ่อน ๆ ตามธีม ส่วนแถวปกติโปร่งใส
+    Color rowColor;
+    if (isHighlighted) {
+      if (isDark) {
+        rowColor = const Color(0xFF2C2F42);
+      } else {
+        rowColor = const Color(0xFFF0F2F5);
+      }
+    } else {
+      rowColor = Colors.transparent;
+    }
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -418,9 +438,7 @@ class SettingMenuItem extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          color: isHighlighted
-              ? (isDark ? const Color(0xFF2C2F42) : const Color(0xFFF0F2F5))
-              : Colors.transparent,
+          color: rowColor,
         ),
         child: Row(
           children: [

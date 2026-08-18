@@ -34,7 +34,13 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+    final route = ModalRoute.of(context);
+    bool isCurrent;
+    if (route == null) {
+      isCurrent = true;
+    } else {
+      isCurrent = route.isCurrent;
+    }
     if (_isRouteCurrent == isCurrent) return;
 
     _isRouteCurrent = isCurrent;
@@ -48,7 +54,14 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
   }
 
   void _syncVideoLifecycle() {
-    final shouldPlay = (_isRouteCurrent ?? true) && _isAppResumed;
+    final routeCurrent = _isRouteCurrent;
+    bool isRouteCurrent;
+    if (routeCurrent == null) {
+      isRouteCurrent = true;
+    } else {
+      isRouteCurrent = routeCurrent;
+    }
+    final shouldPlay = isRouteCurrent && _isAppResumed;
     if (!shouldPlay) {
       unawaited(_controller.pause());
     }
@@ -108,17 +121,35 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
 
               return LayoutBuilder(
                 builder: (context, constraints) {
-                  final horizontalPadding = isLandscape ? 24.0 : 16.0;
-                  final availableHeight = constraints.maxHeight.isFinite
-                      ? (constraints.maxHeight - _screenPadding * 2).clamp(
+                  double horizontalPadding;
+                  if (isLandscape) {
+                    horizontalPadding = 24.0;
+                  } else {
+                    horizontalPadding = 16.0;
+                  }
+
+                  double availableHeight;
+                  if (constraints.maxHeight.isFinite) {
+                    availableHeight =
+                        (constraints.maxHeight - _screenPadding * 2).clamp(
                           0.0,
                           double.infinity,
-                        )
-                      : 0.0;
+                        );
+                  } else {
+                    availableHeight = 0.0;
+                  }
+
                   // จอเตี้ยต้องแบ่งให้การ์ดน้อยลง ไม่งั้นแผงผลถูกดันตกขอบจนต้องเลื่อนหา
-                  final cardHeight =
-                      (availableHeight * (availableHeight >= 720 ? 0.55 : 0.45))
-                          .clamp(180.0, 560.0);
+                  double cardHeightRatio;
+                  if (availableHeight >= 720) {
+                    cardHeightRatio = 0.55;
+                  } else {
+                    cardHeightRatio = 0.45;
+                  }
+                  final cardHeight = (availableHeight * cardHeightRatio).clamp(
+                    180.0,
+                    560.0,
+                  );
 
                   final header = _VideoHeader(
                     showModelProgress: !_controller.areModelsReady,
@@ -152,6 +183,19 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
                     );
                   }
 
+                  String statusText;
+                  if (hasVideoResult) {
+                    if (_controller.videoController!.value.isPlaying) {
+                      statusText = 'กำลังตรวจจับแบบเรีลไทม์';
+                    } else {
+                      statusText = 'หยุดชั่วคราว';
+                    }
+                  } else if (_controller.isProcessing) {
+                    statusText = _controller.progressText;
+                  } else {
+                    statusText = 'พร้อมตรวจจับวิดีโอ';
+                  }
+
                   final panel = VideoDetectionPanel(
                     formalNames: _controller.currentFormalNames,
                     alertMessages: _controller.currentAlertMessages,
@@ -162,13 +206,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
                         !_controller.isProcessing &&
                         _controller.currentFrameDetections.isEmpty &&
                         _controller.currentDetectedNumber == null,
-                    statusText: hasVideoResult
-                        ? (_controller.videoController!.value.isPlaying
-                              ? 'กำลังตรวจจับแบบเรีลไทม์'
-                              : 'หยุดชั่วคราว')
-                        : _controller.isProcessing
-                        ? _controller.progressText
-                        : 'พร้อมตรวจจับวิดีโอ',
+                    statusText: statusText,
                     lastDetectionConfidence:
                         _controller.lastDetectionConfidence,
                     trafficLightClassName:
@@ -328,6 +366,21 @@ class _VideoProcessingCard extends StatelessWidget {
     final percent = (progressValue * 100).clamp(0, 100).toInt();
     final hasDeterminateProgress = progressValue > 0;
 
+    // null = แถบวิ่งไม่รู้จบ (ยังไม่รู้ความคืบหน้าจริง)
+    double? indicatorValue;
+    if (hasDeterminateProgress) {
+      indicatorValue = progressValue;
+    } else {
+      indicatorValue = null;
+    }
+
+    String progressLabel;
+    if (progressText.isEmpty) {
+      progressLabel = 'กำลังวิเคราะห์วิดีโอ...';
+    } else {
+      progressLabel = progressText;
+    }
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: const Color(0xFF121417),
@@ -363,7 +416,7 @@ class _VideoProcessingCard extends StatelessWidget {
                         width: 72,
                         height: 72,
                         child: CircularProgressIndicator(
-                          value: hasDeterminateProgress ? progressValue : null,
+                          value: indicatorValue,
                           strokeWidth: 5,
                           color: const Color(0xFF34C759),
                           backgroundColor: Colors.white12,
@@ -390,9 +443,7 @@ class _VideoProcessingCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 18),
                 Text(
-                  progressText.isEmpty
-                      ? 'กำลังวิเคราะห์วิดีโอ...'
-                      : progressText,
+                  progressLabel,
                   textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
@@ -409,7 +460,7 @@ class _VideoProcessingCard extends StatelessWidget {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(6),
                     child: LinearProgressIndicator(
-                      value: hasDeterminateProgress ? progressValue : null,
+                      value: indicatorValue,
                       minHeight: 6,
                       color: const Color(0xFF34C759),
                       backgroundColor: Colors.white12,
@@ -439,6 +490,17 @@ class _VideoPickerPlaceholderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ยังโหลดโมเดลไม่เสร็จ = ปิดปุ่ม (null) กันผู้ใช้กดก่อนพร้อม
+    VoidCallback? pickVideoCallback;
+    String pickButtonLabel;
+    if (areModelsReady) {
+      pickVideoCallback = onPickVideo;
+      pickButtonLabel = 'เลือกวิดีโอจากคลัง';
+    } else {
+      pickVideoCallback = null;
+      pickButtonLabel = 'กำลังโหลดโมเดล...';
+    }
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.black,
@@ -497,13 +559,9 @@ class _VideoPickerPlaceholderCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 20),
                       FilledButton.icon(
-                        onPressed: areModelsReady ? onPickVideo : null,
+                        onPressed: pickVideoCallback,
                         icon: const Icon(Icons.video_library_outlined),
-                        label: Text(
-                          areModelsReady
-                              ? 'เลือกวิดีโอจากคลัง'
-                              : 'กำลังโหลดโมเดล...',
-                        ),
+                        label: Text(pickButtonLabel),
                         style: FilledButton.styleFrom(
                           backgroundColor: const Color(0xFF16A05D),
                           foregroundColor: Colors.white,

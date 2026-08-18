@@ -35,7 +35,14 @@ class CameraDetectionPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final countdown = int.tryParse(detectedNumber ?? '');
+    String numberText;
+    final detected = detectedNumber;
+    if (detected == null) {
+      numberText = '';
+    } else {
+      numberText = detected;
+    }
+    final countdown = int.tryParse(numberText);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final hasDriverMessage =
         driverSignalResult != null && driverSignalResult!.message.isNotEmpty;
@@ -46,29 +53,59 @@ class CameraDetectionPanel extends StatelessWidget {
       countdown: countdown,
     );
 
+    // สีพื้น/เส้นขอบ/เงา ของแผง เปลี่ยนตามธีมสว่าง-มืด
+    Color panelColor;
+    Color outlineColor;
+    double shadowAlpha;
+    if (isDark) {
+      panelColor = const Color(0xFF17191C);
+      outlineColor = Colors.white12;
+      shadowAlpha = 0.24;
+    } else {
+      panelColor = Colors.white;
+      outlineColor = const Color(0xFFE7E9ED);
+      shadowAlpha = 0.07;
+    }
+
+    // แนวนอนมีเนื้อที่แนวตั้งน้อยกว่า จึงลด padding บน-ล่าง
+    double verticalPadding;
+    if (isLandscape) {
+      verticalPadding = 12;
+    } else {
+      verticalPadding = 16;
+    }
+
+    Widget messageContent;
+    if (hasDriverMessage) {
+      messageContent = _DriverSignalMessage(result: driverSignalResult!);
+    } else if (displayItems.isEmpty) {
+      messageContent = const _ScanningMessage();
+    } else {
+      messageContent = Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final item in displayItems)
+            _DetectionMessage(className: item.$1, alertMessage: item.$2),
+        ],
+      );
+    }
+
     return DecoratedBox(
       key: const Key('cameraDetectionPanel'),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF17191C) : Colors.white,
+        color: panelColor,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark ? Colors.white12 : const Color(0xFFE7E9ED),
-        ),
+        border: Border.all(color: outlineColor),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.24 : 0.07),
+            color: Colors.black.withValues(alpha: shadowAlpha),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
         ],
       ),
       child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          isLandscape ? 12 : 16,
-          16,
-          isLandscape ? 12 : 16,
-        ),
+        padding: EdgeInsets.fromLTRB(16, verticalPadding, 16, verticalPadding),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -80,10 +117,7 @@ class CameraDetectionPanel extends StatelessWidget {
               statusText: statusText,
               lastDetectionConfidence: lastDetectionConfidence,
             ),
-            Divider(
-              color: isDark ? Colors.white12 : const Color(0xFFE7E9ED),
-              height: 20,
-            ),
+            Divider(color: outlineColor, height: 20),
             Semantics(
               liveRegion: true,
               child: Row(
@@ -94,22 +128,7 @@ class CameraDetectionPanel extends StatelessWidget {
                     trafficLightClassName: trafficLightClassName,
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: hasDriverMessage
-                        ? _DriverSignalMessage(result: driverSignalResult!)
-                        : displayItems.isEmpty
-                        ? const _ScanningMessage()
-                        : Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              for (final item in displayItems)
-                                _DetectionMessage(
-                                  className: item.$1,
-                                  alertMessage: item.$2,
-                                ),
-                            ],
-                          ),
-                  ),
+                  Expanded(child: messageContent),
                 ],
               ),
             ),
@@ -228,13 +247,36 @@ class _RealtimePipelineStatus extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     // สีตามสถานะ: ล้าสมัย = ส้ม, ปกติ = เขียว
-    final statusColor = isStale
-        ? const Color(0xFFE07A1F)
-        : const Color(0xFF0B9A5A);
+    Color statusColor;
+    // ป้ายกำกับสำหรับ screen reader ต้องบอกสถานะเดียวกับสีที่เห็น
+    String semanticsLabel;
+    if (isStale) {
+      statusColor = const Color(0xFFE07A1F);
+      semanticsLabel = 'ข้อมูลจากกล้องล่าช้า';
+    } else {
+      statusColor = const Color(0xFF0B9A5A);
+      semanticsLabel = 'ข้อมูลจากกล้องเป็นปัจจุบัน';
+    }
+
+    // ชิป confidence จะแสดงเฉพาะเมื่อมีค่า จึงสร้างไว้ล่วงหน้าเป็น Widget?
+    Widget? confidenceChip;
+    final confidence = lastDetectionConfidence;
+    if (confidence != null) {
+      Color confidenceColor;
+      if (confidence < 0.5) {
+        confidenceColor = Colors.orange.shade800;
+      } else {
+        confidenceColor = colorScheme.onSurfaceVariant;
+      }
+      confidenceChip = _PipelineMetricChip(
+        label: 'CONF ${(confidence * 100).round()}%',
+        foregroundColor: confidenceColor,
+      );
+    }
 
     return Semantics(
       container: true,
-      label: isStale ? 'ข้อมูลจากกล้องล่าช้า' : 'ข้อมูลจากกล้องเป็นปัจจุบัน',
+      label: semanticsLabel,
       child: Wrap(
         key: const Key('realtimePipelineStatus'),
         spacing: 8,
@@ -246,13 +288,7 @@ class _RealtimePipelineStatus extends StatelessWidget {
             foregroundColor: statusColor,
             backgroundColor: statusColor.withValues(alpha: 0.12),
           ),
-          if (lastDetectionConfidence != null)
-            _PipelineMetricChip(
-              label: 'CONF ${(lastDetectionConfidence! * 100).round()}%',
-              foregroundColor: lastDetectionConfidence! < 0.5
-                  ? Colors.orange.shade800
-                  : colorScheme.onSurfaceVariant,
-            ),
+          ?confidenceChip,
         ],
       ),
     );
@@ -273,11 +309,19 @@ class _PipelineMetricChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Color chipBackgroundColor;
+    final providedBackground = backgroundColor;
+    if (providedBackground == null) {
+      chipBackgroundColor = Theme.of(
+        context,
+      ).colorScheme.surfaceContainerHighest;
+    } else {
+      chipBackgroundColor = providedBackground;
+    }
+
     return DecoratedBox(
       decoration: BoxDecoration(
-        color:
-            backgroundColor ??
-            Theme.of(context).colorScheme.surfaceContainerHighest,
+        color: chipBackgroundColor,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Padding(
@@ -395,7 +439,12 @@ class _DetectionMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final message = alertMessage.isNotEmpty ? alertMessage : className;
+    String message;
+    if (alertMessage.isNotEmpty) {
+      message = alertMessage;
+    } else {
+      message = className;
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -452,7 +501,12 @@ List<(String className, String alertMessage)> _buildDisplayItems({
   final displayItems = <(String className, String alertMessage)>[];
   for (var index = 0; index < formalNames.length; index++) {
     final name = formalNames[index];
-    final alert = index < alertMessages.length ? alertMessages[index] : '';
+    String alert;
+    if (index < alertMessages.length) {
+      alert = alertMessages[index];
+    } else {
+      alert = '';
+    }
     final isCountdownSignal =
         name == 'สัญญาณไฟนับถอยหลัง' || name == 'sign_number';
 

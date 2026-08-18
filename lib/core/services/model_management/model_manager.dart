@@ -27,22 +27,43 @@ class ModelManager {
     RootDirectoryProvider? rootDirectoryProvider,
     BundledModelLoader? bundledModelLoader,
     NativeModelLookup? nativeModelLookup,
-  }) : _providedRegistry = registry,
-       _isAndroid = isAndroid ?? Platform.isAndroid,
-       _rootDirectoryProvider =
-           rootDirectoryProvider ?? getApplicationDocumentsDirectory,
-       _bundledModelLoader = bundledModelLoader ?? _loadBundledAsset,
-       _nativeModelLookup = nativeModelLookup ?? _lookupNativeModel;
+  }) {
+    _providedRegistry = registry;
+
+    if (isAndroid == null) {
+      _isAndroid = Platform.isAndroid;
+    } else {
+      _isAndroid = isAndroid;
+    }
+
+    if (rootDirectoryProvider == null) {
+      _rootDirectoryProvider = getApplicationDocumentsDirectory;
+    } else {
+      _rootDirectoryProvider = rootDirectoryProvider;
+    }
+
+    if (bundledModelLoader == null) {
+      _bundledModelLoader = _loadBundledAsset;
+    } else {
+      _bundledModelLoader = bundledModelLoader;
+    }
+
+    if (nativeModelLookup == null) {
+      _nativeModelLookup = _lookupNativeModel;
+    } else {
+      _nativeModelLookup = nativeModelLookup;
+    }
+  }
 
   static final MethodChannel _channel =
       ChannelConfig.createSingleImageChannel();
 
   final void Function(String message)? onStatusUpdate;
-  final ActiveModelRegistry? _providedRegistry;
-  final bool _isAndroid;
-  final RootDirectoryProvider _rootDirectoryProvider;
-  final BundledModelLoader _bundledModelLoader;
-  final NativeModelLookup _nativeModelLookup;
+  late final ActiveModelRegistry? _providedRegistry;
+  late final bool _isAndroid;
+  late final RootDirectoryProvider _rootDirectoryProvider;
+  late final BundledModelLoader _bundledModelLoader;
+  late final NativeModelLookup _nativeModelLookup;
 
   Future<ActiveModelRegistry>? _registryFuture;
 
@@ -144,9 +165,16 @@ class ModelManager {
     final provided = _providedRegistry;
     if (provided != null) return Future<ActiveModelRegistry>.value(provided);
 
-    return _registryFuture ??= SharedPreferences.getInstance().then(
-      (preferences) => ModelRegistry(preferences),
-    );
+    // สร้าง registry ครั้งเดียวแล้วเก็บ future ไว้ใช้ซ้ำ กันการเปิด
+    // SharedPreferences พร้อมกันหลายรอบ
+    var registryFuture = _registryFuture;
+    if (registryFuture == null) {
+      registryFuture = SharedPreferences.getInstance().then(
+        (preferences) => ModelRegistry(preferences),
+      );
+      _registryFuture = registryFuture;
+    }
+    return registryFuture;
   }
 
   /// โหลด asset ที่ฝังในแอปเป็น bytes
@@ -164,7 +192,10 @@ class ModelManager {
     if (result is! Map || result['exists'] != true) return null;
     if (result['location'] == 'assets') return assetPath;
     final path = result['path'];
-    return path is String && path.isNotEmpty ? path : null;
+    if (path is String && path.isNotEmpty) {
+      return path;
+    }
+    return null;
   }
 
   void _updateStatus(String message) => onStatusUpdate?.call(message);

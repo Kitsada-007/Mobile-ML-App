@@ -33,10 +33,38 @@ class VideoDetectionPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final countdown = int.tryParse(detectedNumber ?? '');
+    final rawDetectedNumber = detectedNumber;
+    String numberText;
+    if (rawDetectedNumber == null) {
+      numberText = '';
+    } else {
+      numberText = rawDetectedNumber;
+    }
+    final countdown = int.tryParse(numberText);
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final hasDriverMessage =
         driverSignalResult != null && driverSignalResult!.message.isNotEmpty;
+
+    Color panelBackgroundColor;
+    Color panelBorderColor;
+    double panelShadowAlpha;
+    if (isDark) {
+      panelBackgroundColor = const Color(0xFF17191C);
+      panelBorderColor = Colors.white12;
+      panelShadowAlpha = 0.24;
+    } else {
+      panelBackgroundColor = Colors.white;
+      panelBorderColor = const Color(0xFFE7E9ED);
+      panelShadowAlpha = 0.07;
+    }
+
+    double panelVerticalPadding;
+    if (isLandscape) {
+      panelVerticalPadding = 12;
+    } else {
+      panelVerticalPadding = 16;
+    }
 
     final displayItems = _buildDisplayItems(
       formalNames: formalNames,
@@ -44,17 +72,30 @@ class VideoDetectionPanel extends StatelessWidget {
       countdown: countdown,
     );
 
+    Widget messageContent;
+    if (hasDriverMessage) {
+      messageContent = _VideoDriverSignalMessage(result: driverSignalResult!);
+    } else if (displayItems.isEmpty) {
+      messageContent = const _VideoScanningMessage();
+    } else {
+      messageContent = Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final item in displayItems)
+            _VideoDetectionMessage(className: item.$1, alertMessage: item.$2),
+        ],
+      );
+    }
+
     return DecoratedBox(
       key: const Key('videoDetectionPanel'),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF17191C) : Colors.white,
+        color: panelBackgroundColor,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isDark ? Colors.white12 : const Color(0xFFE7E9ED),
-        ),
+        border: Border.all(color: panelBorderColor),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.24 : 0.07),
+            color: Colors.black.withValues(alpha: panelShadowAlpha),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -63,9 +104,9 @@ class VideoDetectionPanel extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.fromLTRB(
           16,
-          isLandscape ? 12 : 16,
+          panelVerticalPadding,
           16,
-          isLandscape ? 12 : 16,
+          panelVerticalPadding,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -78,10 +119,7 @@ class VideoDetectionPanel extends StatelessWidget {
               statusText: statusText,
               lastDetectionConfidence: lastDetectionConfidence,
             ),
-            Divider(
-              color: isDark ? Colors.white12 : const Color(0xFFE7E9ED),
-              height: 20,
-            ),
+            Divider(color: panelBorderColor, height: 20),
             Semantics(
               liveRegion: true,
               child: Row(
@@ -92,22 +130,7 @@ class VideoDetectionPanel extends StatelessWidget {
                     trafficLightClassName: trafficLightClassName,
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: hasDriverMessage
-                        ? _VideoDriverSignalMessage(result: driverSignalResult!)
-                        : displayItems.isEmpty
-                        ? const _VideoScanningMessage()
-                        : Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              for (final item in displayItems)
-                                _VideoDetectionMessage(
-                                  className: item.$1,
-                                  alertMessage: item.$2,
-                                ),
-                            ],
-                          ),
-                  ),
+                  Expanded(child: messageContent),
                 ],
               ),
             ),
@@ -181,32 +204,51 @@ class _VideoPipelineStatus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final statusColor = isStale
-        ? const Color(0xFFE07A1F)
-        : const Color(0xFF0B9A5A);
+
+    Color statusColor;
+    String statusSemanticsLabel;
+    if (isStale) {
+      statusColor = const Color(0xFFE07A1F);
+      statusSemanticsLabel = 'ข้อมูลวิดีโอหยุดชั่วคราว';
+    } else {
+      statusColor = const Color(0xFF0B9A5A);
+      statusSemanticsLabel = 'ข้อมูลวิดีโอประมวลผลสด';
+    }
+
+    final chips = <Widget>[
+      _VideoMetricChip(
+        label: statusText,
+        foregroundColor: statusColor,
+        backgroundColor: statusColor.withValues(alpha: 0.12),
+      ),
+    ];
+
+    // ความมั่นใจต่ำกว่า 50% ย้อมสีส้มเพื่อเตือนว่าผลอาจไม่น่าเชื่อถือ
+    final confidence = lastDetectionConfidence;
+    if (confidence != null) {
+      Color confidenceColor;
+      if (confidence < 0.5) {
+        confidenceColor = Colors.orange.shade800;
+      } else {
+        confidenceColor = colorScheme.onSurfaceVariant;
+      }
+      chips.add(
+        _VideoMetricChip(
+          label: 'CONF ${(confidence * 100).round()}%',
+          foregroundColor: confidenceColor,
+        ),
+      );
+    }
 
     return Semantics(
       container: true,
-      label: isStale ? 'ข้อมูลวิดีโอหยุดชั่วคราว' : 'ข้อมูลวิดีโอประมวลผลสด',
+      label: statusSemanticsLabel,
       child: Wrap(
         key: const Key('videoPipelineStatus'),
         spacing: 8,
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          _VideoMetricChip(
-            label: statusText,
-            foregroundColor: statusColor,
-            backgroundColor: statusColor.withValues(alpha: 0.12),
-          ),
-          if (lastDetectionConfidence != null)
-            _VideoMetricChip(
-              label: 'CONF ${(lastDetectionConfidence! * 100).round()}%',
-              foregroundColor: lastDetectionConfidence! < 0.5
-                  ? Colors.orange.shade800
-                  : colorScheme.onSurfaceVariant,
-            ),
-        ],
+        children: chips,
       ),
     );
   }
@@ -225,11 +267,19 @@ class _VideoMetricChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final providedBackgroundColor = backgroundColor;
+    Color chipBackgroundColor;
+    if (providedBackgroundColor == null) {
+      chipBackgroundColor = Theme.of(
+        context,
+      ).colorScheme.surfaceContainerHighest;
+    } else {
+      chipBackgroundColor = providedBackgroundColor;
+    }
+
     return DecoratedBox(
       decoration: BoxDecoration(
-        color:
-            backgroundColor ??
-            Theme.of(context).colorScheme.surfaceContainerHighest,
+        color: chipBackgroundColor,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Padding(
@@ -386,7 +436,12 @@ class _VideoDetectionMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final message = alertMessage.isNotEmpty ? alertMessage : className;
+    String message;
+    if (alertMessage.isNotEmpty) {
+      message = alertMessage;
+    } else {
+      message = className;
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -442,7 +497,12 @@ List<(String className, String alertMessage)> _buildDisplayItems({
   final displayItems = <(String className, String alertMessage)>[];
   for (var index = 0; index < formalNames.length; index++) {
     final name = formalNames[index];
-    final alert = index < alertMessages.length ? alertMessages[index] : '';
+    String alert;
+    if (index < alertMessages.length) {
+      alert = alertMessages[index];
+    } else {
+      alert = '';
+    }
     final isCountdownSignal =
         name == 'สัญญาณไฟนับถอยหลัง' || name == 'sign_number';
 

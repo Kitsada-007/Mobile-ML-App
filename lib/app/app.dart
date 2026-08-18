@@ -19,11 +19,18 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
 
+    ThemeMode themeMode;
+    if (settings.isLightMode) {
+      themeMode = ThemeMode.light;
+    } else {
+      themeMode = ThemeMode.dark;
+    }
+
     return GetMaterialApp(
       title: 'Berng Fai',
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      themeMode: settings.isLightMode ? ThemeMode.light : ThemeMode.dark,
+      themeMode: themeMode,
       home: MainScreen(initializeCamera: initializeCamera),
     );
   }

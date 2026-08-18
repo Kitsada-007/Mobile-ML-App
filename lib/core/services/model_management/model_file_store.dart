@@ -25,11 +25,16 @@ class ModelFileStore implements ModelDownloader {
     this._client, {
     RootDirectoryProvider? rootDirectoryProvider,
     this.requestTimeout = const Duration(seconds: 30),
-  }) : _rootDirectoryProvider =
-           rootDirectoryProvider ?? getApplicationDocumentsDirectory;
+  }) {
+    if (rootDirectoryProvider == null) {
+      _rootDirectoryProvider = getApplicationDocumentsDirectory;
+    } else {
+      _rootDirectoryProvider = rootDirectoryProvider;
+    }
+  }
 
   final http.Client _client;
-  final RootDirectoryProvider _rootDirectoryProvider;
+  late final RootDirectoryProvider _rootDirectoryProvider;
   final Duration requestTimeout;
 
   @override

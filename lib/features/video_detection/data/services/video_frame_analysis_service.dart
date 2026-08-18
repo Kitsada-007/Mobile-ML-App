@@ -32,11 +32,13 @@ class VideoFrameAnalysisService {
   VideoFrameAnalysisService({
     required YOLO trafficYolo,
     required SignNumberPipelineService signNumberPipeline,
-  }) : _trafficYolo = trafficYolo,
-       _signNumberPipeline = signNumberPipeline;
+  }) {
+    _trafficYolo = trafficYolo;
+    _signNumberPipeline = signNumberPipeline;
+  }
 
-  final YOLO _trafficYolo;
-  final SignNumberPipelineService _signNumberPipeline;
+  late final YOLO _trafficYolo;
+  late final SignNumberPipelineService _signNumberPipeline;
 
   int _trafficPredictMicros = 0;
   int _signPipelineMicros = 0;
@@ -87,11 +89,16 @@ class VideoFrameAnalysisService {
 
     final annotatedImage = trafficResult['annotatedImage'];
 
+    // ถ้า native ไม่ส่งภาพ annotate กลับมา ใช้ภาพต้นฉบับแทน
+    Uint8List outputImageBytes;
+    if (annotatedImage is Uint8List && annotatedImage.isNotEmpty) {
+      outputImageBytes = annotatedImage;
+    } else {
+      outputImageBytes = frameBytes;
+    }
+
     return VideoFrameAnalysisResult(
-      // ถ้า native ไม่ส่งภาพ annotate กลับมา ใช้ภาพต้นฉบับแทน
-      outputImageBytes: annotatedImage is Uint8List && annotatedImage.isNotEmpty
-          ? annotatedImage
-          : frameBytes,
+      outputImageBytes: outputImageBytes,
       detections: detections,
       detectedNumber: signAnalysis.number,
     );

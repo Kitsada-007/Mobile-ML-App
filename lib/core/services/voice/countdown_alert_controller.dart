@@ -42,8 +42,9 @@ final class CountdownAlertUpdate {
 
 /// สร้างเหตุการณ์เสียงเฉพาะตอนตัวเลขเข้าสู่ช่วงใกล้หมด โดยอ้างอิงไฟที่ยืนยันแล้วเท่านั้น
 final class CountdownAlertController {
-  CountdownAlertController({this.config = const CountdownAlertConfig()})
-    : assert(config.thresholdSeconds >= 0);
+  CountdownAlertController({this.config = const CountdownAlertConfig()}) {
+    assert(config.thresholdSeconds >= 0);
+  }
 
   final CountdownAlertConfig config;
 
@@ -77,7 +78,14 @@ final class CountdownAlertController {
       return const CountdownAlertUpdate();
     }
 
-    final seconds = int.tryParse(detectedNumber?.trim() ?? '');
+    String trimmedNumber;
+    if (detectedNumber == null) {
+      trimmedNumber = '';
+    } else {
+      trimmedNumber = detectedNumber.trim();
+    }
+
+    final seconds = int.tryParse(trimmedNumber);
     if (seconds == null || seconds < 0) {
       return const CountdownAlertUpdate();
     }
@@ -89,7 +97,12 @@ final class CountdownAlertController {
     }
 
     final action = _uiActionFor(stableLight);
-    final uiMessage = action == null ? baseMessage : '$baseMessage · $action';
+    String uiMessage;
+    if (action == null) {
+      uiMessage = baseMessage;
+    } else {
+      uiMessage = '$baseMessage · $action';
+    }
     final voiceMessage = _voiceMessageFor(stableLight);
     if (voiceMessage == null || _thresholdEventEmitted) {
       return CountdownAlertUpdate(seconds: seconds, uiMessage: uiMessage);
@@ -117,7 +130,10 @@ final class CountdownAlertController {
   }
 
   String? _supportedStableLight(String? className) {
-    return supportedTrafficLightClasses.contains(className) ? className : null;
+    if (supportedTrafficLightClasses.contains(className)) {
+      return className;
+    }
+    return null;
   }
 
   String? _uiActionFor(String? className) {

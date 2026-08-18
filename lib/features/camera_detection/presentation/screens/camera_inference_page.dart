@@ -53,7 +53,14 @@ class _CameraInferencePageState extends State<CameraInferencePage>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+    // ยังหา route ไม่เจอ (เช่นถูกวางนอก Navigator) ให้ถือว่าอยู่บนสุดไว้ก่อน
+    final route = ModalRoute.of(context);
+    bool isCurrent;
+    if (route == null) {
+      isCurrent = true;
+    } else {
+      isCurrent = route.isCurrent;
+    }
     if (_isRouteCurrent == isCurrent) return;
 
     _isRouteCurrent = isCurrent;
@@ -75,7 +82,16 @@ class _CameraInferencePageState extends State<CameraInferencePage>
 
   /// กล้องทำงานเฉพาะตอนแอปอยู่ foreground และ route นี้อยู่ด้านบนสุด
   void _syncCameraLifecycle() {
-    if ((_isRouteCurrent ?? true) && _isAppResumed) {
+    // ยังไม่เคยรู้สถานะ route (null) ให้ถือว่าอยู่บนสุด เหมือนพฤติกรรมเดิม
+    final routeCurrent = _isRouteCurrent;
+    bool isRouteCurrent;
+    if (routeCurrent == null) {
+      isRouteCurrent = true;
+    } else {
+      isRouteCurrent = routeCurrent;
+    }
+
+    if (isRouteCurrent && _isAppResumed) {
       unawaited(_controller.resumeCamera());
     } else {
       unawaited(_controller.pauseCamera());
@@ -111,18 +127,33 @@ class _CameraInferencePageState extends State<CameraInferencePage>
             // จึงกระจายเนื้อหาให้เต็มจอได้ แทนการปล่อยช่องว่างค้างไว้ด้านล่าง
             return LayoutBuilder(
               builder: (context, constraints) {
-                final horizontalPadding = isLandscape ? 24.0 : 16.0;
-                final availableHeight = constraints.maxHeight.isFinite
-                    ? (constraints.maxHeight - _screenPadding * 2).clamp(
-                        0.0,
-                        double.infinity,
-                      )
-                    : 0.0;
+                double horizontalPadding;
+                if (isLandscape) {
+                  horizontalPadding = 24.0;
+                } else {
+                  horizontalPadding = 16.0;
+                }
+
+                double availableHeight;
+                if (constraints.maxHeight.isFinite) {
+                  availableHeight = (constraints.maxHeight - _screenPadding * 2)
+                      .clamp(0.0, double.infinity);
+                } else {
+                  availableHeight = 0.0;
+                }
+
+                // ไม่มี callback เมนู (ไม่ได้เปิดจาก Drawer) ปุ่มนำจึงทำหน้าที่ย้อนกลับแทน
+                final menuCallback = widget.onMenuPressed;
+                VoidCallback onLeadingPressed;
+                if (menuCallback == null) {
+                  onLeadingPressed = () => Navigator.maybePop(context);
+                } else {
+                  onLeadingPressed = menuCallback;
+                }
 
                 final header = CameraInferenceOverlay(
-                  showMenuButton: widget.onMenuPressed != null,
-                  onLeadingPressed:
-                      widget.onMenuPressed ?? () => Navigator.maybePop(context),
+                  showMenuButton: menuCallback != null,
+                  onLeadingPressed: onLeadingPressed,
                 );
                 final panel = CameraDetectionPanel(
                   formalNames: _controller.detectedFormalNames,
@@ -179,9 +210,14 @@ class _CameraInferencePageState extends State<CameraInferencePage>
                 // แนวตั้ง: กล้องกินพื้นที่ราวครึ่งจอ ส่วนที่เหลือถูกเกลี่ยด้วย spaceBetween
                 // เพดาน 55% กันไม่ให้แผงผลด้านล่างถูกเบียดจนต้องเลื่อนหาโดยไม่จำเป็น
                 // จอเตี้ยต้องแบ่งให้กล้องน้อยลง ไม่งั้นแผงผลถูกดันตกขอบจนต้องเลื่อนหา
-                final previewHeight =
-                    (availableHeight * (availableHeight >= 720 ? 0.55 : 0.45))
-                        .clamp(180.0, 560.0);
+                double previewHeightRatio;
+                if (availableHeight >= 720) {
+                  previewHeightRatio = 0.55;
+                } else {
+                  previewHeightRatio = 0.45;
+                }
+                final previewHeight = (availableHeight * previewHeightRatio)
+                    .clamp(180.0, 560.0);
 
                 return SingleChildScrollView(
                   key: const Key('cameraDetectionScrollView'),
@@ -227,6 +263,17 @@ class _CameraInferencePageState extends State<CameraInferencePage>
   /// การ์ด preview กล้อง: ตัวภาพ + ป้ายสถานะ + ปุ่มเปิดปิดกล้อง + สถิติ
   /// ความสูงถูกกำหนดจากภายนอก (ไม่ผูกกับ AspectRatio คงที่อีกต่อไป)
   Widget _buildPreviewCard(Widget cameraContent) {
+    // ป้ายกำกับกับไอคอนของปุ่มกล้องผูกกับสถานะเดียวกัน จึงกำหนดพร้อมกันทีเดียว
+    String cameraToggleLabel;
+    IconData cameraToggleIcon;
+    if (_controller.isCameraEnabled) {
+      cameraToggleLabel = 'ปิดกล้อง';
+      cameraToggleIcon = Icons.videocam_rounded;
+    } else {
+      cameraToggleLabel = 'เปิดกล้อง';
+      cameraToggleIcon = Icons.videocam_off_rounded;
+    }
+
     return DecoratedBox(
       key: const Key('cameraPreviewCard'),
       decoration: BoxDecoration(
@@ -258,21 +305,15 @@ class _CameraInferencePageState extends State<CameraInferencePage>
               right: 10,
               child: Semantics(
                 button: true,
-                label: _controller.isCameraEnabled ? 'ปิดกล้อง' : 'เปิดกล้อง',
+                label: cameraToggleLabel,
                 child: IconButton.filled(
                   key: const Key('cameraPowerButton'),
-                  tooltip: _controller.isCameraEnabled
-                      ? 'ปิดกล้อง'
-                      : 'เปิดกล้อง',
+                  tooltip: cameraToggleLabel,
                   style: IconButton.styleFrom(
                     backgroundColor: Colors.black54,
                     foregroundColor: Colors.white,
                   ),
-                  icon: Icon(
-                    _controller.isCameraEnabled
-                        ? Icons.videocam_rounded
-                        : Icons.videocam_off_rounded,
-                  ),
+                  icon: Icon(cameraToggleIcon),
                   onPressed: () => unawaited(_controller.toggleCamera()),
                 ),
               ),
@@ -316,9 +357,20 @@ class _LiveStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ข้อความสำหรับ screen reader ยาวกว่าข้อความบนป้าย จึงแยกเป็นคนละตัวแปร
+    String semanticsLabel;
+    String badgeText;
+    if (hasDetections) {
+      semanticsLabel = 'ตรวจจับสัญญาณแล้ว';
+      badgeText = 'ตรวจจับแล้ว';
+    } else {
+      semanticsLabel = 'กำลังตรวจจับ';
+      badgeText = 'กำลังตรวจจับ';
+    }
+
     return Semantics(
       liveRegion: true,
-      label: hasDetections ? 'ตรวจจับสัญญาณแล้ว' : 'กำลังตรวจจับ',
+      label: semanticsLabel,
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.62),
@@ -340,7 +392,7 @@ class _LiveStatusBadge extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                hasDetections ? 'ตรวจจับแล้ว' : 'กำลังตรวจจับ',
+                badgeText,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 13,

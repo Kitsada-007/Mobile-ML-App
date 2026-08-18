@@ -81,18 +81,31 @@ class CountdownBadge extends StatelessWidget {
     final animationsDisabled = MediaQuery.disableAnimationsOf(context);
 
     // เปลี่ยนสีแบบ transition สั้น ๆ กันภาพกระตุกเมื่อสถานะไฟสลับ
-    final transition = animationsDisabled
-        ? Duration.zero
-        : const Duration(milliseconds: 200);
+    Duration transition;
+    if (animationsDisabled) {
+      transition = Duration.zero;
+    } else {
+      transition = const Duration(milliseconds: 200);
+    }
+
+    // เก็บลงตัวแปรก่อน เพื่อให้ทั้งข้อความบนป้ายและ semantics ใช้ค่าเดียวกัน
+    final countdownValue = countdown;
+    String numberText;
+    String unitText;
+    String countdownSemanticsText;
+    if (countdownValue == null) {
+      numberText = 'X';
+      unitText = 'ไม่พบตัวเลข';
+      countdownSemanticsText = 'ไม่พบตัวเลขนับถอยหลัง';
+    } else {
+      numberText = countdownValue.toString();
+      unitText = 'วินาที';
+      countdownSemanticsText = 'ตัวเลขนับถอยหลัง $countdownValue วินาที';
+    }
 
     final lightLabel = TrafficSignalClasses.thaiLabel[trafficLightClassName];
     // ต้องมีข้อความบอกสีไฟเสมอ (คนตาบอดสีต้องใช้ได้ ไม่พึ่งสีทางเดียว)
-    final semanticsLabel = [
-      ?lightLabel,
-      countdown == null
-          ? 'ไม่พบตัวเลขนับถอยหลัง'
-          : 'ตัวเลขนับถอยหลัง $countdown วินาที',
-    ].join(' ');
+    final semanticsLabel = [?lightLabel, countdownSemanticsText].join(' ');
 
     return Semantics(
       // ตัด semantics ของ Text ลูกออก เพราะ label ครอบคลุมทั้งสีไฟและตัวเลขแล้ว
@@ -124,7 +137,7 @@ class CountdownBadge extends StatelessWidget {
                   fontWeight: FontWeight.w900,
                   letterSpacing: -1.5,
                 ),
-                child: Text(countdown?.toString() ?? 'X', maxLines: 1),
+                child: Text(numberText, maxLines: 1),
               ),
             ),
             const SizedBox(height: 2),
@@ -137,10 +150,7 @@ class CountdownBadge extends StatelessWidget {
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                 ),
-                child: Text(
-                  countdown == null ? 'ไม่พบตัวเลข' : 'วินาที',
-                  maxLines: 1,
-                ),
+                child: Text(unitText, maxLines: 1),
               ),
             ),
           ],

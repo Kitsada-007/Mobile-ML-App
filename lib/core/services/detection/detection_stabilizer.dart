@@ -106,18 +106,20 @@ final class TrackedDetectionState {
     required this.group,
     required YOLOResult initialDetection,
     required DateTime timestamp,
-  }) : _lastDetection = initialDetection,
-       _lastSeenAt = timestamp;
+  }) {
+    _lastDetection = initialDetection;
+    _lastSeenAt = timestamp;
+  }
 
   final int trackId;
   final DetectionGroup group;
   final Queue<DetectionObservation> _history = Queue();
 
   /// ข้อมูลการตรวจพบดิบครั้งล่าสุด
-  YOLOResult _lastDetection;
+  late YOLOResult _lastDetection;
 
   /// เวลาล่าสุดที่พบวัตถุชิ้นนี้
-  DateTime _lastSeenAt;
+  late DateTime _lastSeenAt;
 
   /// ชื่อคลาสที่ได้รับการยืนยันว่าเสถียรแล้ว (null หากยังไม่ผ่านเกณฑ์โหวต)
   String? _stableClassName;
@@ -191,8 +193,16 @@ final class DetectionStabilizer {
         group: group,
         excludedTrackIds: matchedTrackIds,
       );
-      final selectedTrack =
-          track ?? _createTrack(detection, group: group, timestamp: timestamp);
+      final TrackedDetectionState selectedTrack;
+      if (track == null) {
+        selectedTrack = _createTrack(
+          detection,
+          group: group,
+          timestamp: timestamp,
+        );
+      } else {
+        selectedTrack = track;
+      }
       matchedTrackIds.add(selectedTrack.trackId);
 
       _addObservation(selectedTrack, detection, timestamp);
@@ -327,10 +337,14 @@ final class DetectionStabilizer {
 
     final previousClass = track._stableClassName;
     track._stableClassName = candidate;
+    final DetectionEventType eventType;
+    if (previousClass == null) {
+      eventType = DetectionEventType.detected;
+    } else {
+      eventType = DetectionEventType.changed;
+    }
     return DetectionEvent(
-      type: previousClass == null
-          ? DetectionEventType.detected
-          : DetectionEventType.changed,
+      type: eventType,
       detection: _stableDetectionFor(track),
       timestamp: timestamp,
     );
@@ -344,11 +358,13 @@ final class DetectionStabilizer {
     final rule = config.ruleFor(latestClass);
 
     // ดึงประวัติย้อนหลังตามจำนวน historySize ของคลาส
-    final recent = track._history.length <= rule.historySize
-        ? track._history.toList(growable: false)
-        : track._history
-              .skip(track._history.length - rule.historySize)
-              .toList(growable: false);
+    final List<DetectionObservation> recent;
+    if (track._history.length <= rule.historySize) {
+      recent = track._history.toList(growable: false);
+    } else {
+      final skipCount = track._history.length - rule.historySize;
+      recent = track._history.skip(skipCount).toList(growable: false);
+    }
 
     final voteCounts = <String, int>{};
     final confidenceScores = <String, double>{};
@@ -482,8 +498,13 @@ final class DetectionStabilizer {
   void _expireTracks(DateTime timestamp, List<DetectionEvent> events) {
     final expiredIds = <int>[];
     for (final track in _tracks.values) {
-      final referenceClass =
-          track._stableClassName ?? track._lastDetection.className;
+      final stableClassName = track._stableClassName;
+      final String referenceClass;
+      if (stableClassName == null) {
+        referenceClass = track._lastDetection.className;
+      } else {
+        referenceClass = stableClassName;
+      }
       final gracePeriod = config.ruleFor(referenceClass).missingGracePeriod;
       if (timestamp.difference(track._lastSeenAt) <= gracePeriod) continue;
 
@@ -553,5 +574,6 @@ double _intersectionOverUnion(Rect first, Rect second) {
       first.width * first.height +
       second.width * second.height -
       intersectionArea;
-  return unionArea <= 0 ? 0 : intersectionArea / unionArea;
+  if (unionArea <= 0) return 0;
+  return intersectionArea / unionArea;
 }

@@ -2,8 +2,10 @@ class CountdownReadingStabilizer {
   CountdownReadingStabilizer({
     this.requiredMatches = 2,
     this.maximumStepDown = 3,
-  }) : assert(requiredMatches > 0),
-       assert(maximumStepDown > 0);
+  }) {
+    assert(requiredMatches > 0);
+    assert(maximumStepDown > 0);
+  }
 
   final int requiredMatches;
   final int maximumStepDown;
@@ -16,7 +18,12 @@ class CountdownReadingStabilizer {
 
   String? add(String? reading) {
     final normalized = reading?.trim();
-    final value = normalized == null ? null : int.tryParse(normalized);
+    final int? value;
+    if (normalized == null) {
+      value = null;
+    } else {
+      value = int.tryParse(normalized);
+    }
     if (value == null || value < 0 || value > 99) {
       _clearCandidate();
       return null;

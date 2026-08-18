@@ -124,8 +124,13 @@ final class DetectionAlertConfig {
 
   /// จำนวนเฟรมย้อนหลังที่ off_light ต้องไม่เคยเห็นไฟติดที่ตำแหน่งเดิมเลย (กัน flicker)
   /// (const constructor อ้างค่า field อื่นเป็น default ไม่ได้ จึง default ผ่าน getter)
-  int get flickerLookbackFrames =>
-      _flickerLookbackFrames ?? offLightMinimumFrames;
+  int get flickerLookbackFrames {
+    final configured = _flickerLookbackFrames;
+    if (configured == null) {
+      return offLightMinimumFrames;
+    }
+    return configured;
+  }
 
   /// ค่าที่ผู้ใช้ตั้งเอง (null = ใช้ค่า default ผูกกับ offLightMinimumDuration)
   final Duration? _flickerLookbackDuration;
@@ -133,8 +138,13 @@ final class DetectionAlertConfig {
   /// หน้าต่างเวลาที่ off_light ต้องไม่เคยเห็นไฟติดที่ตำแหน่งเดิมเลย (กัน flicker
   /// แบบ fps-independent) — default ผูกกับ offLightMinimumDuration ตามหลัก
   /// "ไฟดับจริงต้องดับสนิทตลอดหน้าต่างยืนยัน"
-  Duration get flickerLookbackDuration =>
-      _flickerLookbackDuration ?? offLightMinimumDuration;
+  Duration get flickerLookbackDuration {
+    final configured = _flickerLookbackDuration;
+    if (configured == null) {
+      return offLightMinimumDuration;
+    }
+    return configured;
+  }
 
   /// ระยะเวลาขั้นต่ำที่ต้องเก็บประวัติของกลุ่มไว้ (ให้หน้าต่างกัน flicker
   /// มองย้อนได้ครบ ไม่โดน evict ตามจำนวนเฟรมไปก่อน)
@@ -178,6 +188,24 @@ final class DetectionAlertConfig {
 
   /// ดึงกฎการประมวลผล (DetectionRule) สำหรับชื่อคลาสที่ระบุ
   DetectionRule ruleFor(String className) {
+    // เกณฑ์ยืนยันต่อเนื่องและหน้าต่างกัน flicker ใช้กับ off_light เท่านั้น
+    // คลาสอื่นต้องเป็น null (= ไม่ตรวจ) ตามสัญญาของ DetectionRule
+    int? offLightFrames;
+    Duration? offLightDuration;
+    int? offLightFlickerFrames;
+    Duration? offLightFlickerDuration;
+    if (className == 'off_light') {
+      offLightFrames = offLightMinimumFrames;
+      offLightDuration = offLightMinimumDuration;
+      offLightFlickerFrames = flickerLookbackFrames;
+      offLightFlickerDuration = flickerLookbackDuration;
+    } else {
+      offLightFrames = null;
+      offLightDuration = null;
+      offLightFlickerFrames = null;
+      offLightFlickerDuration = null;
+    }
+
     return switch (groupFor(className)) {
       DetectionGroup.trafficLight => DetectionRule(
         historySize: trafficHistorySize,
@@ -185,18 +213,10 @@ final class DetectionAlertConfig {
         missingGracePeriod: trafficMissingGracePeriod,
         voiceCooldown: trafficVoiceCooldown,
         priority: _priorityFor(className),
-        minimumConsecutiveFrames: className == 'off_light'
-            ? offLightMinimumFrames
-            : null,
-        minimumContinuousDuration: className == 'off_light'
-            ? offLightMinimumDuration
-            : null,
-        flickerLookbackFrames: className == 'off_light'
-            ? flickerLookbackFrames
-            : null,
-        flickerLookbackDuration: className == 'off_light'
-            ? flickerLookbackDuration
-            : null,
+        minimumConsecutiveFrames: offLightFrames,
+        minimumContinuousDuration: offLightDuration,
+        flickerLookbackFrames: offLightFlickerFrames,
+        flickerLookbackDuration: offLightFlickerDuration,
       ),
       DetectionGroup.turnSignal => DetectionRule(
         historySize: turnHistorySize,

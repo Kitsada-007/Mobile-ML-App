@@ -58,16 +58,26 @@ Uint8List orientFrameForDetectionCoordinates(
   if (decoded == null) return frameBytes;
 
   img.Image oriented = img.bakeOrientation(decoded);
-  final normalizedRotation = rotationDegrees == null
-      ? null
-      : ((rotationDegrees % 360) + 360) % 360;
+  final int? normalizedRotation;
+  if (rotationDegrees == null) {
+    normalizedRotation = null;
+  } else {
+    normalizedRotation = ((rotationDegrees % 360) + 360) % 360;
+  }
   final dimensionsAreReversed =
       expectedWidth != null &&
       expectedHeight != null &&
       oriented.width == expectedHeight &&
       oriented.height == expectedWidth;
 
-  final degrees = normalizedRotation ?? (dimensionsAreReversed ? 90 : 0);
+  final int degrees;
+  if (normalizedRotation != null) {
+    degrees = normalizedRotation;
+  } else if (dimensionsAreReversed) {
+    degrees = 90;
+  } else {
+    degrees = 0;
+  }
   if (degrees == 0) return frameBytes;
 
   oriented = img.copyRotate(oriented, angle: degrees);
@@ -174,9 +184,12 @@ Uint8List? processSignCrop(CropData data) {
 
     final int shortestEdge = min(cropped.width, cropped.height);
     final int longestEdge = max(cropped.width, cropped.height);
-    double scale = shortestEdge < minimumDigitCropEdge
-        ? minimumDigitCropEdge / shortestEdge
-        : 1;
+    double scale;
+    if (shortestEdge < minimumDigitCropEdge) {
+      scale = minimumDigitCropEdge / shortestEdge;
+    } else {
+      scale = 1;
+    }
 
     if (longestEdge * scale > maximumDigitCropEdge) {
       scale = maximumDigitCropEdge / longestEdge;

@@ -7,10 +7,11 @@ typedef AsyncItemProcessor<T> = Future<void> Function(T item);
 /// - ถ้ามี item ใหม่เพิ่มขึ้นอีกระหว่างค้าง จะถือว่า "ตกงาน" (drop) และเก็บไว้แค่ตัวล่าสุด
 /// - เหมาะกับกล้องเรียลไทม์: ใช้เฟรมที่ใหม่ที่สุดเสมอ ไม่ต้องประมวลผลเฟรมเก่าที่ล้าสมัย
 class LatestFrameQueue<T> {
-  LatestFrameQueue({required AsyncItemProcessor<T> processor})
-    : _processor = processor;
+  LatestFrameQueue({required AsyncItemProcessor<T> processor}) {
+    _processor = processor;
+  }
 
-  final AsyncItemProcessor<T> _processor;
+  late final AsyncItemProcessor<T> _processor;
 
   T? _pendingItem;
   Future<void>? _running;

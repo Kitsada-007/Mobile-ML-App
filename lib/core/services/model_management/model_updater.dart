@@ -47,12 +47,14 @@ class ModelUpdater {
     this._registry, {
     required String currentAppVersion,
     this.modelIds = const <String>['traffic', 'number'],
-  }) : _currentAppVersion = SemanticVersion.parse(currentAppVersion);
+  }) {
+    _currentAppVersion = SemanticVersion.parse(currentAppVersion);
+  }
 
   final ModelManifestSource _manifestSource;
   final ModelDownloader _downloader;
   final ActiveModelRegistry _registry;
-  final SemanticVersion _currentAppVersion;
+  late final SemanticVersion _currentAppVersion;
   final List<String> modelIds;
 
   Future<ModelUpdateReport>? _inFlight;
