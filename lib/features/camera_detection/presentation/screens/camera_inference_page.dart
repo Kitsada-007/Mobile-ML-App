@@ -136,6 +136,8 @@ class _CameraInferencePageState extends State<CameraInferencePage>
                   isPipelineStale: _controller.isRealtimePipelineStale,
                   statusText: _controller.detectionStatus,
                   lastDetectionConfidence: _controller.lastDetectionConfidence,
+                  trafficLightClassName:
+                      _controller.stableTrafficLightClassName,
                 );
 
                 // แนวนอน: จอเตี้ยแต่กว้าง จึงวางกล้องคู่กับแผงผล ไม่ใช่วางต่อกันลงมา

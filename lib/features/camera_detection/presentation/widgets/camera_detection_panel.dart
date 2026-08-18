@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:trffic_ilght_app/core/services/inference/signal_interpreter.dart'; // โครงสร้าง DriverSignalResult / SignalAction
 import 'package:trffic_ilght_app/core/utils/thai_number_helper.dart'; // helper เลขไทย (shouldPrepareToGo)
+import 'package:trffic_ilght_app/shared/widgets/countdown_badge.dart'; // ป้ายนับถอยหลังกลาง (สีตามไฟจราจร)
 
 /// แผงแสดงผลสัญญาณจราจรสด (อยู่ใต้ preview กล้อง/วิดีโอ)
 /// - แสดงสถานะ pipeline + confidence
@@ -17,12 +18,16 @@ class CameraDetectionPanel extends StatelessWidget {
     this.isPipelineStale = true, // pipeline ล้าสมัยไหม (default ล้าสมัย)
     this.statusText = 'กำลังตรวจจับ', // ข้อความสถานะ
     this.lastDetectionConfidence, // confidence สูงสุดล่าสุด
+    this.trafficLightClassName, // คลาสไฟเสถียร -> สีป้ายนับถอยหลัง
   });
 
   final List<String> formalNames;
   final List<String> alertMessages;
   final String? detectedNumber;
   final bool isLandscape;
+
+  /// คลาสไฟจราจรเสถียร (จาก controller) ใช้เลือกสีป้ายนับถอยหลัง
+  final String? trafficLightClassName;
   final DriverSignalResult? driverSignalResult;
   final bool isPipelineStale;
   final String statusText;
@@ -90,7 +95,11 @@ class CameraDetectionPanel extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _CountdownBadge(countdown: countdown), // ป้ายตัวเลขนับถอยหลัง
+                  // ป้ายตัวเลขนับถอยหลัง (สีตามคลาสไฟจราจรเสถียร)
+                  CountdownBadge(
+                    countdown: countdown,
+                    trafficLightClassName: trafficLightClassName,
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: hasDriverMessage
@@ -348,66 +357,6 @@ class _PanelHeader extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// ป้ายตัวเลขนับถอยหลัง (กล่องแดงด้านซ้าย)
-class _CountdownBadge extends StatelessWidget {
-  const _CountdownBadge({required this.countdown});
-
-  final int? countdown; // ตัวเลข (null = ไม่พบ)
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: countdown == null
-          ? 'ไม่พบตัวเลขนับถอยหลัง'
-          : 'ตัวเลขนับถอยหลัง $countdown วินาที',
-      child: Container(
-        width: 86,
-        height: 86,
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFEEEE), // พื้นแดงอ่อน
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFFFD6D6)),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // ตัวเลขขนาดใหญ่ (หรือ "X" เมื่อไม่พบ)
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                countdown?.toString() ?? 'X',
-                maxLines: 1,
-                style: const TextStyle(
-                  color: Color(0xFFE63D3D),
-                  fontSize: 36,
-                  height: 1.0,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -1.5,
-                ),
-              ),
-            ),
-            const SizedBox(height: 2),
-            // คำว่า "วินาที" หรือ "ไม่พบตัวเลข"
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                countdown == null ? 'ไม่พบตัวเลข' : 'วินาที',
-                maxLines: 1,
-                style: const TextStyle(
-                  color: Color(0xFF9F3A3A),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

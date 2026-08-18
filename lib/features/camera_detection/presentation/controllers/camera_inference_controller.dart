@@ -157,6 +157,31 @@ class CameraInferenceController extends ChangeNotifier {
   String? get confirmedTrafficLightClassName => _stableTrafficLights.isEmpty
       ? null
       : _stableTrafficLights.first.className;
+
+  /// คลาสไฟจราจรเสถียรสำหรับ UI ป้ายนับถอยหลัง — ต่างจาก
+  /// [confirmedTrafficLightClassName] ตรงที่รวมคลาสสังเคราะห์ไฟกะพริบ
+  /// (flashing_*) ที่ stabilizer สร้างขึ้นด้วย
+  String? get stableTrafficLightClassName {
+    final lights =
+        _detectionStabilizer.stableDetections
+            .where(
+              (detection) =>
+                  DetectionAlertConfig.trafficLightClasses.contains(
+                    detection.className,
+                  ) ||
+                  DetectionAlertConfig.flashingLightClasses.contains(
+                    detection.className,
+                  ),
+            )
+            .toList()
+          ..sort(
+            (first, second) => _detectionConfig
+                .ruleFor(first.className)
+                .priority
+                .compareTo(_detectionConfig.ruleFor(second.className).priority),
+          );
+    return lights.isEmpty ? null : lights.first.className;
+  }
   int? get activeTrafficLightTrackingId =>
       _stableTrafficLights.isEmpty ? null : _stableTrafficLights.first.trackId;
   RealtimePipelineSnapshot get pipelineSnapshot => _pipelineSnapshot;

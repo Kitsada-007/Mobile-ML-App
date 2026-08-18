@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:trffic_ilght_app/core/services/inference/signal_interpreter.dart';
 import 'package:trffic_ilght_app/core/utils/thai_number_helper.dart';
+import 'package:trffic_ilght_app/shared/widgets/countdown_badge.dart';
 
 /// แผงแสดงผลการตรวจจับวิดีโอ (สำหรับหน้า Video Inference Screen โดยเฉพาะ)
 /// ทำหน้าที่แสดงผลลัพธ์จากการประมวลผลไฟล์วิดีโอ แยกต่างหากจากกล้อง Realtime
@@ -15,12 +16,16 @@ class VideoDetectionPanel extends StatelessWidget {
     this.isPipelineStale = true,
     this.statusText = 'พร้อมตรวจจับวิดีโอ',
     this.lastDetectionConfidence,
+    this.trafficLightClassName,
   });
 
   final List<String> formalNames;
   final List<String> alertMessages;
   final String? detectedNumber;
   final bool isLandscape;
+
+  /// คลาสไฟจราจรเสถียร (จาก controller) ใช้เลือกสีป้ายนับถอยหลัง
+  final String? trafficLightClassName;
   final DriverSignalResult? driverSignalResult;
   final bool isPipelineStale;
   final String statusText;
@@ -82,7 +87,10 @@ class VideoDetectionPanel extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _VideoCountdownBadge(countdown: countdown),
+                  CountdownBadge(
+                    countdown: countdown,
+                    trafficLightClassName: trafficLightClassName,
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: hasDriverMessage
@@ -233,63 +241,6 @@ class _VideoMetricChip extends StatelessWidget {
             fontSize: 10,
             fontWeight: FontWeight.w800,
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _VideoCountdownBadge extends StatelessWidget {
-  const _VideoCountdownBadge({required this.countdown});
-
-  final int? countdown;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: countdown == null
-          ? 'ไม่พบตัวเลขนับถอยหลัง'
-          : 'ตัวเลขนับถอยหลัง $countdown วินาที',
-      child: Container(
-        width: 86,
-        height: 86,
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFEEEE),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFFFD6D6)),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                countdown?.toString() ?? 'X',
-                maxLines: 1,
-                style: const TextStyle(
-                  color: Color(0xFFE63D3D),
-                  fontSize: 36,
-                  height: 1.0,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -1.5,
-                ),
-              ),
-            ),
-            const SizedBox(height: 2),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                countdown == null ? 'ไม่พบตัวเลข' : 'วินาที',
-                maxLines: 1,
-                style: const TextStyle(
-                  color: Color(0xFF9F3A3A),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );

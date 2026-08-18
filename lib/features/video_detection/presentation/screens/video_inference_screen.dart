@@ -183,6 +183,8 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
                         ? _controller.progressText
                         : 'พร้อมตรวจจับวิดีโอ',
                     lastDetectionConfidence: _controller.lastDetectionConfidence,
+                    trafficLightClassName:
+                        _controller.stableTrafficLightClassName,
                   );
 
                   // แนวนอน: จอเตี้ยแต่กว้าง จึงวางวิดีโอคู่กับแผงผล

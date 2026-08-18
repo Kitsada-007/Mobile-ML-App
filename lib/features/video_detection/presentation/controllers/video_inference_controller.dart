@@ -98,6 +98,9 @@ class VideoInferenceController extends ChangeNotifier {
   String?
   _currentDetectedNumber; // ตัวเลขที่ตรวจพบในเฟรมปัจจุบัน (เช่น 5, 4, 3)
   String? _currentCountdownUiMessage;
+  // คลาสไฟจราจรเสถียรของเฟรมปัจจุบัน (รวมคลาสสังเคราะห์ไฟกะพริบ)
+  // ใช้เลือกชุดสีของป้ายนับถอยหลังใน UI เท่านั้น ไม่เกี่ยวกับ logic เสียง
+  String? _currentStableTrafficLightClassName;
   // ผลการแปลความหมายสัญญาณไฟ -> คำสั่งคนขับของเฟรมปัจจุบัน (เริ่มต้น: ไม่มี action)
   DriverSignalResult _currentDriverSignalResult = const DriverSignalResult(
     message: '',
@@ -142,6 +145,10 @@ class VideoInferenceController extends ChangeNotifier {
   List<YOLOResult> get currentFrameDetections => _currentFrameDetections;
   String? get currentDetectedNumber => _currentDetectedNumber;
   String? get currentCountdownUiMessage => _currentCountdownUiMessage;
+
+  /// คลาสไฟจราจรที่ยืนยันเสถียรแล้วของเฟรมปัจจุบัน (เช่น red_light_circle,
+  /// flashing_yellow) สำหรับให้ UI เลือกสีป้ายนับถอยหลัง — null เมื่อยังไม่ยืนยัน
+  String? get stableTrafficLightClassName => _currentStableTrafficLightClassName;
   DriverSignalResult get currentDriverSignalResult =>
       _currentDriverSignalResult;
   List<String> get currentFormalNames => List.unmodifiable(_currentFormalNames);
@@ -494,6 +501,21 @@ class VideoInferenceController extends ChangeNotifier {
     );
     _currentCountdownUiMessage = countdownUpdate.uiMessage;
 
+    // คลาสไฟสำหรับสีป้ายนับถอยหลัง: รวม off_light และไฟกะพริบสังเคราะห์
+    // (คนละเงื่อนไขกับ countdown ด้านบนที่จำกัดเฉพาะไฟนิ่งซึ่งมีนับถอยหลังจริง)
+    _currentStableTrafficLightClassName = null;
+    for (final detection in stableDetections) {
+      if (DetectionAlertConfig.trafficLightClasses.contains(
+            detection.className,
+          ) ||
+          DetectionAlertConfig.flashingLightClasses.contains(
+            detection.className,
+          )) {
+        _currentStableTrafficLightClassName = detection.className;
+        break;
+      }
+    }
+
     _currentDriverSignalResult = SignalInterpreter.interpret(
       stableYoloDetections,
     );
@@ -548,6 +570,7 @@ class VideoInferenceController extends ChangeNotifier {
     _lastFrameIndex = -1;
     _currentDetectedNumber = null;
     _currentCountdownUiMessage = null;
+    _currentStableTrafficLightClassName = null;
     _currentDriverSignalResult = const DriverSignalResult(
       message: '',
       action: SignalAction.none,
