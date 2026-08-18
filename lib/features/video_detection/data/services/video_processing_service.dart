@@ -128,7 +128,8 @@ class VideoProcessingService {
       // 1. Extract frames from video using FFmpeg at the exact target rate.
       //    ไม่ extract ถี่กว่านี้แล้วมา skip ทีหลัง เพราะเปลืองเวลา/พื้นที่โดยไม่จำเป็น
       onProgress(0.0, 'กำลังสกัดเฟรมจากวิดีโอ ($targetFps ครั้ง/วินาที)...');
-      final extractStopwatch = Stopwatch()..start();
+      final extractStopwatch = Stopwatch();
+      extractStopwatch.start();
 
       final String extractCmd =
           '-threads 0 '
@@ -150,8 +151,8 @@ class VideoProcessingService {
       }
       extractStopwatch.stop();
 
-      final List<FileSystemEntity> frameFiles = inputDir.listSync()
-        ..sort((a, b) => a.path.compareTo(b.path));
+      final List<FileSystemEntity> frameFiles = inputDir.listSync();
+      frameFiles.sort((a, b) => a.path.compareTo(b.path));
 
       final int totalFrames = frameFiles.length;
       if (totalFrames == 0) {
@@ -170,7 +171,8 @@ class VideoProcessingService {
       // 2. Process every extracted frame through the dual-stage pipeline
       //    with realtime stabilization & decay hold for the countdown number.
       frameAnalysisService.resetTiming();
-      final analysisStopwatch = Stopwatch()..start();
+      final analysisStopwatch = Stopwatch();
+      analysisStopwatch.start();
       final holdTracker = CountdownHoldTracker(maxHoldFrames: maxHoldFrames);
 
       int currentFrame = 0;

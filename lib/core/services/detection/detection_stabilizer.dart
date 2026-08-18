@@ -165,18 +165,17 @@ final class DetectionStabilizer {
     _expireTracks(timestamp, events);
 
     // 2. กรองเฉพาะวัตถุที่ตรงตามเงื่อนไข (ความเชื่อมั่นผานเกณฑ์ และขนาดกรอบสมบูรณ์)
-    final detections =
-        rawDetections
-            .where(
-              (detection) =>
-                  config.participatesInStableDetection(detection.className) &&
-                  detection.confidence.isFinite &&
-                  detection.confidence >= config.minimumConfidence &&
-                  _trackingBox(detection).width > 0 &&
-                  _trackingBox(detection).height > 0,
-            )
-            .toList()
-          ..sort((a, b) => b.confidence.compareTo(a.confidence));
+    final detections = rawDetections
+        .where(
+          (detection) =>
+              config.participatesInStableDetection(detection.className) &&
+              detection.confidence.isFinite &&
+              detection.confidence >= config.minimumConfidence &&
+              _trackingBox(detection).width > 0 &&
+              _trackingBox(detection).height > 0,
+        )
+        .toList();
+    detections.sort((a, b) => b.confidence.compareTo(a.confidence));
 
     // บันทึก "ไฟติด" ลงทะเบียนกลางก่อนเข้า matching loop เพื่อให้ off_light
     // ในเฟรมเดียวกันเห็นหลักฐานครบ ไม่ขึ้นกับลำดับ confidence
@@ -367,12 +366,16 @@ final class DetectionStabilizer {
     }
 
     // เรียงลำดับคลาสตามจำนวนโหวต (และตามคะแนนความเชื่อมั่นรวมในกรณีโหวตเท่ากัน)
-    final ranked = voteCounts.keys.toList()
-      ..sort((first, second) {
-        final countOrder = voteCounts[second]!.compareTo(voteCounts[first]!);
-        if (countOrder != 0) return countOrder;
-        return confidenceScores[second]!.compareTo(confidenceScores[first]!);
-      });
+    final ranked = voteCounts.keys.toList();
+    ranked.sort((first, second) {
+      final firstVotes = voteCounts[first]!;
+      final secondVotes = voteCounts[second]!;
+      final countOrder = secondVotes.compareTo(firstVotes);
+      if (countOrder != 0) return countOrder;
+      final firstScore = confidenceScores[first]!;
+      final secondScore = confidenceScores[second]!;
+      return secondScore.compareTo(firstScore);
+    });
     final candidate = ranked.first;
     final candidateRule = config.ruleFor(candidate);
 
@@ -506,12 +509,15 @@ final class DetectionStabilizer {
     final observations = track._history
         .where((observation) => observation.className == stableClass)
         .toList(growable: false);
-    final confidence = observations.isEmpty
-        ? track._lastDetection.confidence
-        : observations
-                  .map((observation) => observation.confidence)
-                  .reduce((first, second) => first + second) /
-              observations.length;
+    final double confidence;
+    if (observations.isEmpty) {
+      confidence = track._lastDetection.confidence;
+    } else {
+      final totalConfidence = observations
+          .map((observation) => observation.confidence)
+          .reduce((first, second) => first + second);
+      confidence = totalConfidence / observations.length;
+    }
     return StableDetection(
       trackId: track.trackId,
       classIndex: track._lastDetection.classIndex,
@@ -526,9 +532,8 @@ final class DetectionStabilizer {
 /// ดึงพิกัดกรอบสำหรับใช้คำนวณการติดตามวัตถุ (เลือก normalizedBox ก่อน หากไม่มีใช้ boundingBox)
 Rect _trackingBox(YOLOResult detection) {
   final normalized = detection.normalizedBox;
-  return normalized.width > 0 && normalized.height > 0
-      ? normalized
-      : detection.boundingBox;
+  if (normalized.width > 0 && normalized.height > 0) return normalized;
+  return detection.boundingBox;
 }
 
 /// ทับซ้อนแบบหลวม: พื้นที่ตัดกัน > 0 หรือจุดกึ่งกลางของกล่องหนึ่งอยู่ในอีกกล่อง

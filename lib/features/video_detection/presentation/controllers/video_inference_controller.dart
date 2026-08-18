@@ -421,16 +421,20 @@ class VideoInferenceController extends ChangeNotifier {
       stableInput,
       timestamp: timestamp,
     );
-    final stableDetections = List<StableDetection>.from(update.stableDetections)
-      ..sort((first, second) {
-        final priorityOrder = _detectionConfig
-            .ruleFor(first.className)
-            .priority
-            .compareTo(_detectionConfig.ruleFor(second.className).priority);
-        return priorityOrder != 0
-            ? priorityOrder
-            : second.confidence.compareTo(first.confidence);
-      });
+    final stableDetections = List<StableDetection>.from(
+      update.stableDetections,
+    );
+    stableDetections.sort((first, second) {
+      final firstPriority = _detectionConfig.ruleFor(first.className).priority;
+      final secondPriority = _detectionConfig
+          .ruleFor(second.className)
+          .priority;
+      final priorityOrder = firstPriority.compareTo(secondPriority);
+      if (priorityOrder != 0) {
+        return priorityOrder;
+      }
+      return second.confidence.compareTo(first.confidence);
+    });
     final stableYoloDetections = stableDetections
         .map((detection) => detection.toYoloResult())
         .toList(growable: false);
@@ -481,11 +485,16 @@ class VideoInferenceController extends ChangeNotifier {
     }
     _currentFormalNames = formalNames;
     _currentAlertMessages = alertMessages;
-    _lastDetectionConfidence = stableDetections.isEmpty
-        ? null
-        : stableDetections
-              .map((detection) => detection.confidence)
-              .reduce((first, second) => first > second ? first : second);
+    if (stableDetections.isEmpty) {
+      _lastDetectionConfidence = null;
+    } else {
+      final confidences = stableDetections.map(
+        (detection) => detection.confidence,
+      );
+      _lastDetectionConfidence = confidences.reduce(
+        (first, second) => first > second ? first : second,
+      );
+    }
 
     final shouldAnnounce =
         _videoController != null &&

@@ -12,9 +12,8 @@ void main() {
   test('rejects a countdown that jumps upward after stabilization', () {
     final stabilizer = CountdownReadingStabilizer(requiredMatches: 2);
 
-    stabilizer
-      ..add('12')
-      ..add('12');
+    stabilizer.add('12');
+    stabilizer.add('12');
 
     expect(stabilizer.add('17'), isNull);
     expect(stabilizer.add('17'), isNull);
@@ -26,9 +25,8 @@ void main() {
     () {
       final stabilizer = CountdownReadingStabilizer(requiredMatches: 2);
 
-      stabilizer
-        ..add('12')
-        ..add('12');
+      stabilizer.add('12');
+      stabilizer.add('12');
 
       expect(stabilizer.add('11'), '11');
     },
@@ -37,9 +35,8 @@ void main() {
   test('requires extra evidence before resynchronizing after a large drop', () {
     final stabilizer = CountdownReadingStabilizer(requiredMatches: 2);
 
-    stabilizer
-      ..add('12')
-      ..add('12');
+    stabilizer.add('12');
+    stabilizer.add('12');
 
     expect(stabilizer.add('8'), isNull);
     expect(stabilizer.add('8'), isNull);
@@ -49,9 +46,8 @@ void main() {
   test('recovers from an incorrect initial low reading after four frames', () {
     final stabilizer = CountdownReadingStabilizer(requiredMatches: 2);
 
-    stabilizer
-      ..add('3')
-      ..add('3');
+    stabilizer.add('3');
+    stabilizer.add('3');
 
     expect(stabilizer.add('12'), isNull);
     expect(stabilizer.add('12'), isNull);
@@ -70,10 +66,9 @@ void main() {
   test('reset allows a new traffic-light countdown cycle', () {
     final stabilizer = CountdownReadingStabilizer(requiredMatches: 2);
 
-    stabilizer
-      ..add('3')
-      ..add('3')
-      ..reset();
+    stabilizer.add('3');
+    stabilizer.add('3');
+    stabilizer.reset();
 
     expect(stabilizer.add('20'), isNull);
     expect(stabilizer.add('20'), '20');

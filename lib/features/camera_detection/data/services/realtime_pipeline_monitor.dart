@@ -233,7 +233,8 @@ Duration _nonNegativeDifference(DateTime later, DateTime earlier) {
 /// คำนวณ percentile ของชุด Duration (เช่น p95, p99)
 Duration _percentile(List<Duration> values, double percentile) {
   if (values.isEmpty) return Duration.zero;
-  final sorted = values.map((value) => value.inMicroseconds).toList()..sort();
+  final sorted = values.map((value) => value.inMicroseconds).toList();
+  sorted.sort();
   final index = (percentile * sorted.length).ceil().clamp(1, sorted.length) - 1;
   return Duration(microseconds: sorted[index]);
 }

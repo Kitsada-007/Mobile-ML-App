@@ -12,16 +12,15 @@ import 'package:trffic_ilght_app/shared/widgets/countdown_badge.dart';
     ),
   );
   final decoration = container.decoration! as BoxDecoration;
+  final textStyleFinder = find.descendant(
+    of: find.byType(CountdownBadge),
+    matching: find.byType(AnimatedDefaultTextStyle),
+  );
+  final textStyleWidgets = tester.widgetList<AnimatedDefaultTextStyle>(
+    textStyleFinder,
+  );
   // AnimatedDefaultTextStyle ตัวแรกคือตัวเลขใหญ่ (fontSize 36)
-  final numberStyle = tester
-      .widgetList<AnimatedDefaultTextStyle>(
-        find.descendant(
-          of: find.byType(CountdownBadge),
-          matching: find.byType(AnimatedDefaultTextStyle),
-        ),
-      )
-      .first
-      .style;
+  final numberStyle = textStyleWidgets.first.style;
   return (decoration.color!, numberStyle.color!);
 }
 

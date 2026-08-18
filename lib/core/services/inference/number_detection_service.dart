@@ -45,26 +45,27 @@ class NumberDetectionService {
 
     final detections = parseYoloDetections(prediction['detections']);
 
-    final digitDetections =
-        detections
-            .where(
-              (detection) =>
-                  RegExp(r'^\d$').hasMatch(detection.className.trim()),
-            )
-            .toList()
-          ..sort((a, b) => b.confidence.compareTo(a.confidence));
+    final digitDetections = detections
+        .where(
+          (detection) => RegExp(r'^\d$').hasMatch(detection.className.trim()),
+        )
+        .toList();
+    digitDetections.sort((a, b) => b.confidence.compareTo(a.confidence));
     // ตัดกล่องที่ทับกับหลักที่เลือกไปแล้วออกก่อน จึงค่อยหยิบ 2 หลักแรก
     final selectedDigits = _selectDistinctDigits(
       digitDetections,
       maximumDigits: 2,
     );
     final number = readDigitSequence(selectedDigits, maxDigits: 2);
-    final averageConfidence = selectedDigits.isEmpty
-        ? 0.0
-        : selectedDigits
-                  .map((detection) => detection.confidence)
-                  .reduce((a, b) => a + b) /
-              selectedDigits.length;
+    final double averageConfidence;
+    if (selectedDigits.isEmpty) {
+      averageConfidence = 0.0;
+    } else {
+      final totalConfidence = selectedDigits
+          .map((detection) => detection.confidence)
+          .reduce((a, b) => a + b);
+      averageConfidence = totalConfidence / selectedDigits.length;
+    }
 
     if (number != null && number.isNotEmpty) {
       _debugNumberDetection(
@@ -108,9 +109,8 @@ List<YOLOResult> _selectDistinctDigits(
 /// (ต้องเทียบบนระบบพิกัดเดียวกัน ไม่งั้นค่า IoU ไม่มีความหมาย)
 Rect _detectionBox(YOLOResult detection) {
   final normalized = detection.normalizedBox;
-  return normalized.width > 0 && normalized.height > 0
-      ? normalized
-      : detection.boundingBox;
+  if (normalized.width > 0 && normalized.height > 0) return normalized;
+  return detection.boundingBox;
 }
 
 double _intersectionOverUnion(Rect first, Rect second) {

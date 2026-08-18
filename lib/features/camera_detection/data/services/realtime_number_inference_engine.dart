@@ -87,7 +87,8 @@ class RealtimeNumberInferenceEngine {
 
     _isDetecting = true;
     _lastDetectionTime = DateTime.now();
-    final stopwatch = Stopwatch()..start();
+    final stopwatch = Stopwatch();
+    stopwatch.start();
 
     try {
       final analysis = await service.analyzeRealtimeFrame(

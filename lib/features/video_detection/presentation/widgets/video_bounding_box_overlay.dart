@@ -54,12 +54,13 @@ class _BoundingBoxPainter extends CustomPainter {
     // กันกรณีขนาด canvas เป็น 0 (ไม่มีพื้นที่วาด)
     if (size.width == 0 || size.height == 0) return;
 
-    final boxPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.0;
+    final boxPaint = Paint();
+    boxPaint.style = PaintingStyle.stroke;
+    boxPaint.strokeWidth = 3.0;
 
     // Paint สำหรับวาดพื้นหลัง (fill) — เตรียมไว้เผื่ออนาคต
-    final bgPaint = Paint()..style = PaintingStyle.fill;
+    final bgPaint = Paint();
+    bgPaint.style = PaintingStyle.fill;
 
     for (final detection in detections) {
       final color = _getColorForClass(detection.className);

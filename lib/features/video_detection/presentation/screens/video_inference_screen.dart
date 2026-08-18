@@ -63,9 +63,9 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
     final message = _controller.snackBarMessage;
     if (message != null) {
       _controller.clearSnackBarMessage();
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(message)));
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(SnackBar(content: Text(message)));
     }
   }
 

@@ -21,21 +21,19 @@ final class VoiceAlertController {
   Future<DetectionEvent?> handleEvents(Iterable<DetectionEvent> events) async {
     if (_isSpeaking) return null;
 
-    final candidates =
-        events
-            .where(
-              (event) =>
-                  config.participatesInVoiceAlerts(event.detection.className) &&
-                  (event.type == DetectionEventType.detected ||
-                      event.type == DetectionEventType.changed),
-            )
-            .toList()
-          ..sort(
-            (first, second) => config
-                .ruleFor(first.detection.className)
-                .priority
-                .compareTo(config.ruleFor(second.detection.className).priority),
-          );
+    final candidates = events
+        .where(
+          (event) =>
+              config.participatesInVoiceAlerts(event.detection.className) &&
+              (event.type == DetectionEventType.detected ||
+                  event.type == DetectionEventType.changed),
+        )
+        .toList();
+    candidates.sort((first, second) {
+      final firstRule = config.ruleFor(first.detection.className);
+      final secondRule = config.ruleFor(second.detection.className);
+      return firstRule.priority.compareTo(secondRule.priority);
+    });
     if (candidates.isEmpty) return null;
 
     DetectionEvent? selected;

@@ -33,9 +33,8 @@ String? readDigitSequence(Iterable<YOLOResult> detections, {int? maxDigits}) {
   if (maxDigits != null && digits.length > maxDigits) {
     digits.sort((a, b) {
       final confidenceOrder = b.confidence.compareTo(a.confidence);
-      return confidenceOrder != 0
-          ? confidenceOrder
-          : _leftEdge(a).compareTo(_leftEdge(b));
+      if (confidenceOrder != 0) return confidenceOrder;
+      return _leftEdge(a).compareTo(_leftEdge(b));
     });
     digits = digits.take(maxDigits).toList();
   }

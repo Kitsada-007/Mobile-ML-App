@@ -156,3 +156,267 @@ once per session, non-blocking) the app fetches `model_manifest.json` from GitHu
   time- or platform-dependent code so tests stay deterministic.
 </content>
 </invoke>
+
+
+# CLAUDE.md
+
+แนวทางการเขียนโค้ดสำหรับโปรเจกต์นี้ (`trffic_ilght_app`)
+Claude Code ต้องอ่านและทำตามไฟล์นี้ทุกครั้งก่อนแก้โค้ด
+
+---
+
+## กฎสไตล์การเขียน (บังคับ)
+
+โปรเจกต์นี้เน้น **โค้ดที่อ่านง่ายสำหรับคนที่เพิ่งเริ่ม Dart** มากกว่าโค้ดสั้น
+ห้ามใช้ไวยากรณ์ย่อที่ต้องรู้ Dart ลึกถึงจะอ่านออก
+
+### 1. ห้ามใช้ `??` (null-coalescing operator)
+
+ให้เขียนเป็น `if / else` ธรรมดาแทน เพื่อให้เห็นเงื่อนไขชัด ๆ
+
+```dart
+// ❌ ห้าม
+_picker = picker ?? ImagePicker();
+final number = int.tryParse(text) ?? 0;
+
+// ✅ ถูกต้อง
+if (picker == null) {
+  _picker = ImagePicker();
+} else {
+  _picker = picker;
+}
+
+int number;
+final parsed = int.tryParse(text);
+if (parsed == null) {
+  number = 0;
+} else {
+  number = parsed;
+}
+```
+
+ห้ามใช้ `??=` ด้วยเช่นกัน ให้เขียนเป็น `if (x == null) { x = ...; }`
+
+### 2. ห้ามใช้ initializer list (`:` หลังวงเล็บ constructor)
+
+ให้ย้ายการกำหนดค่าทั้งหมดเข้าไปใน body ของ constructor
+
+```dart
+// ❌ ห้าม
+class Foo {
+  Foo({ImagePicker? picker})
+    : _picker = picker ?? ImagePicker(),
+      _validator = const VideoInputValidator();
+
+  final ImagePicker _picker;
+  final VideoInputValidator _validator;
+}
+
+// ✅ ถูกต้อง
+class Foo {
+  Foo({ImagePicker? picker}) {
+    if (picker == null) {
+      _picker = ImagePicker();
+    } else {
+      _picker = picker;
+    }
+    _validator = const VideoInputValidator();
+  }
+
+  late final ImagePicker _picker;
+  late final VideoInputValidator _validator;
+}
+```
+
+**ข้อบังคับที่ตามมา:** field ที่เคยเป็น `final` ต้องเปลี่ยนเป็น `late final`
+เพราะ Dart ไม่ยอมให้กำหนดค่า `final` ใน body — ดูหัวข้อ "ข้อควรรู้" ด้านล่าง
+
+**ยกเว้น:** `this.ชื่อฟิลด์` ในพารามิเตอร์ constructor **ยังใช้ได้ปกติ**
+เพราะไม่ใช่ initializer list และไม่มีเครื่องหมาย `:`
+
+```dart
+// ✅ ใช้ได้ ไม่ต้องแก้
+VideoInferenceController({this.targetChecksPerSecond = 4});
+```
+
+### 3. ห้ามใช้ ternary operator (`? :`)
+
+ให้เขียนเป็น `if / else` เต็มรูปแบบ
+
+```dart
+// ❌ ห้าม
+return priorityOrder != 0
+    ? priorityOrder
+    : second.confidence.compareTo(first.confidence);
+
+// ✅ ถูกต้อง
+if (priorityOrder != 0) {
+  return priorityOrder;
+}
+return second.confidence.compareTo(first.confidence);
+```
+
+ถ้าเป็นการกำหนดค่าตัวแปร ให้ประกาศตัวแปรก่อนแล้วกำหนดค่าใน `if / else`
+
+```dart
+// ❌ ห้าม
+final transition = animationsDisabled
+    ? Duration.zero
+    : const Duration(milliseconds: 200);
+
+// ✅ ถูกต้อง
+Duration transition;
+if (animationsDisabled) {
+  transition = Duration.zero;
+} else {
+  transition = const Duration(milliseconds: 200);
+}
+```
+
+### 4. ห้ามใช้ cascade operator (`..`)
+
+ให้แยกเป็นคำสั่งทีละบรรทัด โดยเก็บวัตถุไว้ในตัวแปรก่อน
+
+```dart
+// ❌ ห้าม
+final stableDetections = List<StableDetection>.from(update.stableDetections)
+  ..sort((first, second) {
+    final priorityOrder = _detectionConfig
+        .ruleFor(first.className)
+        .priority
+        .compareTo(_detectionConfig.ruleFor(second.className).priority);
+    return priorityOrder != 0
+        ? priorityOrder
+        : second.confidence.compareTo(first.confidence);
+  });
+
+// ✅ ถูกต้อง
+final stableDetections = List<StableDetection>.from(update.stableDetections);
+stableDetections.sort((first, second) {
+  final firstPriority = _detectionConfig.ruleFor(first.className).priority;
+  final secondPriority = _detectionConfig.ruleFor(second.className).priority;
+  final priorityOrder = firstPriority.compareTo(secondPriority);
+  if (priorityOrder != 0) {
+    return priorityOrder;
+  }
+  return second.confidence.compareTo(first.confidence);
+});
+```
+
+สังเกตว่านอกจากตัด `..` กับ `? :` แล้ว ยัง**แตกการต่อ method ยาว ๆ ออกเป็น
+ตัวแปรที่มีชื่อ** (`firstPriority`, `secondPriority`) ซึ่งอ่านง่ายกว่าการไล่
+`.ruleFor().priority.compareTo()` ติดกันสี่ชั้นมาก — ให้ทำแบบนี้ด้วยเสมอ
+
+### 5. ใช้ `try / catch` เมื่อโค้ดอาจโยน exception
+
+ทุกจุดที่แตะไฟล์ กล้อง โมเดล เครือข่าย หรือ plugin ต้องมี `try / catch`
+และต้อง log ให้รู้ว่าพังตรงไหน ห้าม `catch` แล้วเงียบ
+
+```dart
+// ✅ ถูกต้อง
+try {
+  await _modelManager.loadModel();
+} catch (error, stackTrace) {
+  log('โหลดโมเดลไม่สำเร็จ: $error', stackTrace: stackTrace);
+  _errorMessage = 'โหลดโมเดลไม่สำเร็จ กรุณาลองใหม่';
+  notifyListeners();
+}
+
+// ❌ ห้าม — กลืน error เงียบ ๆ
+try {
+  await _modelManager.loadModel();
+} catch (_) {}
+```
+
+ถ้าต้องคืนทรัพยากรไม่ว่าจะสำเร็จหรือพัง ให้ใช้ `finally`
+
+```dart
+try {
+  await _processFrames();
+} catch (error, stackTrace) {
+  log('ประมวลผลเฟรมล้มเหลว: $error', stackTrace: stackTrace);
+} finally {
+  await _cleanupTempFolder();
+}
+```
+
+**สำคัญ:** `try / catch` มีไว้จับ **exception** ไม่ใช่ใช้แทนการเช็ค `null`
+ค่า null ที่คาดไว้อยู่แล้ว (เช่น `int.tryParse` คืน null) ต้องเช็คด้วย `if` เสมอ
+
+```dart
+// ❌ ผิดวัตถุประสงค์ — null ไม่ใช่ exception
+try {
+  final number = int.parse(text);
+} catch (_) {
+  number = 0;
+}
+
+// ✅ ถูกต้อง
+final parsed = int.tryParse(text);
+if (parsed == null) {
+  number = 0;
+} else {
+  number = parsed;
+}
+```
+
+---
+
+## ข้อควรรู้ก่อนแก้ (อ่านให้จบ)
+
+กฎข้อ 2 มีผลข้างเคียงที่ต้องยอมรับ:
+
+`final` field ใน Dart **ต้อง** มีค่าตั้งแต่ตอนสร้างวัตถุ กำหนดได้แค่ 3 ที่:
+ตอนประกาศ, ใน initializer list, หรือผ่าน `this.x` ในพารามิเตอร์
+พอห้าม initializer list แล้ว field ที่ต้องคำนวณค่าจึงเหลือทางเดียวคือ `late final`
+
+`late final` ต่างจาก `final` ตรงที่คอมไพเลอร์**ไม่ตรวจให้แล้ว**ว่ามีการกำหนดค่าครบ
+ถ้าลืมกำหนดสักตัว จะไม่ error ตอน compile แต่จะพังตอนรันด้วย
+`LateInitializationError` ซึ่งหาต้นตอยากกว่ามาก
+
+ดังนั้นเวลาแก้ constructor ให้เป็นสไตล์นี้ **ต้องไล่ให้ครบทุก field**
+และรัน `flutter test` ทุกครั้งหลังแก้ constructor
+
+---
+
+## ขอบเขตการแก้
+
+โค้ดเดิมยังไม่ได้ใช้สไตล์นี้ ยอดที่ต้องแก้ ณ คอมมิต `387307f`:
+
+| รายการ | จำนวน |
+|---|---|
+| `??` ใน `lib/` | 62 จุด ใน 21 ไฟล์ |
+| ternary (`? :`) | ~91 จุด |
+| cascade (`..`) | 21 จุด ใน 13 ไฟล์ |
+| initializer list (`:`) | 11 จุด |
+
+**อย่าแก้ทั้งหมดรวดเดียว** ให้แก้เฉพาะไฟล์ที่กำลังทำงานอยู่ในงานนั้น ๆ
+แล้ว commit แยกด้วยข้อความ `style: <ชื่อไฟล์> ตามกฎใน CLAUDE.md`
+
+โค้ดที่ยังไม่ได้แตะ ปล่อยไว้ก่อนได้ ไม่ถือว่าผิด
+
+---
+
+## กฎเดิมของโปรเจกต์ที่ยังต้องทำตาม
+
+- คอมเมนต์อธิบาย **เหตุผล** เป็นภาษาไทย (อธิบายว่าทำไม ไม่ใช่ทำอะไร)
+- โครงสร้างเทสต์ mirror ตาม `lib/` ทุกไฟล์
+- `flutter analyze` ต้องไม่มี warning ใหม่
+- `flutter test` ต้องผ่านทั้งหมดก่อน commit
+- ห้ามแตะ lifecycle ของกล้อง (`_syncCameraLifecycle`, `_rebuildKey`,
+  `didChangeDependencies`) โดยไม่จำเป็น — เปราะและเคยแก้มาแล้ว
+- ห้ามเพิ่มคลาสสังเคราะห์ที่ไม่มีในโมเดล ห้ามแก้ `labels.txt` หรือ manifest
+- `off_light` ต้องยืนยันยาก (ไฟจราจรปกติที่กล้องเห็นกะพริบจาก rolling
+  shutter/PWM ต้องไม่ถูกรายงานว่าไฟเสีย) ห้ามลดความเข้มงวดของ flicker gate
+  ใน `DetectionStabilizer`
+
+---
+
+## หมายเหตุ: บังคับอัตโนมัติไม่ได้
+
+Dart analyzer **ไม่มี lint rule** สำหรับห้าม `??`, ternary, cascade หรือ
+initializer list กฎในไฟล์นี้จึงบังคับใช้ด้วยการรีวิวเท่านั้น
+เพิ่มใน `analysis_options.yaml` ไม่ได้
+
+ถ้าต้องการให้ตรวจอัตโนมัติจริง ๆ ทางเดียวคือเขียน custom lint
+(package `custom_lint`) ซึ่งยังไม่ได้ทำในโปรเจกต์นี้

@@ -41,19 +41,24 @@ const double realtimeSignConfidenceThreshold = 0.25;
 /// แปลง threshold ที่ผู้ใช้เลือกลงไปให้ YOLO native ใช้
 /// - ค่าที่ผู้ใช้เลือกจะถูกฝังเป็นค่าที่สูงสุดเท่ากับ realtimeSignConfidenceThreshold
 ///   เพราะ native stream ต้องเห็นตั้งแต่ confidence ต่ำจึงจะปล่อยสัญญาณมาให้ฝั่ง Dart
-double nativeRealtimeConfidenceThreshold(double selectedThreshold) =>
-    selectedThreshold < realtimeSignConfidenceThreshold
-    ? selectedThreshold
-    : realtimeSignConfidenceThreshold;
+double nativeRealtimeConfidenceThreshold(double selectedThreshold) {
+  if (selectedThreshold < realtimeSignConfidenceThreshold) {
+    return selectedThreshold;
+  }
+  return realtimeSignConfidenceThreshold;
+}
 
 /// threshold ต่อคลาส: ป้าย sign_number ใช้ค่าคงที่ต่ำ (0.25) เสมอ
 /// ส่วนไฟจราจรใช้ค่าที่ผู้ใช้เลือก
 double realtimeDetectionConfidenceThreshold(
   String className,
   double selectedThreshold,
-) => className == 'sign_number'
-    ? realtimeSignConfidenceThreshold
-    : selectedThreshold;
+) {
+  if (className == 'sign_number') {
+    return realtimeSignConfidenceThreshold;
+  }
+  return selectedThreshold;
+}
 
 class CameraInferenceController extends ChangeNotifier {
   int _detectionCount = 0;
@@ -141,26 +146,30 @@ class CameraInferenceController extends ChangeNotifier {
   Uint8List? get lastFailedNumberCropBytes =>
       _numberInferenceEngine.lastFailedCropBytes;
   bool get isDetectingNumber => _numberInferenceEngine.isDetecting;
-  String? get confirmedTrafficLightClassName => _stableTrafficLights.isEmpty
-      ? null
-      : _stableTrafficLights.first.className;
+  String? get confirmedTrafficLightClassName {
+    final trafficLights = _stableTrafficLights;
+    if (trafficLights.isEmpty) {
+      return null;
+    }
+    return trafficLights.first.className;
+  }
 
   /// คลาสไฟจราจรเสถียรสำหรับ UI ป้ายนับถอยหลัง (เรียงตาม priority)
   String? get stableTrafficLightClassName {
-    final lights =
-        _detectionStabilizer.stableDetections
-            .where(
-              (detection) => DetectionAlertConfig.trafficLightClasses.contains(
-                detection.className,
-              ),
-            )
-            .toList()
-          ..sort(
-            (first, second) => _detectionConfig
-                .ruleFor(first.className)
-                .priority
-                .compareTo(_detectionConfig.ruleFor(second.className).priority),
-          );
+    final lights = _detectionStabilizer.stableDetections
+        .where(
+          (detection) => DetectionAlertConfig.trafficLightClasses.contains(
+            detection.className,
+          ),
+        )
+        .toList();
+    lights.sort((first, second) {
+      final firstPriority = _detectionConfig.ruleFor(first.className).priority;
+      final secondPriority = _detectionConfig
+          .ruleFor(second.className)
+          .priority;
+      return firstPriority.compareTo(secondPriority);
+    });
     return lights.isEmpty ? null : lights.first.className;
   }
 
@@ -615,17 +624,20 @@ class CameraInferenceController extends ChangeNotifier {
       qualifiedDetections,
       timestamp: observationTime,
     );
-    final stableDetections =
-        List<StableDetection>.from(stabilization.stableDetections)
-          ..sort((first, second) {
-            final priorityOrder = _detectionConfig
-                .ruleFor(first.className)
-                .priority
-                .compareTo(_detectionConfig.ruleFor(second.className).priority);
-            return priorityOrder != 0
-                ? priorityOrder
-                : second.confidence.compareTo(first.confidence);
-          });
+    final stableDetections = List<StableDetection>.from(
+      stabilization.stableDetections,
+    );
+    stableDetections.sort((first, second) {
+      final firstPriority = _detectionConfig.ruleFor(first.className).priority;
+      final secondPriority = _detectionConfig
+          .ruleFor(second.className)
+          .priority;
+      final priorityOrder = firstPriority.compareTo(secondPriority);
+      if (priorityOrder != 0) {
+        return priorityOrder;
+      }
+      return second.confidence.compareTo(first.confidence);
+    });
 
     if (stabilization.events.any(
       (event) =>
@@ -655,11 +667,14 @@ class CameraInferenceController extends ChangeNotifier {
       formalNames.add(formalName);
       alertMessages.add(_voiceService.getThaiMessage(detection.className));
     }
+    final stableConfidences = stableDetections.map(
+      (detection) => detection.confidence,
+    );
     final stableConfidence = stableDetections.isEmpty
         ? null
-        : stableDetections
-              .map((detection) => detection.confidence)
-              .reduce((first, second) => first > second ? first : second);
+        : stableConfidences.reduce(
+            (first, second) => first > second ? first : second,
+          );
 
     if (!listEquals(_detectedFormalNames, formalNames) ||
         !listEquals(_detectedAlertMessages, alertMessages) ||
@@ -697,20 +712,23 @@ class CameraInferenceController extends ChangeNotifier {
     }
   }
 
-  List<StableDetection> get _stableTrafficLights =>
-      _detectionStabilizer.stableDetections
-          .where(
-            (detection) => DetectionAlertConfig.trafficLightClasses.contains(
-              detection.className,
-            ),
-          )
-          .toList()
-        ..sort(
-          (first, second) => _detectionConfig
-              .ruleFor(first.className)
-              .priority
-              .compareTo(_detectionConfig.ruleFor(second.className).priority),
-        );
+  List<StableDetection> get _stableTrafficLights {
+    final trafficLights = _detectionStabilizer.stableDetections
+        .where(
+          (detection) => DetectionAlertConfig.trafficLightClasses.contains(
+            detection.className,
+          ),
+        )
+        .toList();
+    trafficLights.sort((first, second) {
+      final firstPriority = _detectionConfig.ruleFor(first.className).priority;
+      final secondPriority = _detectionConfig
+          .ruleFor(second.className)
+          .priority;
+      return firstPriority.compareTo(secondPriority);
+    });
+    return trafficLights;
+  }
 
   Future<void> _speakStableClass(String className) {
     final formalName = videoFormalThaiName(className);

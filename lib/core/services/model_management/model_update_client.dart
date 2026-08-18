@@ -31,11 +31,11 @@ class ModelUpdateClient implements ModelManifestSource {
     _validateManifestUri();
 
     try {
-      final request = http.Request('GET', manifestUri)
-        ..headers.addAll(const <String, String>{
-          'Accept': 'application/json',
-          'Cache-Control': 'no-cache',
-        });
+      final request = http.Request('GET', manifestUri);
+      request.headers.addAll(const <String, String>{
+        'Accept': 'application/json',
+        'Cache-Control': 'no-cache',
+      });
 
       final response = await _client.send(request).timeout(requestTimeout);
       if (response.statusCode != 200) {

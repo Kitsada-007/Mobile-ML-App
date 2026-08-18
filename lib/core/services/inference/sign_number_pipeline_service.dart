@@ -115,13 +115,16 @@ class SignNumberPipelineService {
         ? await _numberDetectionService.detect(taskResult.wideCropBytes!)
         : const NumberDetectionResult();
 
-    final preferred = wideReading.digitCount != tightReading.digitCount
-        ? (wideReading.digitCount > tightReading.digitCount
-              ? wideReading
-              : tightReading)
-        : (wideReading.averageConfidence > tightReading.averageConfidence
-              ? wideReading
-              : tightReading);
+    final NumberDetectionResult preferred;
+    if (wideReading.digitCount != tightReading.digitCount) {
+      preferred = wideReading.digitCount > tightReading.digitCount
+          ? wideReading
+          : tightReading;
+    } else {
+      preferred = wideReading.averageConfidence > tightReading.averageConfidence
+          ? wideReading
+          : tightReading;
+    }
 
     final selectedBytes = preferred == wideReading
         ? taskResult.wideCropBytes
@@ -167,13 +170,18 @@ class SignNumberPipelineService {
         ? await _numberDetectionService.detect(altResult.wideCropBytes!)
         : const NumberDetectionResult();
 
-    final altPreferred = altWideReading.digitCount != altTightReading.digitCount
-        ? (altWideReading.digitCount > altTightReading.digitCount
-              ? altWideReading
-              : altTightReading)
-        : (altWideReading.averageConfidence > altTightReading.averageConfidence
-              ? altWideReading
-              : altTightReading);
+    final NumberDetectionResult altPreferred;
+    if (altWideReading.digitCount != altTightReading.digitCount) {
+      altPreferred = altWideReading.digitCount > altTightReading.digitCount
+          ? altWideReading
+          : altTightReading;
+    } else {
+      final altWideConfidence = altWideReading.averageConfidence;
+      final altTightConfidence = altTightReading.averageConfidence;
+      altPreferred = altWideConfidence > altTightConfidence
+          ? altWideReading
+          : altTightReading;
+    }
 
     final altSelectedBytes = altPreferred == altWideReading
         ? altResult.wideCropBytes
@@ -288,22 +296,24 @@ class SignNumberPipelineService {
     _DigitCandidate tight,
     _DigitCandidate wide,
   ) {
-    if (wide.reading.digitCount != tight.reading.digitCount) {
-      return wide.reading.digitCount > tight.reading.digitCount ? wide : tight;
+    final tightDigitCount = tight.reading.digitCount;
+    final wideDigitCount = wide.reading.digitCount;
+    if (wideDigitCount != tightDigitCount) {
+      return wideDigitCount > tightDigitCount ? wide : tight;
     }
-    return wide.reading.averageConfidence > tight.reading.averageConfidence
-        ? wide
-        : tight;
+    final tightConfidence = tight.reading.averageConfidence;
+    final wideConfidence = wide.reading.averageConfidence;
+    if (wideConfidence > tightConfidence) return wide;
+    return tight;
   }
 }
 
 /// เลือกป้าย sign_number ที่มีความมั่นใจสูงสุดจากผลการตรวจจับ (หรือ null ถ้าไม่พบ)
 YOLOResult? _selectBestNumberSign(List<YOLOResult> detectionResults) {
-  final signResults =
-      detectionResults
-          .where((result) => result.className == 'sign_number')
-          .toList()
-        ..sort((a, b) => b.confidence.compareTo(a.confidence));
+  final signResults = detectionResults
+      .where((result) => result.className == 'sign_number')
+      .toList();
+  signResults.sort((a, b) => b.confidence.compareTo(a.confidence));
   return signResults.isEmpty ? null : signResults.first;
 }
 

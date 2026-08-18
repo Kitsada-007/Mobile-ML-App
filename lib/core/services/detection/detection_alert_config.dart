@@ -139,10 +139,10 @@ final class DetectionAlertConfig {
   /// ระยะเวลาขั้นต่ำที่ต้องเก็บประวัติของกลุ่มไว้ (ให้หน้าต่างกัน flicker
   /// มองย้อนได้ครบ ไม่โดน evict ตามจำนวนเฟรมไปก่อน)
   /// — กลุ่มอื่นไม่ต้องเก็บตามเวลา
-  Duration historyRetentionFor(DetectionGroup group) =>
-      group == DetectionGroup.trafficLight
-      ? flickerLookbackDuration
-      : Duration.zero;
+  Duration historyRetentionFor(DetectionGroup group) {
+    if (group == DetectionGroup.trafficLight) return flickerLookbackDuration;
+    return Duration.zero;
+  }
 
   // --- คอนฟิกสัญญาณไฟเลี้ยว (Turn Signal) ---
   final int turnHistorySize;

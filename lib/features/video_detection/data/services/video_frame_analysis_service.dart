@@ -61,7 +61,8 @@ class VideoFrameAnalysisService {
 
   /// วิเคราะห์ภาพ 1 เฟรม (ไบต์ภาพ) และคืนผลลัพธ์การตรวจจับทั้งหมด
   Future<VideoFrameAnalysisResult> analyze(Uint8List frameBytes) async {
-    final stopwatch = Stopwatch()..start();
+    final stopwatch = Stopwatch();
+    stopwatch.start();
     final trafficResult = await _trafficYolo.predict(
       frameBytes,
       confidenceThreshold: videoTrafficConfidenceThreshold,
