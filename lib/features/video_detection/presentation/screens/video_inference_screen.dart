@@ -34,7 +34,13 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final isCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+    final route = ModalRoute.of(context);
+    bool isCurrent;
+    if (route == null) {
+      isCurrent = true;
+    } else {
+      isCurrent = route.isCurrent;
+    }
     if (_isRouteCurrent == isCurrent) return;
 
     _isRouteCurrent = isCurrent;
@@ -48,7 +54,14 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
   }
 
   void _syncVideoLifecycle() {
-    final shouldPlay = (_isRouteCurrent ?? true) && _isAppResumed;
+    final routeCurrent = _isRouteCurrent;
+    bool isRouteCurrent;
+    if (routeCurrent == null) {
+      isRouteCurrent = true;
+    } else {
+      isRouteCurrent = routeCurrent;
+    }
+    final shouldPlay = isRouteCurrent && _isAppResumed;
     if (!shouldPlay) {
       unawaited(_controller.pause());
     }
@@ -62,9 +75,9 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
     final message = _controller.snackBarMessage;
     if (message != null) {
       _controller.clearSnackBarMessage();
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(message)));
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -104,7 +117,12 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
                   _controller.videoController != null &&
                   _controller.videoController!.value.isInitialized;
 
-              final horizontalPadding = isLandscape ? 24.0 : 16.0;
+              double horizontalPadding;
+              if (isLandscape) {
+                horizontalPadding = 24.0;
+              } else {
+                horizontalPadding = 16.0;
+              }
 
               final header = _VideoHeader(
                 showModelProgress: !_controller.areModelsReady,
@@ -147,6 +165,19 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
               }
 
               // 2. แผงควบคุมด้านล่าง (คงที่เสมอ)
+              String statusText;
+              if (hasVideoResult) {
+                if (_controller.videoController!.value.isPlaying) {
+                  statusText = 'กำลังตรวจจับแบบเรียลไทม์';
+                } else {
+                  statusText = 'หยุดชั่วคราว';
+                }
+              } else if (_controller.isProcessing) {
+                statusText = _controller.progressText;
+              } else {
+                statusText = 'พร้อมตรวจจับวิดีโอ';
+              }
+
               final panel = VideoDetectionPanel(
                 formalNames: _controller.currentFormalNames,
                 alertMessages: _controller.currentAlertMessages,
@@ -157,13 +188,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
                     !_controller.isProcessing &&
                     _controller.currentFrameDetections.isEmpty &&
                     _controller.currentDetectedNumber == null,
-                statusText: hasVideoResult
-                    ? (_controller.videoController!.value.isPlaying
-                          ? 'กำลังตรวจจับแบบเรียลไทม์'
-                          : 'หยุดชั่วคราว')
-                    : _controller.isProcessing
-                    ? _controller.progressText
-                    : 'พร้อมตรวจจับวิดีโอ',
+                statusText: statusText,
                 lastDetectionConfidence: _controller.lastDetectionConfidence,
                 trafficLightClassName: _controller.stableTrafficLightClassName,
               );
@@ -299,6 +324,21 @@ class _VideoProcessingCard extends StatelessWidget {
     final percent = (progressValue * 100).clamp(0, 100).toInt();
     final hasDeterminateProgress = progressValue > 0;
 
+    // null = ให้ indicator หมุนแบบไม่ระบุความคืบหน้า (ยังไม่รู้สัดส่วนงาน)
+    double? indicatorValue;
+    if (hasDeterminateProgress) {
+      indicatorValue = progressValue;
+    } else {
+      indicatorValue = null;
+    }
+
+    String progressLabel;
+    if (progressText.isEmpty) {
+      progressLabel = 'กำลังวิเคราะห์วิดีโอ...';
+    } else {
+      progressLabel = progressText;
+    }
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: const Color(0xFF121417),
@@ -329,7 +369,7 @@ class _VideoProcessingCard extends StatelessWidget {
                       width: 72,
                       height: 72,
                       child: CircularProgressIndicator(
-                        value: hasDeterminateProgress ? progressValue : null,
+                        value: indicatorValue,
                         strokeWidth: 5,
                         color: const Color(0xFF34C759),
                         backgroundColor: Colors.white12,
@@ -356,7 +396,7 @@ class _VideoProcessingCard extends StatelessWidget {
               ),
               const SizedBox(height: 18),
               Text(
-                progressText.isEmpty ? 'กำลังวิเคราะห์วิดีโอ...' : progressText,
+                progressLabel,
                 textAlign: TextAlign.center,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -373,7 +413,7 @@ class _VideoProcessingCard extends StatelessWidget {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(6),
                   child: LinearProgressIndicator(
-                    value: hasDeterminateProgress ? progressValue : null,
+                    value: indicatorValue,
                     minHeight: 6,
                     color: const Color(0xFF34C759),
                     backgroundColor: Colors.white12,
@@ -400,6 +440,21 @@ class _VideoPickerPlaceholderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ปิดปุ่มจนกว่าโมเดลจะพร้อม (null = ปุ่มถูก disable)
+    VoidCallback? onPickPressed;
+    if (areModelsReady) {
+      onPickPressed = onPickVideo;
+    } else {
+      onPickPressed = null;
+    }
+
+    String pickButtonLabel;
+    if (areModelsReady) {
+      pickButtonLabel = 'เลือกวิดีโอจากคลัง';
+    } else {
+      pickButtonLabel = 'กำลังโหลดโมเดล...';
+    }
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.black,
@@ -450,13 +505,9 @@ class _VideoPickerPlaceholderCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 20),
                     FilledButton.icon(
-                      onPressed: areModelsReady ? onPickVideo : null,
+                      onPressed: onPickPressed,
                       icon: const Icon(Icons.video_library_outlined),
-                      label: Text(
-                        areModelsReady
-                            ? 'เลือกวิดีโอจากคลัง'
-                            : 'กำลังโหลดโมเดล...',
-                      ),
+                      label: Text(pickButtonLabel),
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFF16A05D),
                         foregroundColor: Colors.white,

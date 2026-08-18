@@ -27,8 +27,46 @@ class ResultVideoSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final videoSize = controller.value.size;
-    final fallbackWidth = videoSize.width == 0 ? 1080.0 : videoSize.width;
-    final fallbackHeight = videoSize.height == 0 ? 1920.0 : videoSize.height;
+
+    // ขนาดวิดีโอยังเป็น 0 ตอนที่ controller ยังไม่พร้อม จึงต้องมีค่าสำรองไว้ก่อน
+    double fallbackWidth;
+    if (videoSize.width == 0) {
+      fallbackWidth = 1080.0;
+    } else {
+      fallbackWidth = videoSize.width;
+    }
+
+    double fallbackHeight;
+    if (videoSize.height == 0) {
+      fallbackHeight = 1920.0;
+    } else {
+      fallbackHeight = videoSize.height;
+    }
+
+    final isPlaying = controller.value.isPlaying;
+
+    String playPauseTooltip;
+    IconData playPauseIcon;
+    if (isPlaying) {
+      playPauseTooltip = 'พักวิดีโอ';
+      playPauseIcon = Icons.pause_rounded;
+    } else {
+      playPauseTooltip = 'เล่นวิดีโอ';
+      playPauseIcon = Icons.play_arrow_rounded;
+    }
+
+    String voiceTooltip;
+    Color voiceForegroundColor;
+    IconData voiceIcon;
+    if (isVoiceEnabled) {
+      voiceTooltip = 'ปิดเสียง';
+      voiceForegroundColor = const Color(0xFF34C759);
+      voiceIcon = Icons.volume_up_rounded;
+    } else {
+      voiceTooltip = 'เปิดเสียง';
+      voiceForegroundColor = Colors.white60;
+      voiceIcon = Icons.volume_off_rounded;
+    }
 
     return Stack(
       fit: StackFit.expand, // บังคับให้ขยายเต็ม Container กว้างๆ ที่ส่งมา
@@ -72,7 +110,7 @@ class ResultVideoSection extends StatelessWidget {
           top: 14,
           left: 14,
           child: _VideoLiveBadge(
-            isPlaying: controller.value.isPlaying,
+            isPlaying: isPlaying,
             hasDetections: detections.isNotEmpty,
           ),
         ),
@@ -83,35 +121,23 @@ class ResultVideoSection extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton.filled(
-                tooltip: controller.value.isPlaying
-                    ? 'พักวิดีโอ'
-                    : 'เล่นวิดีโอ',
+                tooltip: playPauseTooltip,
                 style: IconButton.styleFrom(
                   backgroundColor: Colors.black54,
                   foregroundColor: Colors.white,
                 ),
-                icon: Icon(
-                  controller.value.isPlaying
-                      ? Icons.pause_rounded
-                      : Icons.play_arrow_rounded,
-                ),
+                icon: Icon(playPauseIcon),
                 onPressed: onTogglePlayPause,
               ),
               if (onToggleVoice != null) ...[
                 const SizedBox(width: 8),
                 IconButton.filled(
-                  tooltip: isVoiceEnabled ? 'ปิดเสียง' : 'เปิดเสียง',
+                  tooltip: voiceTooltip,
                   style: IconButton.styleFrom(
                     backgroundColor: Colors.black54,
-                    foregroundColor: isVoiceEnabled
-                        ? const Color(0xFF34C759)
-                        : Colors.white60,
+                    foregroundColor: voiceForegroundColor,
                   ),
-                  icon: Icon(
-                    isVoiceEnabled
-                        ? Icons.volume_up_rounded
-                        : Icons.volume_off_rounded,
-                  ),
+                  icon: Icon(voiceIcon),
                   onPressed: onToggleVoice,
                 ),
               ],
@@ -144,6 +170,23 @@ class _VideoLiveBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Color statusDotColor;
+    if (isPlaying) {
+      statusDotColor = const Color(0xFF34C759);
+    } else {
+      statusDotColor = Colors.orangeAccent;
+    }
+
+    // ผลตรวจจับสำคัญกว่าสถานะเล่น/พัก จึงเช็คก่อนเป็นอันดับแรก
+    String statusText;
+    if (hasDetections) {
+      statusText = 'ตรวจจับแล้ว';
+    } else if (isPlaying) {
+      statusText = 'กำลังตรวจจับ';
+    } else {
+      statusText = 'พักวิดีโอ';
+    }
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.62),
@@ -159,19 +202,13 @@ class _VideoLiveBadge extends StatelessWidget {
               width: 9,
               height: 9,
               decoration: BoxDecoration(
-                color: isPlaying
-                    ? const Color(0xFF34C759)
-                    : Colors.orangeAccent,
+                color: statusDotColor,
                 shape: BoxShape.circle,
               ),
             ),
             const SizedBox(width: 8),
             Text(
-              hasDetections
-                  ? 'ตรวจจับแล้ว'
-                  : isPlaying
-                  ? 'กำลังตรวจจับ'
-                  : 'พักวิดีโอ',
+              statusText,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 13,
