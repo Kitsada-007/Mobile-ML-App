@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:developer';
 
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:trffic_ilght_app/core/services/detection/detection_alert_config.dart';
 import 'package:trffic_ilght_app/core/services/detection/detection_stabilizer.dart';
 import 'package:trffic_ilght_app/core/services/detection/traffic_detection_label_formatter.dart';
@@ -221,7 +219,9 @@ class CameraInferenceController extends ChangeNotifier {
     Duration numberDetectionInterval = const Duration(milliseconds: 400),
     @visibleForTesting CountdownReadingStabilizer? countdownStabilizer,
     @visibleForTesting DetectionStabilizer? detectionStabilizer,
-    @visibleForTesting TrafficVoiceService? voiceService,
+    // ไม่ใช่พารามิเตอร์สำหรับเทสต์อย่างเดียว: production ส่ง TrafficVoiceService
+    // ตัวที่แชร์ทั้งแอปเข้ามา เพื่อให้ค่าเสียงจากหน้า Settings มีผลกับหน้ากล้องด้วย
+    TrafficVoiceService? voiceService,
     @visibleForTesting VoiceAlertController? voiceAlertController,
     @visibleForTesting DateTime Function()? clock,
     @visibleForTesting
@@ -280,33 +280,13 @@ class CameraInferenceController extends ChangeNotifier {
     }
   }
 
-  /// เริ่มต้นระบบ: เปิด watchdog + โหลดค่า threshold เก็บไว้ + โหลดโมเดลทั้ง 2 ตัว
+  /// เริ่มต้นระบบ: เปิด watchdog + โหลดโมเดลทั้ง 2 ตัว
+  ///
+  /// ค่า threshold ไม่ได้อ่านเองจาก SharedPreferences แล้ว แต่รับผ่าน
+  /// [applyDetectionSettings] ที่หน้าจอส่งมาจาก SettingsProvider เพื่อให้มีแหล่งความจริง
+  /// แหล่งเดียว (ไม่งั้นค่าที่ผู้ใช้เพิ่งเปลี่ยนจะถูกค่าที่อ่านไว้ตอนเริ่มทับ)
   Future<void> initialize() async {
     _startFreshnessWatchdog();
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final storedIouThreshold = prefs.getDouble('iouThreshold');
-      if (storedIouThreshold == null) {
-        _iouThreshold = 0.45;
-      } else {
-        _iouThreshold = storedIouThreshold;
-      }
-      final storedConfidenceThreshold = prefs.getDouble('confidenceThreshold');
-      if (storedConfidenceThreshold == null) {
-        _confidenceThreshold = 0.5;
-      } else {
-        _confidenceThreshold = storedConfidenceThreshold;
-      }
-      final storedNumItemsThreshold = prefs.getInt('numItemsThreshold');
-      if (storedNumItemsThreshold == null) {
-        _numItemsThreshold = 11;
-      } else {
-        _numItemsThreshold = storedNumItemsThreshold;
-      }
-    } catch (e) {
-      log('Failed to load thresholds from SharedPreferences: $e');
-    }
 
     await _loadModelForPlatform();
     await _loadDigitModel();
@@ -320,6 +300,43 @@ class CameraInferenceController extends ChangeNotifier {
       iouThreshold: _iouThreshold,
       numItemsThreshold: _numItemsThreshold,
     );
+  }
+
+  /// รับค่า threshold จาก SettingsProvider มาใช้ทันที (ไม่ต้องรีสตาร์ทแอป)
+  ///
+  /// เรียกได้ตั้งแต่ก่อน YOLOView ผูกกับ native แล้ว เพราะ YOLOViewController
+  /// จำค่าไว้และส่งซ้ำให้เองตอน platform view พร้อม
+  void applyDetectionSettings({
+    required double confidenceThreshold,
+    required double iouThreshold,
+    required int numItemsThreshold,
+  }) {
+    if (_isDisposed) return;
+
+    bool changed = false;
+    if ((_confidenceThreshold - confidenceThreshold).abs() > 0.001) {
+      _confidenceThreshold = confidenceThreshold;
+      changed = true;
+    }
+    if ((_iouThreshold - iouThreshold).abs() > 0.001) {
+      _iouThreshold = iouThreshold;
+      changed = true;
+    }
+    if (_numItemsThreshold != numItemsThreshold) {
+      _numItemsThreshold = numItemsThreshold;
+      changed = true;
+    }
+    if (!changed) return;
+
+    // ค่าของ sign_number ถูกบังคับเป็นค่าต่ำสุดเหมือนตอน initialize()
+    _yoloController.setThresholds(
+      confidenceThreshold: nativeRealtimeConfidenceThreshold(
+        _confidenceThreshold,
+      ),
+      iouThreshold: _iouThreshold,
+      numItemsThreshold: _numItemsThreshold,
+    );
+    notifyListeners();
   }
 
   /// เริ่ม Timer (watchdog) ที่คอยเรียก expireStaleResults ทุก 200ms
@@ -715,7 +732,8 @@ class CameraInferenceController extends ChangeNotifier {
     if (stabilization.events.any(
       (event) =>
           event.type != DetectionEventType.lost &&
-          (event.detection.className == 'green_light_circle' || event.detection.className == 'green_light'),
+          (event.detection.className == 'green_light_circle' ||
+              event.detection.className == 'green_light'),
     )) {
       // Allowed: numbers will be detected and shown in green color
     }
@@ -853,7 +871,9 @@ class CameraInferenceController extends ChangeNotifier {
   }
 
   /// อัปเดตค่าจาก slider ที่กำลังแสดงอยู่ แล้วส่งต่อไปยัง YOLO
-  /// - บางค่า (iou) ก็บันทึกลง SharedPreferences เพื่อใช้ครั้งถัดไป
+  ///
+  /// มีผลเฉพาะรอบการใช้งานนี้ ไม่บันทึกลง SharedPreferences เอง เพราะการบันทึกเป็น
+  /// หน้าที่ของ SettingsProvider ที่เดียว (เขียนสองที่แล้วค่าจะไม่ตรงกัน)
   void updateSliderValue(double value) {
     if (_isDisposed) return;
 
@@ -884,13 +904,6 @@ class CameraInferenceController extends ChangeNotifier {
           _iouThreshold = value;
           _yoloController.setIoUThreshold(value);
           changed = true;
-          SharedPreferences.getInstance()
-              .then((prefs) {
-                prefs.setDouble('iouThreshold', value);
-              })
-              .catchError((e) {
-                log('Failed to save iouThreshold to SharedPreferences: $e');
-              });
         }
         break;
 
