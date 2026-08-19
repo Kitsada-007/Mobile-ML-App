@@ -49,15 +49,20 @@ controller does **not** tell you how the others behave.
 Native YOLOView stream → `LatestFrameQueue` (keeps newest packet, drops the rest) →
 `RealtimeFrameFreshnessGuard` (rejects stale/out-of-order frames; a 200 ms watchdog timer calls
 `expireStaleResults` to blank the UI when frames stop) → `DetectionStabilizer.update` →
-`VoiceAlertController` → `TrafficVoiceService`. In parallel, `RealtimeNumberInferenceEngine`
-(throttled to 400 ms) drives the sign-number path and owns its own `CountdownReadingStabilizer`.
-Camera does **not** use `SignalInterpreter` or `CountdownAlertController`.
+`SignalInterpreter.interpret` (the `DriverSignalResult` banner) and `VoiceAlertController` →
+`TrafficVoiceService`. In parallel, `RealtimeNumberInferenceEngine` (throttled to 400 ms) drives
+the sign-number path and owns its own `CountdownReadingStabilizer`; its reading passes through
+`CountdownReadingHold` (keeps the last number for 1.5 s, then drops it) and then
+`CountdownAlertController.update`, which produces the countdown UI string and the threshold voice
+event.
 
 **Video (`video_inference_controller.dart`).** FFmpeg frame extraction →
 `VideoFrameAnalysisService` → `DetectionStabilizer.update` → both `SignalInterpreter.interpret`
 (produces the `DriverSignalResult` banner) and `CountdownAlertController.update` (produces the
 countdown UI string plus a threshold voice event) → `VoiceAlertController` → `TrafficVoiceService`.
-`SignalInterpreter` and `CountdownAlertController` are used **only here**.
+Video is frame-indexed off the playback position, so its timestamps are video time, not wall time.
+`CountdownHoldTracker` (frame-count based, 3 frames) is used **only here** — realtime uses the
+duration-based `CountdownReadingHold` instead.
 
 **Image (`single_image_screen.dart`).** One-shot: `parseYoloDetections` on the platform-channel
 result, then `SignNumberPipelineService.analyzeSingleImage`, which crops on a background isolate
@@ -95,6 +100,20 @@ These are not general tuning knobs. Do not loosen them to "make it react faster"
   candidates are chosen by `priority` (lower number = more important, see
   `DetectionAlertConfig._priorityFor`) then by per-class `voiceCooldown`. Do not add a parallel
   speaking path — route new speech through `speakMessageIfIdle`.
+- **Events that cannot be spoken right now are queued, never dropped.** `DetectionStabilizer`
+  emits `detected`/`changed` once per state change, so an event dropped while the TTS is busy is
+  gone forever — that is how a red light used to go unannounced. `_pendingByClass` holds one entry
+  per class (newest wins), entries expire after `pendingRetention`, `lost` evicts them, and a
+  newer traffic-light state supersedes an older pending one (only one light state can be true).
+  A strictly-higher-priority event interrupts the message being spoken through `interruptSpeech`
+  (still serial — it stops the current utterance first, it does not speak over it).
+- **A threshold countdown event that could not be spoken must be re-armed.** Controllers call
+  `CountdownAlertController.allowThresholdEventRetry()` when `speakMessageIfIdle` returns false,
+  never after a successful utterance — that would repeat the warning inside one countdown cycle.
+- **The user's confidence threshold has a ceiling for safety-critical classes.**
+  `DetectionAlertConfig.effectiveConfidenceThreshold` caps red/yellow/`off_light`/`dont_*` at
+  `safetyCriticalConfidenceCeiling` (0.5). The slider may make detection *more* sensitive, never
+  deaf to a stop signal. Do not apply the raw slider value straight to these classes.
 - **`CountdownReadingStabilizer` is deliberately asymmetric.** A step down of 0 or 1 is accepted
   immediately (latency matters in realtime); a value that *increases* needs `requiredMatches + 2`
   votes, and a drop larger than `maximumStepDown` needs `requiredMatches + 1`. Keep the asymmetry.

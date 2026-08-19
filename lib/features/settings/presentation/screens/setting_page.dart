@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:trffic_ilght_app/core/services/detection/detection_alert_config.dart';
 import 'package:trffic_ilght_app/features/settings/presentation/controllers/settings_controller.dart';
 
 class SettingPage extends StatelessWidget {
@@ -197,6 +198,13 @@ class SettingPage extends StatelessWidget {
                           .read<SettingsProvider>()
                           .setConfidenceThreshold(val),
                     ),
+                    _buildSliderNote(
+                      context,
+                      'สัญญาณที่เกี่ยวกับความปลอดภัย (ไฟแดง ไฟเหลือง ไฟเสีย และป้ายห้าม) '
+                      'จะไม่ถูกปรับให้สูงกว่า '
+                      '${DetectionAlertConfig.safetyCriticalConfidenceCeiling.toStringAsFixed(2)} '
+                      'ไม่ว่าจะเลื่อนไปเท่าไรก็ตาม',
+                    ),
                     // ปิดการปรับ Max Detections เพราะไม่จำเป็นแล้ว เพราะ ว่ามี 11 classes
 
                     // _buildSliderRow(
@@ -277,6 +285,21 @@ class SettingPage extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// คำอธิบายใต้สไลเดอร์ (ใช้บอกข้อจำกัดที่ผู้ใช้ต้องรู้ก่อนปรับค่า)
+  Widget _buildSliderNote(BuildContext context, String note) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Text(
+        note,
+        style: TextStyle(
+          fontSize: 12,
+          height: 1.4,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
       ),
     );
   }

@@ -6,6 +6,7 @@ import 'package:trffic_ilght_app/core/services/detection/detection_stabilizer.da
 import 'package:trffic_ilght_app/core/services/detection/traffic_detection_label_formatter.dart';
 import 'package:trffic_ilght_app/shared/models/model_types.dart';
 import 'package:trffic_ilght_app/features/camera_detection/data/models/realtime_inference.dart';
+import 'package:trffic_ilght_app/core/services/inference/countdown_reading_hold.dart';
 import 'package:trffic_ilght_app/core/services/inference/countdown_reading_stabilizer.dart';
 import 'package:trffic_ilght_app/core/services/inference/signal_interpreter.dart';
 import 'package:trffic_ilght_app/features/camera_detection/data/services/latest_frame_queue.dart';
@@ -13,6 +14,7 @@ import 'package:trffic_ilght_app/features/camera_detection/data/services/realtim
 import 'package:trffic_ilght_app/core/services/inference/number_detection_service.dart';
 import 'package:trffic_ilght_app/features/camera_detection/data/services/realtime_number_inference_engine.dart';
 import 'package:trffic_ilght_app/core/services/voice/traffic_voice_service.dart';
+import 'package:trffic_ilght_app/core/services/voice/countdown_alert_controller.dart';
 import 'package:trffic_ilght_app/core/services/voice/voice_alert_controller.dart';
 import 'package:trffic_ilght_app/core/services/inference/sign_number_pipeline_service.dart';
 
@@ -68,6 +70,9 @@ class CameraInferenceController extends ChangeNotifier {
 
   YOLO? _digitYolo;
   String? _detectedNumber;
+  String? _countdownUiMessage;
+  late final CountdownAlertController _countdownAlertController;
+  late final CountdownReadingHold _countdownHold;
   late final RealtimeNumberInferenceEngine _numberInferenceEngine;
   late final LatestFrameQueue<RealtimeFramePacket> _streamQueue;
   late final DetectionStabilizer _detectionStabilizer;
@@ -120,6 +125,9 @@ class CameraInferenceController extends ChangeNotifier {
   YOLOViewController get yoloController => _yoloController;
 
   String? get detectedNumber => _detectedNumber;
+
+  /// ข้อความนับถอยหลังสำหรับ UI เช่น 'เหลืออีก 3 วินาที · เตรียมออกตัว'
+  String? get countdownUiMessage => _countdownUiMessage;
   int get droppedStreamFrameCount => _streamQueue.droppedCount;
   List<RealtimeInferenceDiagnostic> get realtimeDiagnostics =>
       _numberInferenceEngine.diagnostics;
@@ -218,6 +226,8 @@ class CameraInferenceController extends ChangeNotifier {
     @visibleForTesting
     Duration numberDetectionInterval = const Duration(milliseconds: 400),
     @visibleForTesting CountdownReadingStabilizer? countdownStabilizer,
+    @visibleForTesting CountdownAlertController? countdownAlertController,
+    @visibleForTesting CountdownReadingHold? countdownHold,
     @visibleForTesting DetectionStabilizer? detectionStabilizer,
     // ไม่ใช่พารามิเตอร์สำหรับเทสต์อย่างเดียว: production ส่ง TrafficVoiceService
     // ตัวที่แชร์ทั้งแอปเข้ามา เพื่อให้ค่าเสียงจากหน้า Settings มีผลกับหน้ากล้องด้วย
@@ -261,9 +271,21 @@ class CameraInferenceController extends ChangeNotifier {
       _voiceAlertController = VoiceAlertController(
         config: _detectionConfig,
         speakClassName: _speakStableClass,
+        // ให้ข้อความที่สำคัญกว่า (เช่นไฟแดง) ตัดข้อความที่กำลังพูดอยู่ได้
+        interruptSpeech: _voiceService.stop,
       );
     } else {
       _voiceAlertController = voiceAlertController;
+    }
+    if (countdownAlertController == null) {
+      _countdownAlertController = CountdownAlertController();
+    } else {
+      _countdownAlertController = countdownAlertController;
+    }
+    if (countdownHold == null) {
+      _countdownHold = CountdownReadingHold();
+    } else {
+      _countdownHold = countdownHold;
     }
     _isFrontCamera = _lensFacing == LensFacing.front;
 
@@ -590,10 +612,90 @@ class CameraInferenceController extends ChangeNotifier {
     if (packet.ageAt(completedAt) > _maximumFrameAge) {
       _isRealtimePipelineStale = true;
       _clearRealtimeResults();
-    } else if (stabilizedReading != null) {
-      _applyDetectedNumber(stabilizedReading);
+    } else {
+      // ถือเลขล่าสุดไว้ชั่วคราวเมื่อรอบนี้อ่านไม่ได้ (ป้ายกะพริบ/ยังไม่ถึงรอบอ่าน)
+      // แต่ปล่อยทิ้งเมื่อพ้นเวลาถือ ไม่ให้เลขเก่าค้างบนจอ
+      final heldReading = _countdownHold.update(
+        stabilizedReading,
+        timestamp: completedAt,
+      );
+      _applyDetectedNumber(heldReading);
+      _updateCountdownAlert(packet);
     }
     notifyListeners();
+  }
+
+  /// อัปเดตข้อความ/เสียงนับถอยหลังของโหมดเรียลไทม์
+  ///
+  /// เดิมโหมดนี้แสดงเลขบนจออย่างเดียว ไม่มีเสียงเลย ทั้งที่คนขับไม่ได้จ้องจอ
+  /// จึงใช้ CountdownAlertController ตัวเดียวกับโหมดวิดีโอ (กติกา 5 วินาทีและ
+  /// การกันพูดซ้ำในรอบเดียวกันอยู่ในนั้นทั้งหมด)
+  void _updateCountdownAlert(RealtimeFramePacket packet) {
+    final hasQualifiedSign = packet.detections.any(
+      (result) =>
+          result.className == 'sign_number' &&
+          result.confidence >= realtimeSignConfidenceThreshold,
+    );
+    // ช่วงที่ถือเลขไว้ต้องถือว่าป้ายยังอยู่ ไม่งั้นเลขที่ถือไว้จะถูกทิ้งทันที
+    // (เหตุผลเดียวกับ signPresent ของฝั่งวิดีโอ)
+    bool isSignDetected;
+    if (hasQualifiedSign || _detectedNumber != null) {
+      isSignDetected = true;
+    } else {
+      isSignDetected = false;
+    }
+
+    final update = _countdownAlertController.update(
+      isSignDetected: isSignDetected,
+      detectedNumber: _detectedNumber,
+      stableTrafficLightClassName: _countdownTrafficLightClassName,
+    );
+    _countdownUiMessage = update.uiMessage;
+
+    final event = update.event;
+    if (event == null) return;
+    if (!_voiceService.isEnabled) return;
+
+    unawaited(_speakCountdownAlert(event));
+  }
+
+  Future<void> _speakCountdownAlert(CountdownAlertEvent event) async {
+    // ใช้ priority ของไฟที่กำลังนับถอยหลัง เพื่อให้ข้อความนี้ถูกจัดลำดับร่วมกับ
+    // เสียงแจ้งคลาสอื่น ๆ ได้ถูกต้อง
+    final priority = _detectionConfig
+        .ruleFor(event.stableTrafficLightClassName)
+        .priority;
+    final didSpeak = await _voiceAlertController.speakMessageIfIdle(
+      () => _voiceService.speak(event.voiceMessage),
+      priority: priority,
+    );
+    if (didSpeak) return;
+
+    // พูดไม่ได้เพราะติดข้อความอื่นอยู่ ต้องเปิดให้ลองใหม่เฟรมถัดไป
+    // ไม่งั้นคำเตือน "ใกล้หมด" ของรอบนี้เงียบหายไปทั้งรอบ
+    _countdownAlertController.allowThresholdEventRetry();
+  }
+
+  /// คลาสไฟที่ใช้ตัดสินข้อความนับถอยหลัง (เฉพาะไฟที่มีนับถอยหลังจริง)
+  /// เรียงตาม priority เหมือนฝั่งวิดีโอ เพื่อให้ไฟที่สำคัญกว่าเป็นตัวตัดสิน
+  String? get _countdownTrafficLightClassName {
+    final supportedLights = _detectionStabilizer.stableDetections
+        .where(
+          (detection) => CountdownAlertController.supportedTrafficLightClasses
+              .contains(detection.className),
+        )
+        .toList();
+    if (supportedLights.isEmpty) {
+      return null;
+    }
+    supportedLights.sort((first, second) {
+      final firstPriority = _detectionConfig.ruleFor(first.className).priority;
+      final secondPriority = _detectionConfig
+          .ruleFor(second.className)
+          .priority;
+      return firstPriority.compareTo(secondPriority);
+    });
+    return supportedLights.first.className;
   }
 
   /// อัปเดตสแนปช็อตสถิติ pipeline จาก monitor
@@ -667,15 +769,39 @@ class CameraInferenceController extends ChangeNotifier {
   }
 
   /// เลขใช้สำหรับ UI เท่านั้น ส่วนเสียง sign_number มาจาก stable detected event
-  void _applyDetectedNumber(String reading) {
+  /// ([reading] เป็น null เมื่อพ้นเวลาถือเลขแล้ว = ต้องล้างเลขออกจากจอ)
+  void _applyDetectedNumber(String? reading) {
     if (_isDisposed) return;
+    if (_detectedNumber == reading) return;
+
     _detectedNumber = reading;
+    // แบนเนอร์คำสั่งคนขับใช้เลขนี้ด้วย ('ไฟแดง - เตรียมออกตัว อีก N วินาที')
+    _refreshDriverSignal();
     notifyListeners();
+  }
+
+  /// สร้างแบนเนอร์คำสั่งคนขับใหม่จากผล stable ปัจจุบัน (คืนค่าว่าเปลี่ยนไปหรือไม่)
+  bool _refreshDriverSignal() {
+    final stableYoloDetections = _detectionStabilizer.stableDetections
+        .map((detection) => detection.toYoloResult())
+        .toList(growable: false);
+    // แดง ⇒ หยุดเสมอ อยู่ใน SignalInterpreter
+    final driverSignal = SignalInterpreter.interpret(
+      stableYoloDetections,
+      countdownNumberText: _detectedNumber,
+    );
+    if (_driverSignalResult == driverSignal) return false;
+
+    _driverSignalResult = driverSignal;
+    return true;
   }
 
   void _resetDetectionSession({bool stopVoice = true}) {
     _detectionStabilizer.reset();
     _voiceAlertController.reset();
+    _countdownAlertController.reset();
+    _countdownHold.reset();
+    _countdownUiMessage = null;
     _detectedNumber = null;
     // แบนเนอร์คำสั่งคนขับผูกกับผล stable -> รีเซ็ต stabilizer แล้วต้องล้างด้วย
     _driverSignalResult = _emptyDriverSignal;
@@ -706,7 +832,11 @@ class CameraInferenceController extends ChangeNotifier {
       if (result.className == 'sign_number') {
         threshold = realtimeSignConfidenceThreshold;
       } else {
-        threshold = _confidenceThreshold;
+        // คลาสที่เกี่ยวกับความปลอดภัยมีเพดาน ผู้ใช้ปรับให้มองข้ามไฟแดงไม่ได้
+        threshold = _detectionConfig.effectiveConfidenceThreshold(
+          result.className,
+          _confidenceThreshold,
+        );
       }
       return result.confidence >= threshold;
     });
@@ -738,14 +868,7 @@ class CameraInferenceController extends ChangeNotifier {
       // Allowed: numbers will be detected and shown in green color
     }
 
-    // ตีความผล stable เป็นคำสั่งคนขับ (แดง ⇒ หยุดเสมอ อยู่ใน SignalInterpreter)
-    final driverSignal = SignalInterpreter.interpret(
-      stableDetections
-          .map((detection) => detection.toYoloResult())
-          .toList(growable: false),
-    );
-    if (_driverSignalResult != driverSignal) {
-      _driverSignalResult = driverSignal;
+    if (_refreshDriverSignal()) {
       shouldNotify = true;
     }
 
@@ -784,7 +907,13 @@ class CameraInferenceController extends ChangeNotifier {
     // ผู้ใช้ปิดเสียงใน settings แล้วต้องไม่พูด (เหมือนที่ video controller ทำ)
     final shouldAnnounce = _voiceService.isEnabled;
     if (shouldAnnounce) {
-      unawaited(_voiceAlertController.handleEvents(stabilization.events));
+      // ส่ง timestamp ไปด้วยเพื่อให้คิวรอพูดหมดอายุได้ แม้เฟรมนี้ไม่มี event ใหม่
+      unawaited(
+        _voiceAlertController.handleEvents(
+          stabilization.events,
+          timestamp: observationTime,
+        ),
+      );
     }
 
     _frameCount++;

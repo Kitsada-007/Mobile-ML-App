@@ -129,6 +129,15 @@ final class CountdownAlertController {
     );
   }
 
+  /// เปิดให้ยิง event เสียงของรอบนับถอยหลังนี้ได้อีกครั้ง
+  ///
+  /// ใช้เมื่อ "พูดไม่สำเร็จ" เท่านั้น (ระบบเสียงกำลังพูดข้อความอื่นอยู่)
+  /// ถ้าไม่มีทางลองใหม่ คำเตือนใกล้หมดของรอบนั้นจะหายไปเลยเพราะ event ยิงครั้งเดียว
+  /// ห้ามเรียกหลังพูดสำเร็จ ไม่งั้นจะพูดซ้ำในการนับถอยหลังรอบเดียวกัน
+  void allowThresholdEventRetry() {
+    _thresholdEventEmitted = false;
+  }
+
   /// ล้างสถานะทั้งหมดรวมถึง _thresholdEventEmitted — ใช้เฉพาะตอนเริ่ม
   /// session ใหม่ (เลือกวิดีโอใหม่ / seek ย้อน / pause) เท่านั้น
   /// ห้ามเรียกจากกรณีป้ายหายชั่วคราวระหว่างนับถอยหลัง (ดูคอมเมนต์ใน update)
@@ -145,17 +154,31 @@ final class CountdownAlertController {
   }
 
   String _uiActionFor(String? stableLight) {
-    if (stableLight == 'red_light_circle' || stableLight == 'red_light') return config.redUiAction;
-    if (stableLight == 'green_light_circle' || stableLight == 'green_light' || stableLight == 'turn_left' || stableLight == 'turn_right' || stableLight == 'go_straight_arrow') {
+    if (stableLight == 'red_light_circle' || stableLight == 'red_light') {
+      return config.redUiAction;
+    }
+    if (stableLight == 'green_light_circle' ||
+        stableLight == 'green_light' ||
+        stableLight == 'turn_left' ||
+        stableLight == 'turn_right' ||
+        stableLight == 'go_straight_arrow') {
       return config.greenUiAction;
     }
-    if (stableLight == 'yellow_light' || stableLight == 'yellow_light_circle') return config.yellowUiAction;
+    if (stableLight == 'yellow_light' || stableLight == 'yellow_light_circle') {
+      return config.yellowUiAction;
+    }
     return '';
   }
 
   String? _voiceMessageFor(String? className) {
-    if (className == 'red_light_circle' || className == 'red_light') return config.redVoiceMessage;
-    if (className == 'green_light_circle' || className == 'green_light' || className == 'turn_left' || className == 'turn_right' || className == 'go_straight_arrow') {
+    if (className == 'red_light_circle' || className == 'red_light') {
+      return config.redVoiceMessage;
+    }
+    if (className == 'green_light_circle' ||
+        className == 'green_light' ||
+        className == 'turn_left' ||
+        className == 'turn_right' ||
+        className == 'go_straight_arrow') {
       return config.greenVoiceMessage;
     }
     return null;

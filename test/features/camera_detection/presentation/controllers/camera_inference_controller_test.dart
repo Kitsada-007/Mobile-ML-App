@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:trffic_ilght_app/core/services/inference/countdown_reading_hold.dart';
 import 'package:trffic_ilght_app/core/services/inference/countdown_reading_stabilizer.dart';
 import 'package:trffic_ilght_app/core/services/inference/signal_interpreter.dart';
 import 'package:trffic_ilght_app/core/services/voice/traffic_voice_service.dart';
@@ -84,6 +85,27 @@ class RecordingDigitYolo extends YOLO {
         _digitDetection('1', left: 0.2),
         _digitDetection('2', left: 0.6),
       ],
+    };
+  }
+}
+
+/// โมเดลตัวเลขปลอมที่คืนเลขหลักเดียว (ใช้ทดสอบช่วงนับถอยหลังใกล้หมด)
+class SingleDigitYolo extends YOLO {
+  SingleDigitYolo(this.digit)
+    : super(modelPath: 'unused.tflite', task: YOLOTask.detect);
+
+  final String digit;
+  int predictCallCount = 0;
+
+  @override
+  Future<Map<String, dynamic>> predict(
+    Uint8List imageBytes, {
+    double? confidenceThreshold,
+    double? iouThreshold,
+  }) async {
+    predictCallCount += 1;
+    return {
+      'detections': [_digitDetection(digit, left: 0.4)],
     };
   }
 }
@@ -510,32 +532,146 @@ void main() {
     controller.dispose();
   });
 
+  test('applyDetectionSettings raises the confidence bar for detections', () async {
+    final controller = CameraInferenceController(
+      voiceService: FakeTrafficVoiceService(),
+      enableFreshnessWatchdog: false,
+    );
+    controller.applyDetectionSettings(
+      confidenceThreshold: 0.9,
+      iouThreshold: 0.45,
+      numItemsThreshold: 11,
+    );
+
+    // confidence 0.8 ต่ำกว่าเกณฑ์ใหม่ จึงต้องไม่ถูกนับเป็นการตรวจจับที่ผ่านเกณฑ์
+    // (ใช้ไฟเขียวเพราะคลาสที่เกี่ยวกับความปลอดภัยมีเพดาน ปรับให้สูงกว่านั้นไม่ได้)
+    final weakGreenLight = _trafficLightDetection(
+      'green_light_circle',
+      confidence: 0.8,
+    );
+    for (var frame = 0; frame < 5; frame++) {
+      await controller.onDetectionResults([weakGreenLight]);
+    }
+
+    expect(controller.confirmedTrafficLightClassName, isNull);
+    controller.dispose();
+  });
+
+  test('a high user threshold can never silence the red light', () async {
+    final voiceService = FakeTrafficVoiceService();
+    final controller = CameraInferenceController(
+      voiceService: voiceService,
+      enableFreshnessWatchdog: false,
+    );
+    // ผู้ใช้ดัน threshold ไปสุด = เท่ากับปิดการเตือนไฟแดงถ้าไม่มีเพดานความปลอดภัย
+    controller.applyDetectionSettings(
+      confidenceThreshold: 0.9,
+      iouThreshold: 0.45,
+      numItemsThreshold: 11,
+    );
+
+    final redLight = _trafficLightDetection(
+      'red_light_circle',
+      confidence: 0.6,
+    );
+    for (var frame = 0; frame < 4; frame++) {
+      await controller.onDetectionResults([redLight]);
+    }
+    await Future<void>.delayed(Duration.zero); // รอ unawaited handleEvents
+
+    expect(controller.confirmedTrafficLightClassName, 'red_light_circle');
+    expect(voiceService.spokenMessages, hasLength(1));
+    controller.dispose();
+  });
+
   test(
-    'applyDetectionSettings raises the confidence bar for detections',
+    'speaks the countdown warning while the red light is running out',
     () async {
+      final voiceService = FakeTrafficVoiceService();
       final controller = CameraInferenceController(
-        voiceService: FakeTrafficVoiceService(),
+        voiceService: voiceService,
+        signNumberPipelineService: SignNumberPipelineService(
+          digitYolo: SingleDigitYolo('3'),
+        ),
+        numberDetectionInterval: Duration.zero,
+        countdownStabilizer: CountdownReadingStabilizer(requiredMatches: 1),
         enableFreshnessWatchdog: false,
       );
-      controller.applyDetectionSettings(
-        confidenceThreshold: 0.9,
-        iouThreshold: 0.45,
-        numItemsThreshold: 11,
-      );
+      final frame = img.Image(width: 200, height: 100);
+      final frameBytes = Uint8List.fromList(img.encodeJpg(frame));
 
-      // confidence 0.8 ต่ำกว่าเกณฑ์ใหม่ จึงต้องไม่ถูกนับเป็นการตรวจจับที่ผ่านเกณฑ์
-      final weakRedLight = _trafficLightDetection(
-        'red_light_circle',
-        confidence: 0.8,
-      );
-      for (var frame = 0; frame < 5; frame++) {
-        await controller.onDetectionResults([weakRedLight]);
+      for (var frameNumber = 1; frameNumber <= 6; frameNumber++) {
+        await controller.onStreamingData({
+          'frameNumber': frameNumber,
+          'detections': [
+            _signDetection(),
+            _trafficLightDetectionMap('red_light_circle'),
+          ],
+          'originalImage': frameBytes,
+          'imageWidth': 200,
+          'imageHeight': 100,
+        });
+        await Future<void>.delayed(Duration.zero); // รอ unawaited ของเสียง
       }
 
-      expect(controller.confirmedTrafficLightClassName, isNull);
+      expect(controller.detectedNumber, '3');
+      // โหมดเรียลไทม์ต้องมีทั้งข้อความและเสียง ไม่ใช่แค่ตัวเลขบนจอ
+      expect(controller.countdownUiMessage, 'เหลืออีก 3 วินาที · เตรียมออกตัว');
+      expect(controller.driverSignalResult.message, contains('อีก 3 วินาที'));
+      expect(
+        voiceService.spokenMessages,
+        contains('ไฟแดงใกล้หมด เตรียมออกตัว'),
+      );
       controller.dispose();
     },
   );
+
+  test('realtime countdown number is held briefly, then cleared', () async {
+    var now = DateTime(2026, 8, 3, 12);
+    final controller = CameraInferenceController(
+      voiceService: FakeTrafficVoiceService(),
+      clock: () => now,
+      signNumberPipelineService: SignNumberPipelineService(
+        digitYolo: SingleDigitYolo('3'),
+      ),
+      numberDetectionInterval: Duration.zero,
+      countdownStabilizer: CountdownReadingStabilizer(requiredMatches: 1),
+      countdownHold: CountdownReadingHold(
+        holdDuration: const Duration(milliseconds: 1500),
+      ),
+      enableFreshnessWatchdog: false,
+    );
+    final frame = img.Image(width: 200, height: 100);
+    final frameBytes = Uint8List.fromList(img.encodeJpg(frame));
+
+    for (var frameNumber = 1; frameNumber <= 2; frameNumber++) {
+      await controller.onStreamingData({
+        'frameNumber': frameNumber,
+        'detections': [_signDetection()],
+        'originalImage': frameBytes,
+        'imageWidth': 200,
+        'imageHeight': 100,
+      });
+    }
+    expect(controller.detectedNumber, '3');
+
+    // ป้ายหายไปชั่วครู่ (LED กะพริบ) -> ยังต้องเห็นเลขเดิม
+    now = now.add(const Duration(milliseconds: 1000));
+    await controller.onStreamingData({
+      'frameNumber': 3,
+      'detections': const <Map<String, dynamic>>[],
+    });
+    expect(controller.detectedNumber, '3');
+
+    // แต่หายนานเกินเวลาที่ถือไว้ -> ต้องล้างทิ้ง ไม่ปล่อยให้เลขเก่าค้างบนจอ
+    now = now.add(const Duration(milliseconds: 1000));
+    await controller.onStreamingData({
+      'frameNumber': 4,
+      'detections': const <Map<String, dynamic>>[],
+    });
+    expect(controller.detectedNumber, isNull);
+    controller.dispose();
+  });
 
   test('toggleVoice flips the announcement state', () {
     final controller = CameraInferenceController(

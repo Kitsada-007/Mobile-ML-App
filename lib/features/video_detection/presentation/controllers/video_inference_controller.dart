@@ -84,6 +84,8 @@ class VideoInferenceController extends ChangeNotifier {
       _voiceAlertController = VoiceAlertController(
         config: _detectionConfig,
         speakClassName: _speakStableClass,
+        // ให้ข้อความที่สำคัญกว่า (เช่นไฟแดง) ตัดข้อความที่กำลังพูดอยู่ได้
+        interruptSpeech: _voiceService.stop,
       );
     } else {
       _voiceAlertController = voiceAlertController;
@@ -553,16 +555,30 @@ class VideoInferenceController extends ChangeNotifier {
         _videoController!.value.isPlaying &&
         _voiceService.isEnabled;
     if (shouldAnnounce) {
-      unawaited(_voiceAlertController.handleEvents(update.events));
+      // ส่ง timestamp ไปด้วยเพื่อให้คิวรอพูดหมดอายุได้ แม้เฟรมนี้ไม่มี event ใหม่
+      unawaited(
+        _voiceAlertController.handleEvents(update.events, timestamp: timestamp),
+      );
       final countdownEvent = countdownUpdate.event;
       if (countdownEvent != null) {
-        unawaited(
-          _voiceAlertController.speakMessageIfIdle(
-            () => _voiceService.speak(countdownEvent.voiceMessage),
-          ),
-        );
+        unawaited(_speakCountdownAlert(countdownEvent));
       }
     }
+  }
+
+  Future<void> _speakCountdownAlert(CountdownAlertEvent event) async {
+    // ใช้ priority ของไฟที่กำลังนับถอยหลัง เพื่อจัดลำดับกับเสียงอื่นได้ถูกต้อง
+    final priority = _detectionConfig
+        .ruleFor(event.stableTrafficLightClassName)
+        .priority;
+    final didSpeak = await _voiceAlertController.speakMessageIfIdle(
+      () => _voiceService.speak(event.voiceMessage),
+      priority: priority,
+    );
+    if (didSpeak) return;
+
+    // พูดไม่ได้เพราะติดข้อความอื่นอยู่ ต้องเปิดให้ลองใหม่เฟรมถัดไป
+    _countdownAlertController.allowThresholdEventRetry();
   }
 
   Future<void> _speakStableClass(String className) {
