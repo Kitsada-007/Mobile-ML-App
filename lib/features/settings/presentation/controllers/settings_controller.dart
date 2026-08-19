@@ -13,6 +13,11 @@ import 'package:trffic_ilght_app/core/services/voice/traffic_voice_service.dart'
 class SettingsProvider extends ChangeNotifier {
   bool _isLightMode = true;
   bool _isVoiceEnabled = true;
+
+  /// ค่าเริ่มต้นเป็น false เพราะกรอบที่ native วาดมาจากผลดิบรายเฟรม (threshold ≤ 0.25)
+  /// ไม่ใช่ผลที่ผ่านการยืนยันแล้ว จึงขึ้นกรอบทั้งที่ยังไม่มีเสียงเตือน ทำให้คนขับสับสน
+  /// เปิดไว้ใช้ตอนทดสอบ/สาธิตว่าโมเดลกำลังเห็นอะไรอยู่
+  bool _showDetectionOverlay = false;
   double _iouThreshold = 0.45;
   double _confidenceThreshold = 0.5;
   int _numItemsThreshold = 11;
@@ -22,6 +27,7 @@ class SettingsProvider extends ChangeNotifier {
 
   bool get isLightMode => _isLightMode;
   bool get isVoiceEnabled => _isVoiceEnabled;
+  bool get showDetectionOverlay => _showDetectionOverlay;
   double get iouThreshold => _iouThreshold;
   double get confidenceThreshold => _confidenceThreshold;
   int get numItemsThreshold => _numItemsThreshold;
@@ -66,6 +72,13 @@ class SettingsProvider extends ChangeNotifier {
       _isVoiceEnabled = true;
     } else {
       _isVoiceEnabled = storedIsVoiceEnabled;
+    }
+
+    final storedShowDetectionOverlay = prefs.getBool('showDetectionOverlay');
+    if (storedShowDetectionOverlay == null) {
+      _showDetectionOverlay = false;
+    } else {
+      _showDetectionOverlay = storedShowDetectionOverlay;
     }
 
     final storedIouThreshold = prefs.getDouble('iouThreshold');
@@ -158,6 +171,13 @@ class SettingsProvider extends ChangeNotifier {
     _applyVoiceSettings();
     notifyListeners();
     await _saveBool('isVoiceEnabled', value);
+  }
+
+  /// เปิด/ปิดการวาดกรอบตรวจจับบนภาพกล้อง (หน้ากล้องเป็นผู้ส่งต่อให้ YOLO ฝั่ง native)
+  Future<void> toggleDetectionOverlay(bool value) async {
+    _showDetectionOverlay = value;
+    notifyListeners();
+    await _saveBool('showDetectionOverlay', value);
   }
 
   Future<void> setIouThreshold(double value) async {

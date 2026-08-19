@@ -812,6 +812,50 @@ void main() {
     controller.dispose();
   });
 
+  test('detection overlay follows the user setting', () {
+    final controller = CameraInferenceController(
+      voiceService: FakeTrafficVoiceService(),
+      enableFreshnessWatchdog: false,
+    );
+    // ค่าเริ่มต้นคือปิด เพราะกรอบของ native มาจากผลดิบ ไม่ใช่ผลที่ยืนยันแล้ว
+    expect(controller.showDetectionOverlay, isFalse);
+
+    var notifyCount = 0;
+    controller.addListener(() {
+      notifyCount = notifyCount + 1;
+    });
+
+    controller.applyDetectionSettings(
+      confidenceThreshold: 0.5,
+      iouThreshold: 0.45,
+      numItemsThreshold: 11,
+      showDetectionOverlay: true,
+    );
+    expect(controller.showDetectionOverlay, isTrue);
+    expect(controller.yoloController.showOverlays, isTrue);
+    expect(notifyCount, 1);
+
+    // ค่าเดิมซ้ำต้องไม่สั่ง native ซ้ำและไม่ rebuild
+    controller.applyDetectionSettings(
+      confidenceThreshold: 0.5,
+      iouThreshold: 0.45,
+      numItemsThreshold: 11,
+      showDetectionOverlay: true,
+    );
+    expect(notifyCount, 1);
+
+    controller.applyDetectionSettings(
+      confidenceThreshold: 0.5,
+      iouThreshold: 0.45,
+      numItemsThreshold: 11,
+      showDetectionOverlay: false,
+    );
+    expect(controller.showDetectionOverlay, isFalse);
+    expect(controller.yoloController.showOverlays, isFalse);
+    expect(notifyCount, 2);
+    controller.dispose();
+  });
+
   test('toggleVoice flips the announcement state', () {
     final controller = CameraInferenceController(
       voiceService: FakeTrafficVoiceService(),

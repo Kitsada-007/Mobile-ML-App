@@ -131,6 +131,28 @@ class SettingPage extends StatelessWidget {
                 child: Divider(height: 1),
               ),
               SettingMenuItem(
+                icon: Icons.crop_free_rounded,
+                title: 'Show Detection Boxes',
+                trailing: Switch.adaptive(
+                  value: settings.showDetectionOverlay,
+                  onChanged: (val) {
+                    context.read<SettingsProvider>().toggleDetectionOverlay(
+                      val,
+                    );
+                  },
+                ),
+              ),
+              _buildSliderNote(
+                context,
+                'สำหรับทดสอบ: กรอบที่วาดมาจากผลดิบของโมเดลรายเฟรม '
+                'จึงขึ้นก่อนที่ระบบจะยืนยันและแจ้งเตือน ปกติควรปิดไว้ '
+                'แล้วดูคำสั่งจากแถบข้อความและเสียงแทน',
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.0),
+                child: Divider(height: 1),
+              ),
+              SettingMenuItem(
                 icon: Icons.light_mode_outlined,
                 title: 'Dark Mode',
                 trailing: Switch.adaptive(
