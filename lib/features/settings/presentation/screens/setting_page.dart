@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:trffic_ilght_app/features/settings/presentation/controllers/settings_controller.dart';
-import 'package:trffic_ilght_app/core/services/voice/traffic_voice_service.dart';
 
 class SettingPage extends StatelessWidget {
   const SettingPage({super.key});
@@ -116,11 +115,10 @@ class SettingPage extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      onPressed: () async {
-                        final voiceService = TrafficVoiceService();
-                        await voiceService.speak(
-                          "ทดสอบการแจ้งเตือนสัญญาณไฟจราจร",
-                        );
+                      // ให้ SettingsProvider เป็นผู้เล่น เพราะมันถือ TrafficVoiceService
+                      // ตัวเดียวกับที่แอปใช้จริง เสียงที่ได้ยินจึงตรงกับค่าที่เพิ่งเลื่อน
+                      onPressed: () {
+                        context.read<SettingsProvider>().previewVoice();
                       },
                     ),
                   ),
@@ -198,6 +196,19 @@ class SettingPage extends StatelessWidget {
                       onChanged: (val) => context
                           .read<SettingsProvider>()
                           .setConfidenceThreshold(val),
+                    ),
+                    _buildSliderRow(
+                      context,
+                      icon: Icons.format_list_numbered_rounded,
+                      title: 'Max Detections',
+                      value: settings.numItemsThreshold.toDouble(),
+                      valueDisplay: '${settings.numItemsThreshold}',
+                      min: 5,
+                      max: 30,
+                      divisions: 25,
+                      onChanged: (val) => context
+                          .read<SettingsProvider>()
+                          .setNumItemsThreshold(val.toInt()),
                     ),
                     const SizedBox(height: 12),
                   ],

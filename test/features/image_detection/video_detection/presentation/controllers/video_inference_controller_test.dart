@@ -13,8 +13,21 @@ class FakeTrafficVoiceService implements TrafficVoiceService {
   bool get isEnabled => _enabled;
 
   @override
+  Future<void> get ready async {}
+
+  @override
   Future<void> setEnabled(bool value) async {
     _enabled = value;
+  }
+
+  @override
+  Future<void> applySettings({
+    required bool isEnabled,
+    required double volume,
+    required double speed,
+    required double pitch,
+  }) async {
+    _enabled = isEnabled;
   }
 
   @override

@@ -3,11 +3,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:trffic_ilght_app/core/services/voice/traffic_voice_service.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/controllers/camera_inference_controller.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_detection_panel.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_inference_content.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_inference_overlay.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/detection_stats_display.dart';
+import 'package:trffic_ilght_app/features/settings/settings.dart';
+import 'package:trffic_ilght_app/shared/utils/optional_provider.dart';
 
 /// หน้าเซนต์สำหรับการตรวจจับ YOLO จากกล้องแบบเรียลไทม์
 /// มีผลลัพธ์แสดงใต้ preview กล้อง
@@ -29,6 +32,7 @@ class CameraInferencePage extends StatefulWidget {
 class _CameraInferencePageState extends State<CameraInferencePage>
     with WidgetsBindingObserver {
   late final CameraInferenceController _controller;
+  SettingsProvider? _settings; // null เมื่อหน้านี้ถูก pump เดี่ยว ๆ ในเทสต์
   int _rebuildKey = 0; // ตัว key ที่เพิ่มขึ้นเพื่อบังคับ rebuild YOLOView
   bool? _isRouteCurrent;
   bool _isAppResumed = true;
@@ -40,7 +44,10 @@ class _CameraInferencePageState extends State<CameraInferencePage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _controller = CameraInferenceController();
+    _controller = CameraInferenceController(
+      voiceService: readOptionalProvider<TrafficVoiceService>(context),
+    );
+    _bindSettings();
     if (widget.initializeOnStart) {
       _controller.initialize().catchError((error) {
         if (mounted) {
@@ -98,9 +105,34 @@ class _CameraInferencePageState extends State<CameraInferencePage>
     }
   }
 
+  /// ผูกหน้ากล้องเข้ากับ SettingsProvider เพื่อให้ค่า threshold ที่ผู้ใช้เปลี่ยนในหน้า
+  /// Settings มีผลทันที (หน้า Settings ถูก push ทับหน้านี้ หน้านี้จึงไม่ได้ถูกสร้างใหม่)
+  void _bindSettings() {
+    final settings = readOptionalProvider<SettingsProvider>(context);
+    _settings = settings;
+    if (settings == null) {
+      return;
+    }
+    _applyDetectionSettings();
+    settings.addListener(_applyDetectionSettings);
+  }
+
+  void _applyDetectionSettings() {
+    final settings = _settings;
+    if (settings == null) {
+      return;
+    }
+    _controller.applyDetectionSettings(
+      confidenceThreshold: settings.confidenceThreshold,
+      iouThreshold: settings.iouThreshold,
+      numItemsThreshold: settings.numItemsThreshold,
+    );
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _settings?.removeListener(_applyDetectionSettings);
     _controller.dispose();
     super.dispose();
   }

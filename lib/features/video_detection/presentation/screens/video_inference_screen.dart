@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:trffic_ilght_app/core/services/voice/traffic_voice_service.dart';
+import 'package:trffic_ilght_app/features/settings/settings.dart';
+import 'package:trffic_ilght_app/shared/utils/optional_provider.dart';
 import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/video_detection_panel.dart';
 import 'package:trffic_ilght_app/features/video_detection/presentation/controllers/video_inference_controller.dart';
 import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/video_result_section.dart';
@@ -16,6 +19,8 @@ class VideoInferenceScreen extends StatefulWidget {
 class _VideoInferenceScreenState extends State<VideoInferenceScreen>
     with WidgetsBindingObserver {
   late final VideoInferenceController _controller;
+  SettingsProvider? _settings; // null เมื่อหน้านี้ถูก pump เดี่ยว ๆ ในเทสต์
+  late final Listenable _uiListenable;
   bool? _isRouteCurrent;
   bool _isAppResumed = true;
 
@@ -26,9 +31,43 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _controller = VideoInferenceController();
+    _controller = VideoInferenceController(
+      // ใช้ TrafficVoiceService ตัวเดียวกับทั้งแอป ค่าเสียงจากหน้า Settings จึงมีผลที่นี่ด้วย
+      voiceService: readOptionalProvider<TrafficVoiceService>(context),
+    );
     _controller.addListener(_onControllerNotification);
+
+    final settings = readOptionalProvider<SettingsProvider>(context);
+    _settings = settings;
+    // UI ต้อง rebuild ทั้งตอน controller เปลี่ยน และตอนผู้ใช้เปลี่ยนค่าในหน้า Settings
+    if (settings == null) {
+      _uiListenable = _controller;
+    } else {
+      _uiListenable = Listenable.merge([_controller, settings]);
+    }
+
     _controller.initializeModels();
+  }
+
+  /// สถานะเปิด/ปิดเสียงที่ใช้แสดงบนปุ่ม
+  /// อ่านจาก SettingsProvider เป็นหลัก เพราะเป็นเจ้าของค่าที่บันทึกไว้
+  bool get _isVoiceEnabled {
+    final settings = _settings;
+    if (settings == null) {
+      return _controller.isVoiceEnabled;
+    }
+    return settings.isVoiceEnabled;
+  }
+
+  /// สลับเปิด/ปิดเสียงผ่าน SettingsProvider เพื่อให้ทั้งแอปเห็นค่าเดียวกัน
+  /// (ถ้าสั่งที่ service ตรง ๆ สวิตช์ในหน้า Settings จะค้างค่าเก่า)
+  void _toggleVoice() {
+    final settings = _settings;
+    if (settings == null) {
+      _controller.toggleVoice();
+      return;
+    }
+    unawaited(settings.toggleVoice(!settings.isVoiceEnabled));
   }
 
   @override
@@ -111,7 +150,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
         backgroundColor: colorScheme.surface,
         body: SafeArea(
           child: ListenableBuilder(
-            listenable: _controller,
+            listenable: _uiListenable,
             builder: (context, _) {
               final bool hasVideoResult =
                   _controller.videoController != null &&
@@ -146,9 +185,9 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
                   child: ResultVideoSection(
                     controller: _controller.videoController!,
                     detections: _controller.currentFrameDetections,
-                    isVoiceEnabled: _controller.isVoiceEnabled,
+                    isVoiceEnabled: _isVoiceEnabled,
                     onTogglePlayPause: _controller.togglePlayPause,
-                    onToggleVoice: _controller.toggleVoice,
+                    onToggleVoice: _toggleVoice,
                     onPickNewVideo: _controller.pickVideo,
                   ),
                 );

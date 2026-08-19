@@ -15,17 +15,38 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 /// TrafficVoiceService ปลอมสำหรับเทสต์: บันทึกข้อความที่ถูกสั่งพูดไว้ตรวจสอบ
 class FakeTrafficVoiceService implements TrafficVoiceService {
-  FakeTrafficVoiceService({bool enabled = true}) : _enabled = enabled;
+  FakeTrafficVoiceService({bool enabled = true}) {
+    _enabled = enabled;
+  }
 
-  bool _enabled;
+  late bool _enabled;
   final List<String> spokenMessages = [];
+  double appliedVolume = 1.0;
+  double appliedSpeed = 0.6;
+  double appliedPitch = 1.0;
 
   @override
   bool get isEnabled => _enabled;
 
   @override
+  Future<void> get ready async {}
+
+  @override
   Future<void> setEnabled(bool value) async {
     _enabled = value;
+  }
+
+  @override
+  Future<void> applySettings({
+    required bool isEnabled,
+    required double volume,
+    required double speed,
+    required double pitch,
+  }) async {
+    _enabled = isEnabled;
+    appliedVolume = volume;
+    appliedSpeed = speed;
+    appliedPitch = pitch;
   }
 
   @override
@@ -453,6 +474,69 @@ void main() {
     controller.dispose();
   });
 
+  test('applyDetectionSettings updates the thresholds used for filtering', () {
+    final controller = CameraInferenceController(
+      voiceService: FakeTrafficVoiceService(),
+      enableFreshnessWatchdog: false,
+    );
+    expect(controller.confidenceThreshold, 0.5);
+    expect(controller.iouThreshold, 0.45);
+    expect(controller.numItemsThreshold, 11);
+
+    var notifyCount = 0;
+    controller.addListener(() {
+      notifyCount = notifyCount + 1;
+    });
+
+    // ค่าที่ผู้ใช้เปลี่ยนในหน้า Settings ต้องมีผลกับหน้ากล้องที่เปิดค้างอยู่ทันที
+    controller.applyDetectionSettings(
+      confidenceThreshold: 0.8,
+      iouThreshold: 0.6,
+      numItemsThreshold: 20,
+    );
+
+    expect(controller.confidenceThreshold, 0.8);
+    expect(controller.iouThreshold, 0.6);
+    expect(controller.numItemsThreshold, 20);
+    expect(notifyCount, 1);
+
+    // ค่าเดิมซ้ำ ๆ ต้องไม่สั่ง notify ซ้ำ (กัน rebuild ทุกครั้งที่ provider แจ้งเตือน)
+    controller.applyDetectionSettings(
+      confidenceThreshold: 0.8,
+      iouThreshold: 0.6,
+      numItemsThreshold: 20,
+    );
+    expect(notifyCount, 1);
+    controller.dispose();
+  });
+
+  test(
+    'applyDetectionSettings raises the confidence bar for detections',
+    () async {
+      final controller = CameraInferenceController(
+        voiceService: FakeTrafficVoiceService(),
+        enableFreshnessWatchdog: false,
+      );
+      controller.applyDetectionSettings(
+        confidenceThreshold: 0.9,
+        iouThreshold: 0.45,
+        numItemsThreshold: 11,
+      );
+
+      // confidence 0.8 ต่ำกว่าเกณฑ์ใหม่ จึงต้องไม่ถูกนับเป็นการตรวจจับที่ผ่านเกณฑ์
+      final weakRedLight = _trafficLightDetection(
+        'red_light_circle',
+        confidence: 0.8,
+      );
+      for (var frame = 0; frame < 5; frame++) {
+        await controller.onDetectionResults([weakRedLight]);
+      }
+
+      expect(controller.confirmedTrafficLightClassName, isNull);
+      controller.dispose();
+    },
+  );
+
   test('toggleVoice flips the announcement state', () {
     final controller = CameraInferenceController(
       voiceService: FakeTrafficVoiceService(),
@@ -468,54 +552,34 @@ void main() {
     controller.dispose();
   });
 
-  test(
-    'confirmed green light keeps reading the countdown number',
-    () async {
-      final digitYolo = RecordingDigitYolo();
-      final controller = CameraInferenceController(
-        signNumberPipelineService: SignNumberPipelineService(
-          digitYolo: digitYolo,
-        ),
-        numberDetectionInterval: Duration.zero,
-        countdownStabilizer: CountdownReadingStabilizer(requiredMatches: 1),
-        enableFreshnessWatchdog: false,
-      );
-      final frame = img.Image(width: 200, height: 100);
-      final frameBytes = Uint8List.fromList(img.encodeJpg(frame));
+  test('confirmed green light keeps reading the countdown number', () async {
+    final digitYolo = RecordingDigitYolo();
+    final controller = CameraInferenceController(
+      signNumberPipelineService: SignNumberPipelineService(
+        digitYolo: digitYolo,
+      ),
+      numberDetectionInterval: Duration.zero,
+      countdownStabilizer: CountdownReadingStabilizer(requiredMatches: 1),
+      enableFreshnessWatchdog: false,
+    );
+    final frame = img.Image(width: 200, height: 100);
+    final frameBytes = Uint8List.fromList(img.encodeJpg(frame));
 
-      for (var frameNumber = 1; frameNumber <= 3; frameNumber++) {
-        await controller.onStreamingData({
-          'frameNumber': frameNumber,
-          'detections': [_signDetection()],
-          'originalImage': frameBytes,
-          'imageWidth': 200,
-          'imageHeight': 100,
-        });
-      }
-      expect(controller.detectedNumber, '12');
-      expect(digitYolo.predictCallCount, 3);
-
-      for (var frameNumber = 4; frameNumber <= 7; frameNumber++) {
-        await controller.onStreamingData({
-          'frameNumber': frameNumber,
-          'detections': [
-            _signDetection(),
-            _trafficLightDetectionMap('green_light_circle'),
-          ],
-          'originalImage': frameBytes,
-          'imageWidth': 200,
-          'imageHeight': 100,
-        });
-      }
-
-      // ไฟเขียวไม่ตัดการอ่านเลขอีกต่อไป — ต้องยังเห็นเลขนับถอยหลัง
-      // (UI จะแสดงเป็นสีเขียว) และโมเดลตัวเลขต้องทำงานต่อทุกเฟรม
-      expect(controller.confirmedTrafficLightClassName, 'green_light_circle');
-      expect(controller.detectedNumber, '12');
-      expect(digitYolo.predictCallCount, 7);
-
+    for (var frameNumber = 1; frameNumber <= 3; frameNumber++) {
       await controller.onStreamingData({
-        'frameNumber': 8,
+        'frameNumber': frameNumber,
+        'detections': [_signDetection()],
+        'originalImage': frameBytes,
+        'imageWidth': 200,
+        'imageHeight': 100,
+      });
+    }
+    expect(controller.detectedNumber, '12');
+    expect(digitYolo.predictCallCount, 3);
+
+    for (var frameNumber = 4; frameNumber <= 7; frameNumber++) {
+      await controller.onStreamingData({
+        'frameNumber': frameNumber,
         'detections': [
           _signDetection(),
           _trafficLightDetectionMap('green_light_circle'),
@@ -524,11 +588,28 @@ void main() {
         'imageWidth': 200,
         'imageHeight': 100,
       });
-      expect(controller.detectedNumber, '12');
-      expect(digitYolo.predictCallCount, 8);
-      controller.dispose();
-    },
-  );
+    }
+
+    // ไฟเขียวไม่ตัดการอ่านเลขอีกต่อไป — ต้องยังเห็นเลขนับถอยหลัง
+    // (UI จะแสดงเป็นสีเขียว) และโมเดลตัวเลขต้องทำงานต่อทุกเฟรม
+    expect(controller.confirmedTrafficLightClassName, 'green_light_circle');
+    expect(controller.detectedNumber, '12');
+    expect(digitYolo.predictCallCount, 7);
+
+    await controller.onStreamingData({
+      'frameNumber': 8,
+      'detections': [
+        _signDetection(),
+        _trafficLightDetectionMap('green_light_circle'),
+      ],
+      'originalImage': frameBytes,
+      'imageWidth': 200,
+      'imageHeight': 100,
+    });
+    expect(controller.detectedNumber, '12');
+    expect(digitYolo.predictCallCount, 8);
+    controller.dispose();
+  });
 
   test(
     'unconfirmed low-confidence traffic light is hidden from the UI',
