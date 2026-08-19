@@ -39,6 +39,10 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
 
     final settings = readOptionalProvider<SettingsProvider>(context);
     _settings = settings;
+    if (settings != null) {
+      _applyDetectionSettings();
+      settings.addListener(_applyDetectionSettings);
+    }
     // UI ต้อง rebuild ทั้งตอน controller เปลี่ยน และตอนผู้ใช้เปลี่ยนค่าในหน้า Settings
     if (settings == null) {
       _uiListenable = _controller;
@@ -47,6 +51,15 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
     }
 
     _controller.initializeModels();
+  }
+
+  /// ส่งค่า threshold ของผู้ใช้ให้ controller (โหมดวิดีโอกรองด้วยกติกาเดียวกับกล้อง)
+  void _applyDetectionSettings() {
+    final settings = _settings;
+    if (settings == null) return;
+    _controller.applyDetectionSettings(
+      confidenceThreshold: settings.confidenceThreshold,
+    );
   }
 
   /// สถานะเปิด/ปิดเสียงที่ใช้แสดงบนปุ่ม
@@ -129,6 +142,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _settings?.removeListener(_applyDetectionSettings);
     _controller.removeListener(_onControllerNotification);
     _controller.dispose();
     super.dispose();

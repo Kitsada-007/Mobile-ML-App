@@ -673,6 +673,145 @@ void main() {
     controller.dispose();
   });
 
+  test('asks the screen to restart a camera stream that went silent', () async {
+    var now = DateTime(2026, 8, 3, 12);
+    var restartCount = 0;
+    final controller = CameraInferenceController(
+      voiceService: FakeTrafficVoiceService(),
+      clock: () => now,
+      enableFreshnessWatchdog: false,
+      onRequestStreamRestart: () {
+        restartCount = restartCount + 1;
+      },
+    );
+
+    await controller.onStreamingData({
+      'frameNumber': 1,
+      'detections': const <Map<String, dynamic>>[],
+    });
+    expect(controller.isRealtimePipelineStale, isFalse);
+
+    // เงียบไป 2 วินาที: จอถูกล้างแล้ว แต่ยังไม่ถึงเกณฑ์สั่งเริ่มใหม่
+    now = now.add(const Duration(seconds: 2));
+    controller.expireStaleResults();
+    expect(controller.isRealtimePipelineStale, isTrue);
+    expect(restartCount, 0);
+
+    now = now.add(const Duration(seconds: 2));
+    controller.expireStaleResults();
+    expect(restartCount, 1);
+
+    // ยังไม่พ้นระยะเว้น -> ต้องไม่สั่งรัว
+    now = now.add(const Duration(seconds: 1));
+    controller.expireStaleResults();
+    expect(restartCount, 1);
+
+    now = now.add(const Duration(seconds: 5));
+    controller.expireStaleResults();
+    expect(restartCount, 2);
+
+    now = now.add(const Duration(seconds: 6));
+    controller.expireStaleResults();
+    expect(restartCount, 3);
+    expect(controller.hasGivenUpStreamRecovery, isTrue);
+
+    // ลองครบแล้วต้องหยุด ไม่วนสร้าง YOLOView ใหม่ไปเรื่อย ๆ
+    now = now.add(const Duration(seconds: 30));
+    controller.expireStaleResults();
+    expect(restartCount, 3);
+    controller.dispose();
+  });
+
+  test('a fresh frame clears the pending stream recovery', () async {
+    var now = DateTime(2026, 8, 3, 12);
+    var restartCount = 0;
+    final controller = CameraInferenceController(
+      voiceService: FakeTrafficVoiceService(),
+      clock: () => now,
+      enableFreshnessWatchdog: false,
+      onRequestStreamRestart: () {
+        restartCount = restartCount + 1;
+      },
+    );
+
+    await controller.onStreamingData({
+      'frameNumber': 1,
+      'detections': const <Map<String, dynamic>>[],
+    });
+    now = now.add(const Duration(seconds: 4));
+    controller.expireStaleResults();
+    expect(restartCount, 1);
+
+    // สตรีมกลับมาแล้ว -> ต้องเริ่มนับใหม่ ไม่ใช่สะสมความพยายามเดิมไว้
+    await controller.onStreamingData({
+      'frameNumber': 2,
+      'detections': const <Map<String, dynamic>>[],
+    });
+    expect(controller.hasGivenUpStreamRecovery, isFalse);
+
+    now = now.add(const Duration(seconds: 4));
+    controller.expireStaleResults();
+    expect(restartCount, 2);
+    controller.dispose();
+  });
+
+  test('skips reading the number when the frame is already too old', () async {
+    var now = DateTime(2026, 8, 3, 12);
+    final digitYolo = RecordingDigitYolo();
+    final controller = CameraInferenceController(
+      voiceService: FakeTrafficVoiceService(),
+      clock: () => now,
+      signNumberPipelineService: SignNumberPipelineService(
+        digitYolo: digitYolo,
+      ),
+      numberDetectionInterval: Duration.zero,
+      enableFreshnessWatchdog: false,
+    );
+    final frame = img.Image(width: 200, height: 100);
+    final frameBytes = Uint8List.fromList(img.encodeJpg(frame));
+
+    // เฟรมยังไม่เก่าเกินเกณฑ์ 1500ms แต่เหลือเวลาไม่พอให้อ่านเลขจนจบ
+    await controller.onStreamingData({
+      'frameNumber': 1,
+      'timestamp': now
+          .subtract(const Duration(milliseconds: 1200))
+          .millisecondsSinceEpoch,
+      'detections': [_signDetection()],
+      'originalImage': frameBytes,
+      'imageWidth': 200,
+      'imageHeight': 100,
+    });
+    expect(digitYolo.predictCallCount, 0);
+    expect(controller.numberInferenceSkippedForBudget, 1);
+
+    // เฟรมสด ๆ ต้องอ่านตามปกติ
+    await controller.onStreamingData({
+      'frameNumber': 2,
+      'timestamp': now.millisecondsSinceEpoch,
+      'detections': [_signDetection()],
+      'originalImage': frameBytes,
+      'imageWidth': 200,
+      'imageHeight': 100,
+    });
+    expect(digitYolo.predictCallCount, 1);
+    expect(controller.numberInferenceSkippedForBudget, 1);
+    controller.dispose();
+  });
+
+  test('native inference fps is reported separately from processed fps', () {
+    final controller = CameraInferenceController(
+      voiceService: FakeTrafficVoiceService(),
+      enableFreshnessWatchdog: false,
+    );
+
+    controller.onPerformanceMetrics(15);
+
+    // ค่าจาก native ต้องไม่ทับค่าที่วัดจากเฟรมที่ Dart ประมวลผลได้จริง
+    expect(controller.nativeInferenceFps, 15);
+    expect(controller.currentFps, 0);
+    controller.dispose();
+  });
+
   test('toggleVoice flips the announcement state', () {
     final controller = CameraInferenceController(
       voiceService: FakeTrafficVoiceService(),

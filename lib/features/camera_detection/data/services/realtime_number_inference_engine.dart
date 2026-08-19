@@ -15,13 +15,12 @@ import 'package:trffic_ilght_app/core/services/inference/sign_number_pipeline_se
 class RealtimeNumberInferenceEngine {
   RealtimeNumberInferenceEngine({
     SignNumberPipelineService? service,
-    Duration detectionInterval = const Duration(milliseconds: 400),
+    this.detectionInterval = const Duration(milliseconds: 400),
     CountdownReadingStabilizer? stabilizer,
     this.signConfidenceThreshold = 0.25,
     this.maximumDiagnostics = 20,
   }) {
     _service = service;
-    _detectionInterval = detectionInterval;
     if (stabilizer == null) {
       _stabilizer = CountdownReadingStabilizer();
     } else {
@@ -30,7 +29,10 @@ class RealtimeNumberInferenceEngine {
   }
 
   SignNumberPipelineService? _service;
-  late final Duration _detectionInterval;
+
+  /// ช่วงเวลาขั้นต่ำระหว่างการอ่านเลขสองครั้ง
+  /// ไม่ใช่ final เพราะ controller ปรับลดความถี่ลงได้เมื่อเครื่องทำงานไม่ทัน
+  Duration detectionInterval;
   late final CountdownReadingStabilizer _stabilizer;
   final double signConfidenceThreshold;
   final int maximumDiagnostics;
@@ -53,6 +55,7 @@ class RealtimeNumberInferenceEngine {
   }
 
   bool get isDetecting => _isDetecting;
+
   List<RealtimeInferenceDiagnostic> get diagnostics =>
       List.unmodifiable(_diagnostics);
   Uint8List? get lastFailedCropBytes => _lastFailedCropBytes;
@@ -161,7 +164,7 @@ class RealtimeNumberInferenceEngine {
   bool _canRunDetection() {
     final lastDetectionTime = _lastDetectionTime;
     if (lastDetectionTime == null) return true;
-    return DateTime.now().difference(lastDetectionTime) >= _detectionInterval;
+    return DateTime.now().difference(lastDetectionTime) >= detectionInterval;
   }
 
   /// บันทึก diagnostic (จำกัดจำนวนเพื่อไม่ให้หน่วยความจำเกิน)

@@ -40,6 +40,9 @@ Composition root is `lib/main.dart`: it installs `SettingsProvider` and fires
 `RemoteModelUpdateBootstrap.checkOnce()` fire-and-forget. Routes are plain
 `MaterialPageRoute` factories in `lib/app/routes.dart`.
 
+`docs/process-logic.md` describes both pipelines end to end and is expected to match the code —
+update it in the same commit as any pipeline change.
+
 ## Three features, three different pipelines
 
 The three features share `core/services` primitives but wire them differently. Reading one
@@ -110,6 +113,19 @@ These are not general tuning knobs. Do not loosen them to "make it react faster"
 - **A threshold countdown event that could not be spoken must be re-armed.** Controllers call
   `CountdownAlertController.allowThresholdEventRetry()` when `speakMessageIfIdle` returns false,
   never after a successful utterance — that would repeat the warning inside one countdown cycle.
+- **The realtime pipeline degrades instead of burning battery for discarded work.**
+  A frame older than `realtimeNumberInferenceAgeBudgetRatio` of `maximumFrameAge` skips the
+  number inference, and `RealtimeLoadGovernor` backs the interval off (400 ms → 1600 ms) after
+  repeated over-budget frames. Never widen `maximumFrameAge` itself to "fix" slowness — it is the
+  safety bound that keeps a stale reading off the screen.
+- **A silent stream is recovered, not just blanked.** `_maybeRequestStreamRestart` asks the page
+  to rebuild `YOLOView` after `realtimeStreamRecoveryDelay`, spaced by
+  `realtimeStreamRecoveryCooldown`, at most `maximumRealtimeStreamRecoveryAttempts` times; after
+  that `detectionStatus` tells the user to restart the app. Keep the attempt cap — an unbounded
+  retry loop flickers the camera forever.
+- **`offLightMinimumFrames` is per-pipeline because it is a frame count, not a duration.**
+  Camera passes `realtimeOffLightMinimumFrames` (30 ≈ 3 s at 10 fps) so a faster device does not
+  confirm a broken light sooner than the 4 fps video path (12 frames = 3 s).
 - **The user's confidence threshold has a ceiling for safety-critical classes.**
   `DetectionAlertConfig.effectiveConfidenceThreshold` caps red/yellow/`off_light`/`dont_*` at
   `safetyCriticalConfidenceCeiling` (0.5). The slider may make detection *more* sensitive, never

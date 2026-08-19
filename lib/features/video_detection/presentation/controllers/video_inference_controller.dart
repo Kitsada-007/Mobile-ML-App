@@ -33,6 +33,20 @@ YOLO createVideoYolo(String modelPath) {
   );
 }
 
+/// ตัดสินว่าการเปลี่ยน index ของเฟรมเป็นการ "เล่นต่อเนื่อง" หรือ "ผู้ใช้ seek"
+///
+/// การ seek ทั้งเดินหน้าและถอยหลังต้องเริ่ม tracking session ใหม่ เพราะ track ที่ค้าง
+/// อยู่เป็นของฉากก่อนกระโดด ถ้าเก็บไว้จะเกิด event เปลี่ยนคลาสปลอมและเสียงที่ไม่ตรงภาพ
+bool isSeekJump({
+  required int previousIndex,
+  required int nextIndex,
+  required int maximumContinuousGap,
+}) {
+  final gap = nextIndex - previousIndex;
+  if (gap < 0) return true;
+  return gap > maximumContinuousGap;
+}
+
 /// Controller สำหรับหน้าตรวจจับวิดีโอ
 /// รับผิดชอบ: Business logic, การโหลดโมเดล, จัดการ state,
 /// และซิงโครไนซ์ผลลัพธ์ตรวจจับกับเฟรมวิดีโอที่กำลังเล่น (overlay แบบ realtime)
@@ -114,6 +128,13 @@ class VideoInferenceController extends ChangeNotifier {
   int _targetFps = 5;
   int _lastFrameIndex = -1;
 
+  /// ระยะกระโดดของ index ที่ยังถือว่าเป็นการเล่นต่อเนื่อง (มากกว่านี้ = ผู้ใช้ seek)
+  /// ใช้ 2 วินาทีของอัตราตรวจจับ เผื่อเฟรมที่วิเคราะห์ไม่สำเร็จหลายเฟรมติดกัน
+  int get _maximumContinuousFrameGap => _targetFps * 2;
+
+  /// threshold ที่ผู้ใช้ตั้งไว้ (ค่าเดียวกับหน้ากล้อง เพื่อให้สองโหมดเทียบกันได้)
+  double _confidenceThreshold = 0.5;
+
   List<YOLOResult> _currentFrameDetections = [];
   String? _currentDetectedNumber;
   String? _currentCountdownUiMessage;
@@ -176,6 +197,15 @@ class VideoInferenceController extends ChangeNotifier {
   String? get snackBarMessage => _snackBarMessage;
 
   bool get isVoiceEnabled => _voiceService.isEnabled;
+
+  /// รับค่า threshold จาก SettingsProvider (หน้าจอเป็นผู้ส่งให้)
+  void applyDetectionSettings({required double confidenceThreshold}) {
+    if (_isDisposed) return;
+    if ((_confidenceThreshold - confidenceThreshold).abs() <= 0.001) return;
+
+    _confidenceThreshold = confidenceThreshold;
+    notifyListeners();
+  }
 
   /// สลับเปิด/ปิดเสียงประกาศ
   void toggleVoice() {
@@ -418,49 +448,61 @@ class VideoInferenceController extends ChangeNotifier {
 
     if (frameIndex != _lastFrameIndex) {
       // เมื่อวิดีโอวนหรือ seek ย้อน ต้องเริ่ม tracking session ใหม่
-      if (frameIndex < _lastFrameIndex) {
+      // การ seek "เดินหน้า" ไกล ๆ ก็เช่นกัน เพราะ track ที่ค้างอยู่เป็นของฉากก่อนกระโดด
+      // ถ้าไม่ล้าง จะเกิด event เปลี่ยนคลาสปลอมและเสียงเตือนที่ไม่ตรงกับภาพ
+      final isSeek = isSeekJump(
+        previousIndex: _lastFrameIndex,
+        nextIndex: frameIndex,
+        maximumContinuousGap: _maximumContinuousFrameGap,
+      );
+      if (isSeek) {
         _resetDetectionSession();
       }
       _lastFrameIndex = frameIndex;
 
       final frameResult = _frameResults[frameIndex];
-      if (frameResult != null) {
-        // กล่องใช้ผล raw ของเฟรมโดยตรง ส่วน summary และเสียงใช้ผล stable ด้านล่าง
-        _currentFrameDetections = frameResult.detections;
-        _updateCurrentFrameAnalysis(
-          frameResult.detections,
-          frameResult.detectedNumber,
-          signPresent: frameResult.signPresent,
-          timestamp: DateTime.fromMillisecondsSinceEpoch(
-            position.inMilliseconds,
-          ),
-        );
-      } else {
-        _currentFrameDetections = [];
-        _updateCurrentFrameAnalysis(
-          [],
-          null,
-          signPresent: false,
-          timestamp: DateTime.fromMillisecondsSinceEpoch(
-            position.inMilliseconds,
-          ),
-        );
+      if (frameResult == null) {
+        // ไม่มีผลของเฟรมนี้ = เฟรมที่วิเคราะห์ไม่สำเร็จ ซึ่งแปลว่า "ไม่รู้"
+        // ไม่ใช่ "ไม่เจออะไรเลย" การยัด list ว่างเข้า stabilizer จะกินโควตา
+        // grace period และทำให้เกิด event lost ทั้งที่แค่ decode ภาพพลาด
+        return;
       }
+
+      // กล่องใช้ผล raw ของเฟรมโดยตรง ส่วน summary และเสียงใช้ผล stable ด้านล่าง
+      _currentFrameDetections = frameResult.detections;
+      updateCurrentFrameAnalysis(
+        frameResult.detections,
+        frameResult.detectedNumber,
+        signPresent: frameResult.signPresent,
+        timestamp: DateTime.fromMillisecondsSinceEpoch(position.inMilliseconds),
+      );
       notifyListeners();
     }
   }
 
   /// แยก raw detections ไป tracking/smoothing ก่อนอัปเดต UI และเสียง
-  void _updateCurrentFrameAnalysis(
+  @visibleForTesting
+  void updateCurrentFrameAnalysis(
     List<YOLOResult> detections,
     String? rawDetectedNumber, {
     required bool signPresent,
     required DateTime timestamp,
   }) {
-    final stableInput = detections.where(
-      (detection) =>
-          _detectionConfig.participatesInStableDetection(detection.className),
-    );
+    final stableInput = detections.where((detection) {
+      if (!_detectionConfig.participatesInStableDetection(
+        detection.className,
+      )) {
+        return false;
+      }
+      // โมเดลถูกเรียกด้วย threshold ต่ำ (0.25) เพื่อให้ stabilizer มีของให้โหวต
+      // การกรองจริงจึงต้องเกิดตรงนี้ ด้วยกติกาเดียวกับโหมดเรียลไทม์
+      // ไม่งั้นคลิปเดียวกันดูผ่านสองโหมดจะได้ผลไม่เหมือนกัน
+      final threshold = _detectionConfig.effectiveConfidenceThreshold(
+        detection.className,
+        _confidenceThreshold,
+      );
+      return detection.confidence >= threshold;
+    });
     final update = _detectionStabilizer.update(
       stableInput,
       timestamp: timestamp,

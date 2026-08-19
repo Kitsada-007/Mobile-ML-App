@@ -46,6 +46,7 @@ class _CameraInferencePageState extends State<CameraInferencePage>
     WidgetsBinding.instance.addObserver(this);
     _controller = CameraInferenceController(
       voiceService: readOptionalProvider<TrafficVoiceService>(context),
+      onRequestStreamRestart: _restartCameraStream,
     );
     _bindSettings();
     if (widget.initializeOnStart) {
@@ -103,6 +104,17 @@ class _CameraInferencePageState extends State<CameraInferencePage>
     } else {
       unawaited(_controller.pauseCamera());
     }
+  }
+
+  /// สร้าง YOLOView ใหม่เมื่อ controller แจ้งว่าสตรีมเงียบไปนานเกินไป
+  ///
+  /// ใช้กลไก _rebuildKey เดิมที่หน้านี้ใช้ตอนกลับเข้ามาอยู่บนสุดอยู่แล้ว
+  /// (controller เว้นระยะและจำกัดจำนวนครั้งให้แล้ว จึงไม่วนสร้างใหม่รัว ๆ)
+  void _restartCameraStream() {
+    if (!mounted) return;
+    setState(() {
+      _rebuildKey++;
+    });
   }
 
   /// ผูกหน้ากล้องเข้ากับ SettingsProvider เพื่อให้ค่า threshold ที่ผู้ใช้เปลี่ยนในหน้า
