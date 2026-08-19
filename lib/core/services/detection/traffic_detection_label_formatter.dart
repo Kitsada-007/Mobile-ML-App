@@ -12,9 +12,12 @@ String videoFormalThaiName(String className) {
 
     // สัญญาณไฟจราจร
     'green_light_circle' => 'สัญญาณไฟจราจรสีเขียว',
+    'green_light' => 'สัญญาณไฟจราจรสีเขียว',
     'off_light' => 'สัญญาณไฟจราจรขัดข้อง',
     'red_light_circle' => 'สัญญาณไฟจราจรสีแดง',
+    'red_light' => 'สัญญาณไฟจราจรสีแดง',
     'yellow_light' => 'สัญญาณไฟจราจรสีเหลือง',
+    'yellow_light_circle' => 'สัญญาณไฟจราจรสีเหลือง',
 
     // สัญญาณไฟเลี้ยว
     'turn_left' => 'สัญญาณไฟเลี้ยวซ้าย',

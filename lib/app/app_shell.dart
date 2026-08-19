@@ -22,9 +22,7 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: Colors.black,
       drawer: const _AppDrawer(),
-      drawerScrimColor: Colors.black.withValues(alpha: 0.72),
       body: CameraInferencePage(
         initializeOnStart: widget.initializeCamera,
         onMenuPressed: () => _scaffoldKey.currentState?.openDrawer(),
@@ -43,8 +41,11 @@ class _AppDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context).colorScheme;
+    final colorScheme = theme;
+
     return Drawer(
-      backgroundColor: const Color(0xFF111111),
+      backgroundColor: colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.horizontal(right: Radius.circular(24)),
       ),
@@ -58,23 +59,26 @@ class _AppDrawer extends StatelessWidget {
                 children: [
                   const _DrawerLogo(),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           'Berng Fai',
                           style: TextStyle(
-                            color: Colors.white,
+                            color: colorScheme.onSurface,
                             fontSize: 22,
                             fontWeight: FontWeight.w800,
                             letterSpacing: -0.4,
                           ),
                         ),
-                        SizedBox(height: 2),
+                        const SizedBox(height: 2),
                         Text(
                           'Realtime traffic assistant',
-                          style: TextStyle(color: Colors.white60, fontSize: 12),
+                          style: TextStyle(
+                            color: colorScheme.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),
@@ -82,16 +86,16 @@ class _AppDrawer extends StatelessWidget {
                 ],
               ),
             ),
-            const Divider(height: 1, color: Colors.white12),
+            Divider(height: 1, color: colorScheme.outlineVariant),
             const SizedBox(height: 8),
             ListTile(
               leading: const Icon(Icons.center_focus_strong_rounded),
               title: const Text('Realtime Detection'),
               selected: true,
-              selectedColor: Colors.white,
-              iconColor: Colors.white70,
-              textColor: Colors.white,
-              selectedTileColor: Colors.white.withValues(alpha: 0.08),
+              selectedColor: colorScheme.primary,
+              iconColor: colorScheme.onSurfaceVariant,
+              textColor: colorScheme.onSurface,
+              selectedTileColor: colorScheme.primaryContainer,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -102,9 +106,9 @@ class _AppDrawer extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.video_file_rounded),
               title: const Text('Video Detection'),
-              iconColor: Colors.white70,
-              textColor: Colors.white,
-              subtitleTextStyle: const TextStyle(color: Colors.white38),
+              iconColor: colorScheme.onSurfaceVariant,
+              textColor: colorScheme.onSurface,
+              subtitleTextStyle: TextStyle(color: colorScheme.onSurfaceVariant),
               contentPadding: const EdgeInsets.symmetric(horizontal: 20),
               onTap: () {
                 final navigator = Navigator.of(context);
@@ -115,8 +119,8 @@ class _AppDrawer extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.settings_rounded),
               title: const Text('Settings'),
-              iconColor: Colors.white70,
-              textColor: Colors.white,
+              iconColor: colorScheme.onSurfaceVariant,
+              textColor: colorScheme.onSurface,
               contentPadding: const EdgeInsets.symmetric(horizontal: 20),
               onTap: () {
                 final navigator = Navigator.of(context);
@@ -127,16 +131,19 @@ class _AppDrawer extends StatelessWidget {
             const Spacer(),
             Padding(
               padding: const EdgeInsets.all(20),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.circle, color: Color(0xFF63E681), size: 8),
-                  SizedBox(width: 8),
+                  const Icon(Icons.circle, color: Color(0xFF63E681), size: 8),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Detection system',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: Colors.white54, fontSize: 12),
+                      style: TextStyle(
+                        color: colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
                 ],

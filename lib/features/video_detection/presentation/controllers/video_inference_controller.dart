@@ -510,8 +510,11 @@ class VideoInferenceController extends ChangeNotifier {
     _currentStableTrafficLightClassName = null;
     for (final detection in stableDetections) {
       if (DetectionAlertConfig.trafficLightClasses.contains(
-        detection.className,
-      )) {
+            detection.className,
+          ) ||
+          detection.className == 'turn_left' ||
+          detection.className == 'turn_right' ||
+          detection.className == 'go_straight_arrow') {
         _currentStableTrafficLightClassName = detection.className;
         break;
       }

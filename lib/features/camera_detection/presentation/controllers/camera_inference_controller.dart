@@ -140,9 +140,13 @@ class CameraInferenceController extends ChangeNotifier {
   String? get stableTrafficLightClassName {
     final lights = _detectionStabilizer.stableDetections
         .where(
-          (detection) => DetectionAlertConfig.trafficLightClasses.contains(
-            detection.className,
-          ),
+          (detection) =>
+              DetectionAlertConfig.trafficLightClasses.contains(
+                detection.className,
+              ) ||
+              detection.className == 'turn_left' ||
+              detection.className == 'turn_right' ||
+              detection.className == 'go_straight_arrow',
         )
         .toList();
     lights.sort((first, second) {
@@ -554,7 +558,7 @@ class CameraInferenceController extends ChangeNotifier {
     // อ่านเลขจาก raw frame ต่อได้ แต่แสดงเมื่อ sign_number ผ่าน temporal smoothing แล้ว
     final stabilizedReading = await _numberInferenceEngine.process(
       packet,
-      enabled: !_detectionStabilizer.hasStableClass('green_light_circle'),
+      enabled: true,
     );
     if (_isDisposed) return;
 
@@ -711,10 +715,9 @@ class CameraInferenceController extends ChangeNotifier {
     if (stabilization.events.any(
       (event) =>
           event.type != DetectionEventType.lost &&
-          event.detection.className == 'green_light_circle',
+          (event.detection.className == 'green_light_circle' || event.detection.className == 'green_light'),
     )) {
-      _detectedNumber = null;
-      _numberInferenceEngine.resetCycle();
+      // Allowed: numbers will be detected and shown in green color
     }
 
     // ตีความผล stable เป็นคำสั่งคนขับ (แดง ⇒ หยุดเสมอ อยู่ใน SignalInterpreter)

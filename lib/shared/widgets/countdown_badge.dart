@@ -41,19 +41,26 @@ class CountdownBadge extends StatelessWidget {
     // เลขเป็นตัวอักษรใหญ่ (36px หนา) เกณฑ์ AA ของ large text คือ 3:1
     // ทุกคู่สีด้านล่างเลือกเฉดเข้มบนพื้นพาสเทลให้เกิน 4.5:1 เผื่อแสงจ้าในรถ
     return switch (trafficLightClassName) {
-      TrafficSignalClasses.redLightCircle => const CountdownBadgePalette(
+      TrafficSignalClasses.redLightCircle ||
+      TrafficSignalClasses.redLight => const CountdownBadgePalette(
         background: Color(0xFFFFECEC),
         border: Color(0xFFF3B6B6),
         number: Color(0xFFB42323),
         unit: Color(0xFF8F3131),
       ),
-      TrafficSignalClasses.yellowLight => const CountdownBadgePalette(
+      TrafficSignalClasses.yellowLight ||
+      TrafficSignalClasses.yellowLightCircle => const CountdownBadgePalette(
         background: Color(0xFFFFF6DF),
         border: Color(0xFFF1D48F),
         number: Color(0xFF935F00),
         unit: Color(0xFF7A5200),
       ),
-      TrafficSignalClasses.greenLightCircle => const CountdownBadgePalette(
+      // แก้ไข: เพิ่มกลุ่มไฟลูกศรสีเขียว (ไปตรง, เลี้ยวซ้าย, เลี้ยวขวา) เข้ามาใช้ Palette สีเขียวด้วย
+      TrafficSignalClasses.greenLightCircle ||
+      TrafficSignalClasses.greenLight ||
+      TrafficSignalClasses.goStraightArrow ||
+      TrafficSignalClasses.turnLeft ||
+      TrafficSignalClasses.turnRight => const CountdownBadgePalette(
         background: Color(0xFFE8F8EE),
         border: Color(0xFFABDFC0),
         number: Color(0xFF14713A),

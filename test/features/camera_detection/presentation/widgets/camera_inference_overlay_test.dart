@@ -33,7 +33,7 @@ void main() {
 
     expect(find.byKey(const Key('fullscreenCameraStack')), findsNothing);
     expect(find.byKey(const Key('cameraDetectionScrollView')), findsOneWidget);
-    expect(find.text('ระบบตรวจจับไฟจราจร'), findsOneWidget);
+    expect(find.text('Berng Fai'), findsOneWidget);
     expect(preview, findsOneWidget);
     expect(output, findsOneWidget);
     expect(
@@ -116,9 +116,8 @@ void main() {
       ),
     );
 
-    expect(find.text('ระบบตรวจจับไฟจราจร'), findsOneWidget);
-    expect(find.text('Traffic Light Detection'), findsOneWidget);
     expect(find.text('Berng Fai'), findsOneWidget);
+    expect(find.text('Live Traffic Detection'), findsOneWidget);
 
     await tester.tap(find.byTooltip('ย้อนกลับ'));
     expect(didGoBack, isTrue);

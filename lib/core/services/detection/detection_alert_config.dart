@@ -84,10 +84,13 @@ final class DetectionAlertConfig {
        _flickerLookbackDuration = flickerLookbackDuration;
 
   /// คลาสวัตถุประเภทสัญญาณไฟจราจรหลัก
-  static const trafficLightClasses = <String>{
+  static Set<String> get trafficLightClasses => {
     'red_light_circle',
+    'red_light',
     'yellow_light',
+    'yellow_light_circle',
     'green_light_circle',
+    'green_light',
     'off_light',
   };
 
@@ -263,9 +266,9 @@ final class DetectionAlertConfig {
   int _priorityFor(String className) {
     return switch (className) {
       'off_light' => 0, // สัญญาณไฟขัดข้อง
-      'red_light_circle' => 1, // สัญญาณไฟแดง
-      'yellow_light' => 2, // สัญญาณไฟเหลือง
-      'green_light_circle' => 3, // สัญญาณไฟเขียว
+      'red_light_circle' || 'red_light' => 1, // สัญญาณไฟแดง
+      'yellow_light' || 'yellow_light_circle' => 2, // สัญญาณไฟเหลือง
+      'green_light_circle' || 'green_light' => 3, // สัญญาณไฟเขียว
       'turn_left' || 'turn_right' => 4, // ไฟเลี้ยว
       'dont_go_straight_arrow' ||
       'dont_turn_left' ||

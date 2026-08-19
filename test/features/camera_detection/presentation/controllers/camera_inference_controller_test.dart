@@ -469,7 +469,7 @@ void main() {
   });
 
   test(
-    'confirmed green light clears countdown and stops stale number inference',
+    'confirmed green light keeps reading the countdown number',
     () async {
       final digitYolo = RecordingDigitYolo();
       final controller = CameraInferenceController(
@@ -508,9 +508,11 @@ void main() {
         });
       }
 
+      // ไฟเขียวไม่ตัดการอ่านเลขอีกต่อไป — ต้องยังเห็นเลขนับถอยหลัง
+      // (UI จะแสดงเป็นสีเขียว) และโมเดลตัวเลขต้องทำงานต่อทุกเฟรม
       expect(controller.confirmedTrafficLightClassName, 'green_light_circle');
-      expect(controller.detectedNumber, isNull);
-      expect(digitYolo.predictCallCount, 6);
+      expect(controller.detectedNumber, '12');
+      expect(digitYolo.predictCallCount, 7);
 
       await controller.onStreamingData({
         'frameNumber': 8,
@@ -522,7 +524,8 @@ void main() {
         'imageWidth': 200,
         'imageHeight': 100,
       });
-      expect(digitYolo.predictCallCount, 6);
+      expect(controller.detectedNumber, '12');
+      expect(digitYolo.predictCallCount, 8);
       controller.dispose();
     },
   );

@@ -8,32 +8,41 @@ class TrafficSignalClasses {
   static const dontTurnRight = 'dont_turn_right';
   static const goStraightArrow = 'go_straight_arrow';
   static const greenLightCircle = 'green_light_circle';
+  static const greenLight = 'green_light';
   static const offLight = 'off_light';
   static const redLightCircle = 'red_light_circle';
+  static const redLight = 'red_light';
   static const signNumber = 'sign_number';
   static const turnLeft = 'turn_left';
   static const turnRight = 'turn_right';
   static const yellowLight = 'yellow_light';
+  static const yellowLightCircle = 'yellow_light_circle';
 
-  static const Map<String, String> thaiLabel = {
+  static Map<String, String> get thaiLabel => {
     dontGoStraightArrow: 'ห้ามตรงไป',
     dontTurnLeft: 'ห้ามเลี้ยวซ้าย',
     dontTurnRight: 'ห้ามเลี้ยวขวา',
     goStraightArrow: 'ตรงไปได้',
     greenLightCircle: 'ไฟเขียว',
+    greenLight: 'ไฟเขียว',
     offLight: 'ไฟขัดข้อง',
     redLightCircle: 'ไฟแดง',
+    redLight: 'ไฟแดง',
     signNumber: 'ตัวเลขนับถอยหลัง',
     turnLeft: 'เลี้ยวซ้ายได้',
     turnRight: 'เลี้ยวขวาได้',
     yellowLight: 'ไฟเหลือง',
+    yellowLightCircle: 'ไฟเหลือง',
   };
 
   /// แบ่งหมวด: สีไฟ (แข่งกัน เลือกได้อันเดียว) vs ทิศทาง (เกิดร่วมกันได้หลายอัน)
-  static const Map<String, SignalCategory> categoryOf = {
+  static Map<String, SignalCategory> get categoryOf => {
     redLightCircle: SignalCategory.lightColor,
+    redLight: SignalCategory.lightColor,
     yellowLight: SignalCategory.lightColor,
+    yellowLightCircle: SignalCategory.lightColor,
     greenLightCircle: SignalCategory.lightColor,
+    greenLight: SignalCategory.lightColor,
     offLight: SignalCategory.lightColor,
     turnLeft: SignalCategory.direction,
     turnRight: SignalCategory.direction,
@@ -145,7 +154,7 @@ class SignalInterpreter {
     final lightKey = light.className;
 
     // ไฟแดง = หยุดเสมอ ไม่ต้องสนใจป้ายทิศทางเลย (ความปลอดภัยมาก่อน)
-    if (lightKey == TrafficSignalClasses.redLightCircle) {
+    if (lightKey == TrafficSignalClasses.redLightCircle || lightKey == TrafficSignalClasses.redLight) {
       final String countdownText;
       if (countdownNumberText == null) {
         countdownText = '';
@@ -166,7 +175,7 @@ class SignalInterpreter {
     }
 
     // ไฟเหลือง = เตือนให้ระวัง
-    if (lightKey == TrafficSignalClasses.yellowLight) {
+    if (lightKey == TrafficSignalClasses.yellowLight || lightKey == TrafficSignalClasses.yellowLightCircle) {
       return const DriverSignalResult(
         message: 'ไฟเหลือง - เตรียมหยุด',
         action: SignalAction.caution,
@@ -182,7 +191,7 @@ class SignalInterpreter {
     }
 
     // ไฟเขียว = รวมทิศทางที่อนุญาตเข้าไปในข้อความเดียว
-    if (lightKey == TrafficSignalClasses.greenLightCircle) {
+    if (lightKey == TrafficSignalClasses.greenLightCircle || lightKey == TrafficSignalClasses.greenLight) {
       final allowed = directions
           .where((d) => !d.className.startsWith('dont_'))
           .map((d) => TrafficSignalClasses.thaiLabel[d.className])
