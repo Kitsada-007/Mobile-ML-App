@@ -197,19 +197,21 @@ class SettingPage extends StatelessWidget {
                           .read<SettingsProvider>()
                           .setConfidenceThreshold(val),
                     ),
-                    _buildSliderRow(
-                      context,
-                      icon: Icons.format_list_numbered_rounded,
-                      title: 'Max Detections',
-                      value: settings.numItemsThreshold.toDouble(),
-                      valueDisplay: '${settings.numItemsThreshold}',
-                      min: 5,
-                      max: 30,
-                      divisions: 25,
-                      onChanged: (val) => context
-                          .read<SettingsProvider>()
-                          .setNumItemsThreshold(val.toInt()),
-                    ),
+                    // ปิดการปรับ Max Detections เพราะไม่จำเป็นแล้ว เพราะ ว่ามี 11 classes
+
+                    // _buildSliderRow(
+                    //   context,
+                    //   icon: Icons.format_list_numbered_rounded,
+                    //   title: 'Max Detections',
+                    //   value: settings.numItemsThreshold.toDouble(),
+                    //   valueDisplay: '${settings.numItemsThreshold}',
+                    //   min: 5,
+                    //   max: 30,
+                    //   divisions: 25,
+                    //   onChanged: (val) => context
+                    //       .read<SettingsProvider>()
+                    //       .setNumItemsThreshold(val.toInt()),
+                    // ),
                     const SizedBox(height: 12),
                   ],
                 ),
