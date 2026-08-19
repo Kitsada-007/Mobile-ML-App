@@ -3,11 +3,7 @@ import 'package:trffic_ilght_app/core/services/inference/sign_number_pipeline_se
 import 'package:trffic_ilght_app/core/services/inference/yolo_result_adapter.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
-/// ต่ำสุดที่เชื่อว่าตรวจพบจริง (กัน false positive)
-const double videoTrafficConfidenceThreshold = 0.25;
 
-/// ค่า IoU สำหรับกลบกล่องซ้ำ (NMS)
-const double videoTrafficIouThreshold = 0.45;
 
 /// ผลลัพธ์การวิเคราะห์วิดีโอ 1 เฟรม
 class VideoFrameAnalysisResult {
@@ -62,13 +58,17 @@ class VideoFrameAnalysisService {
   }
 
   /// วิเคราะห์ภาพ 1 เฟรม (ไบต์ภาพ) และคืนผลลัพธ์การตรวจจับทั้งหมด
-  Future<VideoFrameAnalysisResult> analyze(Uint8List frameBytes) async {
+  Future<VideoFrameAnalysisResult> analyze(
+    Uint8List frameBytes, {
+    double confidenceThreshold = 0.25,
+    double iouThreshold = 0.45,
+  }) async {
     final stopwatch = Stopwatch();
     stopwatch.start();
     final trafficResult = await _trafficYolo.predict(
       frameBytes,
-      confidenceThreshold: videoTrafficConfidenceThreshold,
-      iouThreshold: videoTrafficIouThreshold,
+      confidenceThreshold: confidenceThreshold,
+      iouThreshold: iouThreshold,
     );
     _trafficPredictMicros += stopwatch.elapsedMicroseconds;
     final detections = parseYoloDetections(trafficResult['detections']);

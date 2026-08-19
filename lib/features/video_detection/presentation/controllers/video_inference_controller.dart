@@ -142,6 +142,18 @@ class VideoInferenceController extends ChangeNotifier {
   String _progressText = '';
   String? _snackBarMessage;
 
+  double _confidenceThreshold = 0.25;
+  double _iouThreshold = 0.45;
+
+  /// อัปเดตค่า Threshold เพื่อใช้ในการวิเคราะห์วิดีโอรอบต่อไป
+  void updateThresholds({
+    required double confidenceThreshold,
+    required double iouThreshold,
+  }) {
+    _confidenceThreshold = confidenceThreshold;
+    _iouThreshold = iouThreshold;
+  }
+
   VideoPlayerController? _videoController;
   VideoPlayerController? _selectedPreviewController;
   File? _videoFile;
@@ -359,6 +371,8 @@ class VideoInferenceController extends ChangeNotifier {
         frameAnalysisService: _videoFrameAnalysisService!,
         countdownStabilizer: _countdownStabilizer,
         targetFps: targetChecksPerSecond, // ใช้ค่าที่ controller กำหนดจริง
+        confidenceThreshold: _confidenceThreshold,
+        iouThreshold: _iouThreshold,
         isCancelled: () => _isDisposed,
         onProgress: (progressValue, progressText) {
           if (!_isDisposed) {

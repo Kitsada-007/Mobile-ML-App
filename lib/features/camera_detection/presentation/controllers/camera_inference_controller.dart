@@ -322,6 +322,31 @@ class CameraInferenceController extends ChangeNotifier {
     );
   }
 
+  /// อัปเดตค่า Threshold แบบ Realtime โดยไม่ต้องโหลดโมเดลใหม่
+  void updateThresholds({
+    required double confidenceThreshold,
+    required double iouThreshold,
+    required int numItemsThreshold,
+  }) {
+    if (_confidenceThreshold == confidenceThreshold &&
+        _iouThreshold == iouThreshold &&
+        _numItemsThreshold == numItemsThreshold) {
+      return;
+    }
+
+    _confidenceThreshold = confidenceThreshold;
+    _iouThreshold = iouThreshold;
+    _numItemsThreshold = numItemsThreshold;
+
+    _yoloController.setThresholds(
+      confidenceThreshold: nativeRealtimeConfidenceThreshold(
+        _confidenceThreshold,
+      ),
+      iouThreshold: _iouThreshold,
+      numItemsThreshold: _numItemsThreshold,
+    );
+  }
+
   /// เริ่ม Timer (watchdog) ที่คอยเรียก expireStaleResults ทุก 200ms
   void _startFreshnessWatchdog() {
     if (!_enableFreshnessWatchdog || _freshnessWatchdog != null) return;

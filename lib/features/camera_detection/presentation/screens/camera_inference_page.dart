@@ -3,6 +3,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:trffic_ilght_app/features/settings/settings.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/controllers/camera_inference_controller.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_detection_panel.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_inference_content.dart';
@@ -34,7 +36,7 @@ class _CameraInferencePageState extends State<CameraInferencePage>
   bool _isAppResumed = true;
 
   /// ระยะขอบบน/ล่างของทั้งหน้า (ใช้คำนวณความสูงที่เหลือด้วย)
-  static const double _screenPadding = 12;
+  static const double _screenPadding = 12.0;
 
   @override
   void initState() {
@@ -107,6 +109,14 @@ class _CameraInferencePageState extends State<CameraInferencePage>
 
   @override
   Widget build(BuildContext context) {
+    // ดึงค่า Threshold จาก SettingsProvider แบบเรียลไทม์ และอัปเดตให้ Controller
+    final settings = context.watch<SettingsProvider>();
+    _controller.updateThresholds(
+      confidenceThreshold: settings.confidenceThreshold,
+      iouThreshold: settings.iouThreshold,
+      numItemsThreshold: settings.numItemsThreshold,
+    );
+
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
     final colorScheme = Theme.of(context).colorScheme;
@@ -235,12 +245,12 @@ class _CameraInferencePageState extends State<CameraInferencePage>
                         minHeight: availableHeight,
                       ),
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        mainAxisAlignment: MainAxisAlignment.start,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           header,
                           Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            padding: const EdgeInsets.symmetric(vertical: 32),
                             child: SizedBox(
                               height: previewHeight,
                               child: _buildPreviewCard(cameraContent!),

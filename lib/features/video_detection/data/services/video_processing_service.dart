@@ -111,6 +111,9 @@ class VideoProcessingService {
     // เผื่อกรณี motion blur หรือป้าย LED อยู่ในจังหวะดับของ PWM ทำให้บางเฟรม
     // predict เลขไม่ได้ — ที่ 4 fps → hold = 3/4 = 0.75s
     int maxHoldFrames = 3,
+
+    double confidenceThreshold = 0.25,
+    double iouThreshold = 0.45,
   }) async {
     final directory = await getTemporaryDirectory();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
@@ -189,7 +192,11 @@ class VideoProcessingService {
 
         try {
           final bytes = await fileEntity.readAsBytes();
-          final result = await frameAnalysisService.analyze(bytes);
+          final result = await frameAnalysisService.analyze(
+            bytes,
+            confidenceThreshold: confidenceThreshold,
+            iouThreshold: iouThreshold,
+          );
 
           // เฟรมนี้มีกล่อง sign_number จริงหรือไม่ (ยังไม่รวมช่วง hold)
           final hasSignDetection = result.detections.any(
