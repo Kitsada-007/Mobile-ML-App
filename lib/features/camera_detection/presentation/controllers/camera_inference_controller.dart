@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:developer';
 
 import 'package:flutter/foundation.dart';
 import 'package:trffic_ilght_app/core/services/detection/detection_alert_config.dart';
@@ -6,13 +7,16 @@ import 'package:trffic_ilght_app/core/services/detection/detection_stabilizer.da
 import 'package:trffic_ilght_app/core/services/detection/traffic_detection_label_formatter.dart';
 import 'package:trffic_ilght_app/shared/models/model_types.dart';
 import 'package:trffic_ilght_app/features/camera_detection/data/models/realtime_inference.dart';
+import 'package:trffic_ilght_app/core/services/inference/countdown_reading_hold.dart';
 import 'package:trffic_ilght_app/core/services/inference/countdown_reading_stabilizer.dart';
 import 'package:trffic_ilght_app/core/services/inference/signal_interpreter.dart';
 import 'package:trffic_ilght_app/features/camera_detection/data/services/latest_frame_queue.dart';
 import 'package:trffic_ilght_app/features/camera_detection/data/services/realtime_pipeline_monitor.dart';
 import 'package:trffic_ilght_app/core/services/inference/number_detection_service.dart';
+import 'package:trffic_ilght_app/features/camera_detection/data/services/realtime_load_governor.dart';
 import 'package:trffic_ilght_app/features/camera_detection/data/services/realtime_number_inference_engine.dart';
 import 'package:trffic_ilght_app/core/services/voice/traffic_voice_service.dart';
+import 'package:trffic_ilght_app/core/services/voice/countdown_alert_controller.dart';
 import 'package:trffic_ilght_app/core/services/voice/voice_alert_controller.dart';
 import 'package:trffic_ilght_app/core/services/inference/sign_number_pipeline_service.dart';
 
@@ -29,6 +33,27 @@ export 'package:trffic_ilght_app/features/camera_detection/data/models/realtime_
 /// ค่า confidence threshold ขั้นต่ำสำหรับป้าย sign_number (ในโหมด realtime)
 const double realtimeSignConfidenceThreshold = 0.25;
 
+/// สัดส่วนของอายุเฟรมที่ยอมให้ใช้ไปก่อนเริ่มงานอ่านเลข (งานที่แพงที่สุดในท่อ)
+/// เฟรมที่แก่เกินสัดส่วนนี้แล้วจะอ่านเสร็จไม่ทันและผลถูกทิ้งอยู่ดี
+const double realtimeNumberInferenceAgeBudgetRatio = 0.6;
+
+/// ปล่อยให้ท่อค้างนานเท่านี้ก่อนสั่งเริ่มสตรีมกล้องใหม่
+const Duration realtimeStreamRecoveryDelay = Duration(seconds: 3);
+
+/// เว้นระยะระหว่างการสั่งเริ่มสตรีมใหม่แต่ละครั้ง (กันสั่งรัวจนภาพกระพริบ)
+const Duration realtimeStreamRecoveryCooldown = Duration(seconds: 5);
+
+/// จำนวนครั้งสูงสุดที่จะพยายามกู้สตรีมเอง ก่อนบอกผู้ใช้ให้เปิดแอปใหม่
+const int maximumRealtimeStreamRecoveryAttempts = 3;
+
+/// เกณฑ์นับเฟรมของ off_light สำหรับโหมดเรียลไทม์
+///
+/// เกณฑ์เป็น "จำนวนเฟรม OR ระยะเวลา" ซึ่งจำนวนเฟรมแปลเป็นเวลาไม่เท่ากันในแต่ละท่อ
+/// ฝั่งวิดีโอ 4 fps × 12 เฟรม = 3 วินาที แต่ฝั่งกล้อง 10 fps × 12 เฟรม = 1.2 วินาที
+/// เท่ากับว่าเครื่องยิ่งแรงยิ่งตัดสินว่า "ไฟเสีย" ได้เร็วขึ้น ซึ่งไม่ใช่เจตนาของกติกานี้
+/// จึงตั้งให้เทียบเท่า ~3 วินาทีที่อัตราเฟรมของกล้อง
+const int realtimeOffLightMinimumFrames = 30;
+
 /// แปลง threshold ที่ผู้ใช้เลือกลงไปให้ YOLO native ใช้
 /// - ค่าที่ผู้ใช้เลือกจะถูกฝังเป็นค่าที่สูงสุดเท่ากับ realtimeSignConfidenceThreshold
 ///   เพราะ native stream ต้องเห็นตั้งแต่ confidence ต่ำจึงจะปล่อยสัญญาณมาให้ฝั่ง Dart
@@ -42,8 +67,15 @@ double nativeRealtimeConfidenceThreshold(double selectedThreshold) {
 class CameraInferenceController extends ChangeNotifier {
   int _detectionCount = 0;
   double _currentFps = 0.0;
+  double _nativeInferenceFps = 0.0;
   int _frameCount = 0;
   DateTime _lastFpsUpdate = DateTime.now();
+
+  late final RealtimeLoadGovernor _loadGovernor;
+  late final VoidCallback? _onRequestStreamRestart;
+  int _streamRecoveryAttempts = 0;
+  DateTime? _lastStreamRecoveryRequestedAt;
+  int _numberInferenceSkippedForBudget = 0;
 
   double _confidenceThreshold = 0.5;
   double _iouThreshold = 0.45;
@@ -68,11 +100,16 @@ class CameraInferenceController extends ChangeNotifier {
 
   YOLO? _digitYolo;
   String? _detectedNumber;
+  String? _countdownUiMessage;
+  late final CountdownAlertController _countdownAlertController;
+  late final CountdownReadingHold _countdownHold;
   late final RealtimeNumberInferenceEngine _numberInferenceEngine;
   late final LatestFrameQueue<RealtimeFramePacket> _streamQueue;
   late final DetectionStabilizer _detectionStabilizer;
   late final VoiceAlertController _voiceAlertController;
-  static const DetectionAlertConfig _detectionConfig = DetectionAlertConfig();
+  static const DetectionAlertConfig _detectionConfig = DetectionAlertConfig(
+    offLightMinimumFrames: realtimeOffLightMinimumFrames,
+  );
   late final RealtimeFrameFreshnessGuard _frameFreshnessGuard;
   late final RealtimePipelineMonitor _pipelineMonitor;
   late final DateTime Function() _clock; // ฟังก์ชันเวลาที่แทรกได้ (เพื่อเทสต์)
@@ -101,7 +138,24 @@ class CameraInferenceController extends ChangeNotifier {
   DriverSignalResult _driverSignalResult = _emptyDriverSignal;
 
   int get detectionCount => _detectionCount;
+
+  /// อัตราเฟรมที่ฝั่ง Dart ได้ประมวลผลจริง (คือสิ่งที่ผู้ใช้เห็นบนจอ)
   double get currentFps => _currentFps;
+
+  /// อัตราการ inference ของฝั่ง native ตามที่ปลั๊กอินรายงานมา
+  /// แยกจาก [currentFps] เพราะเป็นคนละความหมาย เดิมเขียนทับตัวแปรเดียวกัน
+  /// จนตัวเลขบนจอตีความไม่ได้ว่าหมายถึงอะไร
+  double get nativeInferenceFps => _nativeInferenceFps;
+
+  /// true เมื่อกำลังลดความถี่การอ่านเลขลงเพราะเครื่องทำงานไม่ทัน
+  bool get isNumberInferenceThrottled => _loadGovernor.isThrottled;
+
+  /// จำนวนครั้งที่ข้ามการอ่านเลขเพราะเฟรมแก่เกินกว่าจะทำเสร็จทัน
+  int get numberInferenceSkippedForBudget => _numberInferenceSkippedForBudget;
+
+  /// true เมื่อพยายามกู้สตรีมจนครบแล้วยังไม่กลับมา (ต้องให้ผู้ใช้จัดการเอง)
+  bool get hasGivenUpStreamRecovery =>
+      _streamRecoveryAttempts >= maximumRealtimeStreamRecoveryAttempts;
   double get confidenceThreshold => _confidenceThreshold;
   double get iouThreshold => _iouThreshold;
   int get numItemsThreshold => _numItemsThreshold;
@@ -120,6 +174,9 @@ class CameraInferenceController extends ChangeNotifier {
   YOLOViewController get yoloController => _yoloController;
 
   String? get detectedNumber => _detectedNumber;
+
+  /// ข้อความนับถอยหลังสำหรับ UI เช่น 'เหลืออีก 3 วินาที · เตรียมออกตัว'
+  String? get countdownUiMessage => _countdownUiMessage;
   int get droppedStreamFrameCount => _streamQueue.droppedCount;
   List<RealtimeInferenceDiagnostic> get realtimeDiagnostics =>
       _numberInferenceEngine.diagnostics;
@@ -204,7 +261,15 @@ class CameraInferenceController extends ChangeNotifier {
       }
       return _loadingMessage;
     }
-    if (_isRealtimePipelineStale) return 'กล้องไม่พร้อมหรือกำลังรอสัญญาณภาพ';
+    if (_isRealtimePipelineStale) {
+      if (hasGivenUpStreamRecovery) {
+        return 'กล้องไม่ตอบสนอง กรุณาปิดแล้วเปิดแอปใหม่';
+      }
+      if (_streamRecoveryAttempts > 0) {
+        return 'กล้องไม่ตอบสนอง กำลังลองเริ่มใหม่';
+      }
+      return 'กล้องไม่พร้อมหรือกำลังรอสัญญาณภาพ';
+    }
     if (_lastDetectionConfidence != null &&
         _lastDetectionConfidence! < _confidenceThreshold) {
       return 'ความมั่นใจต่ำ';
@@ -218,6 +283,8 @@ class CameraInferenceController extends ChangeNotifier {
     @visibleForTesting
     Duration numberDetectionInterval = const Duration(milliseconds: 400),
     @visibleForTesting CountdownReadingStabilizer? countdownStabilizer,
+    @visibleForTesting CountdownAlertController? countdownAlertController,
+    @visibleForTesting CountdownReadingHold? countdownHold,
     @visibleForTesting DetectionStabilizer? detectionStabilizer,
     // ไม่ใช่พารามิเตอร์สำหรับเทสต์อย่างเดียว: production ส่ง TrafficVoiceService
     // ตัวที่แชร์ทั้งแอปเข้ามา เพื่อให้ค่าเสียงจากหน้า Settings มีผลกับหน้ากล้องด้วย
@@ -228,6 +295,9 @@ class CameraInferenceController extends ChangeNotifier {
     Duration maximumFrameAge = defaultRealtimeMaximumFrameAge,
     @visibleForTesting bool enableFreshnessWatchdog = true,
     @visibleForTesting ModelManager? modelManager,
+    @visibleForTesting RealtimeLoadGovernor? loadGovernor,
+    // หน้าจอเป็นผู้สร้าง YOLOView จึงเป็นคนเดียวที่สั่งให้สตรีมเริ่มใหม่ได้
+    VoidCallback? onRequestStreamRestart,
   }) {
     if (clock == null) {
       _clock = DateTime.now;
@@ -236,6 +306,14 @@ class CameraInferenceController extends ChangeNotifier {
     }
     _maximumFrameAge = maximumFrameAge;
     _enableFreshnessWatchdog = enableFreshnessWatchdog;
+    _onRequestStreamRestart = onRequestStreamRestart;
+    if (loadGovernor == null) {
+      _loadGovernor = RealtimeLoadGovernor(
+        baseInterval: numberDetectionInterval,
+      );
+    } else {
+      _loadGovernor = loadGovernor;
+    }
     if (voiceService == null) {
       _voiceService = TrafficVoiceService();
     } else {
@@ -261,9 +339,21 @@ class CameraInferenceController extends ChangeNotifier {
       _voiceAlertController = VoiceAlertController(
         config: _detectionConfig,
         speakClassName: _speakStableClass,
+        // ให้ข้อความที่สำคัญกว่า (เช่นไฟแดง) ตัดข้อความที่กำลังพูดอยู่ได้
+        interruptSpeech: _voiceService.stop,
       );
     } else {
       _voiceAlertController = voiceAlertController;
+    }
+    if (countdownAlertController == null) {
+      _countdownAlertController = CountdownAlertController();
+    } else {
+      _countdownAlertController = countdownAlertController;
+    }
+    if (countdownHold == null) {
+      _countdownHold = CountdownReadingHold();
+    } else {
+      _countdownHold = countdownHold;
     }
     _isFrontCamera = _lensFacing == LensFacing.front;
 
@@ -552,7 +642,7 @@ class CameraInferenceController extends ChangeNotifier {
     if (decision != RealtimeFrameDecision.accept) {
       _pipelineMonitor.recordRejected(decision);
       if (decision == RealtimeFrameDecision.stale) {
-        _isRealtimePipelineStale = true;
+        _markPipelineStale(processingStartedAt);
         _clearRealtimeResults();
       }
       _refreshPipelineSnapshot(processingStartedAt);
@@ -562,6 +652,9 @@ class CameraInferenceController extends ChangeNotifier {
 
     _lastFreshFrameCapturedAt = packet.estimatedCapturedAt;
     _isRealtimePipelineStale = false;
+    // สตรีมกลับมาแล้ว เริ่มนับความพยายามกู้ใหม่ตั้งแต่ต้นในครั้งหน้า
+    _streamRecoveryAttempts = 0;
+    _lastStreamRecoveryRequestedAt = null;
 
     final fps = packet.fps;
     if (fps != null) onPerformanceMetrics(fps);
@@ -572,10 +665,20 @@ class CameraInferenceController extends ChangeNotifier {
     );
     if (_isDisposed) return;
 
+    // เฟรมที่แก่เกินงบเวลาแล้ว อ่านเลขไปก็เสร็จไม่ทันและผลจะถูกทิ้งตอนท้ายอยู่ดี
+    // ข้ามไปเลยดีกว่า เพื่อไม่ให้เครื่องที่ช้าอยู่แล้วยิ่งช้าลงไปอีก
+    final numberInferenceBudget =
+        _maximumFrameAge * realtimeNumberInferenceAgeBudgetRatio;
+    final canAffordNumberInference =
+        packet.ageAt(_clock()) < numberInferenceBudget;
+    if (!canAffordNumberInference) {
+      _numberInferenceSkippedForBudget = _numberInferenceSkippedForBudget + 1;
+    }
+
     // อ่านเลขจาก raw frame ต่อได้ แต่แสดงเมื่อ sign_number ผ่าน temporal smoothing แล้ว
     final stabilizedReading = await _numberInferenceEngine.process(
       packet,
-      enabled: true,
+      enabled: canAffordNumberInference,
     );
     if (_isDisposed) return;
 
@@ -587,13 +690,98 @@ class CameraInferenceController extends ChangeNotifier {
     );
     _refreshPipelineSnapshot(completedAt);
 
-    if (packet.ageAt(completedAt) > _maximumFrameAge) {
-      _isRealtimePipelineStale = true;
+    // ผลของเฟรมนี้ทันหรือไม่ คือสัญญาณเดียวที่บอกได้ว่าเครื่องยังไหวอยู่ไหม
+    final isOverBudget = packet.ageAt(completedAt) > _maximumFrameAge;
+    _loadGovernor.recordFrame(overBudget: isOverBudget);
+    _numberInferenceEngine.detectionInterval = _loadGovernor.interval;
+
+    if (isOverBudget) {
+      _markPipelineStale(completedAt);
       _clearRealtimeResults();
-    } else if (stabilizedReading != null) {
-      _applyDetectedNumber(stabilizedReading);
+    } else {
+      // ถือเลขล่าสุดไว้ชั่วคราวเมื่อรอบนี้อ่านไม่ได้ (ป้ายกะพริบ/ยังไม่ถึงรอบอ่าน)
+      // แต่ปล่อยทิ้งเมื่อพ้นเวลาถือ ไม่ให้เลขเก่าค้างบนจอ
+      final heldReading = _countdownHold.update(
+        stabilizedReading,
+        timestamp: completedAt,
+      );
+      _applyDetectedNumber(heldReading);
+      _updateCountdownAlert(packet);
     }
     notifyListeners();
+  }
+
+  /// อัปเดตข้อความ/เสียงนับถอยหลังของโหมดเรียลไทม์
+  ///
+  /// เดิมโหมดนี้แสดงเลขบนจออย่างเดียว ไม่มีเสียงเลย ทั้งที่คนขับไม่ได้จ้องจอ
+  /// จึงใช้ CountdownAlertController ตัวเดียวกับโหมดวิดีโอ (กติกา 5 วินาทีและ
+  /// การกันพูดซ้ำในรอบเดียวกันอยู่ในนั้นทั้งหมด)
+  void _updateCountdownAlert(RealtimeFramePacket packet) {
+    final hasQualifiedSign = packet.detections.any(
+      (result) =>
+          result.className == 'sign_number' &&
+          result.confidence >= realtimeSignConfidenceThreshold,
+    );
+    // ช่วงที่ถือเลขไว้ต้องถือว่าป้ายยังอยู่ ไม่งั้นเลขที่ถือไว้จะถูกทิ้งทันที
+    // (เหตุผลเดียวกับ signPresent ของฝั่งวิดีโอ)
+    bool isSignDetected;
+    if (hasQualifiedSign || _detectedNumber != null) {
+      isSignDetected = true;
+    } else {
+      isSignDetected = false;
+    }
+
+    final update = _countdownAlertController.update(
+      isSignDetected: isSignDetected,
+      detectedNumber: _detectedNumber,
+      stableTrafficLightClassName: _countdownTrafficLightClassName,
+    );
+    _countdownUiMessage = update.uiMessage;
+
+    final event = update.event;
+    if (event == null) return;
+    if (!_voiceService.isEnabled) return;
+
+    unawaited(_speakCountdownAlert(event));
+  }
+
+  Future<void> _speakCountdownAlert(CountdownAlertEvent event) async {
+    // ใช้ priority ของไฟที่กำลังนับถอยหลัง เพื่อให้ข้อความนี้ถูกจัดลำดับร่วมกับ
+    // เสียงแจ้งคลาสอื่น ๆ ได้ถูกต้อง
+    final priority = _detectionConfig
+        .ruleFor(event.stableTrafficLightClassName)
+        .priority;
+    final didSpeak = await _voiceAlertController.speakMessageIfIdle(
+      () => _voiceService.speak(event.voiceMessage),
+      priority: priority,
+    );
+    if (didSpeak) return;
+
+    // พูดไม่ได้เพราะติดข้อความอื่นอยู่ ต้องเปิดให้ลองใหม่เฟรมถัดไป
+    // ไม่งั้นคำเตือน "ใกล้หมด" ของรอบนี้เงียบหายไปทั้งรอบ
+    _countdownAlertController.allowThresholdEventRetry();
+  }
+
+  /// คลาสไฟที่ใช้ตัดสินข้อความนับถอยหลัง (เฉพาะไฟที่มีนับถอยหลังจริง)
+  /// เรียงตาม priority เหมือนฝั่งวิดีโอ เพื่อให้ไฟที่สำคัญกว่าเป็นตัวตัดสิน
+  String? get _countdownTrafficLightClassName {
+    final supportedLights = _detectionStabilizer.stableDetections
+        .where(
+          (detection) => CountdownAlertController.supportedTrafficLightClasses
+              .contains(detection.className),
+        )
+        .toList();
+    if (supportedLights.isEmpty) {
+      return null;
+    }
+    supportedLights.sort((first, second) {
+      final firstPriority = _detectionConfig.ruleFor(first.className).priority;
+      final secondPriority = _detectionConfig
+          .ruleFor(second.className)
+          .priority;
+      return firstPriority.compareTo(secondPriority);
+    });
+    return supportedLights.first.className;
   }
 
   /// อัปเดตสแนปช็อตสถิติ pipeline จาก monitor
@@ -620,12 +808,51 @@ class CameraInferenceController extends ChangeNotifier {
         checkedAt.difference(lastCapturedAt) <= _maximumFrameAge) {
       return;
     }
-    if (_isRealtimePipelineStale) return; // ล้าสมัยอยู่แล้ว -> ไม่ต้องทำซ้ำ
+
+    // ต้องประเมินการกู้สตรีมทุกครั้งที่ตรวจ ไม่ใช่แค่ครั้งแรกที่กลายเป็น stale
+    // เพราะสตรีมที่ตายสนิทจะไม่มีเฟรมเข้ามาให้ตรวจอีกเลย
+    _maybeRequestStreamRestart(checkedAt, lastCapturedAt);
+
+    if (_isRealtimePipelineStale) return; // ล้าสมัยอยู่แล้ว -> ไม่ต้องล้างซ้ำ
 
     _isRealtimePipelineStale = true;
     _clearRealtimeResults();
     _refreshPipelineSnapshot(checkedAt);
     notifyListeners();
+  }
+
+  /// ตั้งสถานะว่าท่อล้าสมัย พร้อมประเมินว่าถึงเวลาสั่งเริ่มสตรีมใหม่หรือยัง
+  void _markPipelineStale(DateTime now) {
+    _isRealtimePipelineStale = true;
+    final lastCapturedAt = _lastFreshFrameCapturedAt;
+    if (lastCapturedAt == null) return;
+    _maybeRequestStreamRestart(now, lastCapturedAt);
+  }
+
+  /// สั่งให้หน้าจอเริ่มสตรีมกล้องใหม่ เมื่อไม่มีเฟรมสดเข้ามานานเกินกำหนด
+  ///
+  /// เดิมเมื่อสตรีมตาย watchdog ทำได้แค่ล้างจอ แล้วปล่อยค้างอย่างนั้นไปเรื่อย ๆ
+  /// คนขับที่กำลังขับรถอยู่ไม่มีทางรู้ว่าต้องออกจากหน้านี้แล้วเข้าใหม่เอง
+  void _maybeRequestStreamRestart(DateTime now, DateTime lastCapturedAt) {
+    final restart = _onRequestStreamRestart;
+    if (restart == null) return;
+    if (!isCameraActive) return;
+    if (hasGivenUpStreamRecovery) return;
+    if (now.difference(lastCapturedAt) < realtimeStreamRecoveryDelay) return;
+
+    final lastRequestedAt = _lastStreamRecoveryRequestedAt;
+    if (lastRequestedAt != null &&
+        now.difference(lastRequestedAt) < realtimeStreamRecoveryCooldown) {
+      return;
+    }
+
+    _streamRecoveryAttempts = _streamRecoveryAttempts + 1;
+    _lastStreamRecoveryRequestedAt = now;
+    log(
+      'สตรีมกล้องเงียบเกิน ${realtimeStreamRecoveryDelay.inSeconds} วินาที '
+      '- สั่งเริ่มใหม่ครั้งที่ $_streamRecoveryAttempts',
+    );
+    restart();
   }
 
   /// ล้างผลลัพธ์เรียลไทม์ทั้งหมด (คืนค่าว่ามีอะไรเปลี่ยนไปบ้าง)
@@ -662,20 +889,50 @@ class CameraInferenceController extends ChangeNotifier {
     // _lastFpsUpdate สำคัญไม่แพ้กัน: ถ้าไม่รีเซ็ต elapsed รอบแรกหลังเปิดใหม่
     // จะกลายเป็นค่ามหาศาล ทำให้ FPS ที่คำนวณได้เพี้ยนไปเลย
     _currentFps = 0.0;
+    _nativeInferenceFps = 0.0;
     _frameCount = 0;
     _lastFpsUpdate = DateTime.now();
+    _loadGovernor.reset();
+    _numberInferenceEngine.detectionInterval = _loadGovernor.interval;
+    _numberInferenceSkippedForBudget = 0;
+    _streamRecoveryAttempts = 0;
+    _lastStreamRecoveryRequestedAt = null;
   }
 
   /// เลขใช้สำหรับ UI เท่านั้น ส่วนเสียง sign_number มาจาก stable detected event
-  void _applyDetectedNumber(String reading) {
+  /// ([reading] เป็น null เมื่อพ้นเวลาถือเลขแล้ว = ต้องล้างเลขออกจากจอ)
+  void _applyDetectedNumber(String? reading) {
     if (_isDisposed) return;
+    if (_detectedNumber == reading) return;
+
     _detectedNumber = reading;
+    // แบนเนอร์คำสั่งคนขับใช้เลขนี้ด้วย ('ไฟแดง - เตรียมออกตัว อีก N วินาที')
+    _refreshDriverSignal();
     notifyListeners();
+  }
+
+  /// สร้างแบนเนอร์คำสั่งคนขับใหม่จากผล stable ปัจจุบัน (คืนค่าว่าเปลี่ยนไปหรือไม่)
+  bool _refreshDriverSignal() {
+    final stableYoloDetections = _detectionStabilizer.stableDetections
+        .map((detection) => detection.toYoloResult())
+        .toList(growable: false);
+    // แดง ⇒ หยุดเสมอ อยู่ใน SignalInterpreter
+    final driverSignal = SignalInterpreter.interpret(
+      stableYoloDetections,
+      countdownNumberText: _detectedNumber,
+    );
+    if (_driverSignalResult == driverSignal) return false;
+
+    _driverSignalResult = driverSignal;
+    return true;
   }
 
   void _resetDetectionSession({bool stopVoice = true}) {
     _detectionStabilizer.reset();
     _voiceAlertController.reset();
+    _countdownAlertController.reset();
+    _countdownHold.reset();
+    _countdownUiMessage = null;
     _detectedNumber = null;
     // แบนเนอร์คำสั่งคนขับผูกกับผล stable -> รีเซ็ต stabilizer แล้วต้องล้างด้วย
     _driverSignalResult = _emptyDriverSignal;
@@ -706,7 +963,11 @@ class CameraInferenceController extends ChangeNotifier {
       if (result.className == 'sign_number') {
         threshold = realtimeSignConfidenceThreshold;
       } else {
-        threshold = _confidenceThreshold;
+        // คลาสที่เกี่ยวกับความปลอดภัยมีเพดาน ผู้ใช้ปรับให้มองข้ามไฟแดงไม่ได้
+        threshold = _detectionConfig.effectiveConfidenceThreshold(
+          result.className,
+          _confidenceThreshold,
+        );
       }
       return result.confidence >= threshold;
     });
@@ -738,14 +999,7 @@ class CameraInferenceController extends ChangeNotifier {
       // Allowed: numbers will be detected and shown in green color
     }
 
-    // ตีความผล stable เป็นคำสั่งคนขับ (แดง ⇒ หยุดเสมอ อยู่ใน SignalInterpreter)
-    final driverSignal = SignalInterpreter.interpret(
-      stableDetections
-          .map((detection) => detection.toYoloResult())
-          .toList(growable: false),
-    );
-    if (_driverSignalResult != driverSignal) {
-      _driverSignalResult = driverSignal;
+    if (_refreshDriverSignal()) {
       shouldNotify = true;
     }
 
@@ -784,7 +1038,13 @@ class CameraInferenceController extends ChangeNotifier {
     // ผู้ใช้ปิดเสียงใน settings แล้วต้องไม่พูด (เหมือนที่ video controller ทำ)
     final shouldAnnounce = _voiceService.isEnabled;
     if (shouldAnnounce) {
-      unawaited(_voiceAlertController.handleEvents(stabilization.events));
+      // ส่ง timestamp ไปด้วยเพื่อให้คิวรอพูดหมดอายุได้ แม้เฟรมนี้ไม่มี event ใหม่
+      unawaited(
+        _voiceAlertController.handleEvents(
+          stabilization.events,
+          timestamp: observationTime,
+        ),
+      );
     }
 
     _frameCount++;
@@ -838,12 +1098,13 @@ class CameraInferenceController extends ChangeNotifier {
     return _voiceService.speak(message);
   }
 
-  /// รับการแจ้ง FPS จากกล้อง (ใช้ก็ต่อเมื่อค่าเปลี่ยนจริง)
+  /// รับการแจ้ง FPS ของฝั่ง native (ใช้ก็ต่อเมื่อค่าเปลี่ยนจริง)
+  /// เก็บแยกจาก _currentFps ที่วัดจากเฟรมที่ Dart ได้ประมวลผลจริง
   void onPerformanceMetrics(double fps) {
     if (_isDisposed) return;
 
-    if ((_currentFps - fps).abs() > 0.1) {
-      _currentFps = fps;
+    if ((_nativeInferenceFps - fps).abs() > 0.1) {
+      _nativeInferenceFps = fps;
       notifyListeners();
     }
   }

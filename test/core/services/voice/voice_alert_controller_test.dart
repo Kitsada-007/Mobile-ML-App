@@ -86,7 +86,46 @@ void main() {
     expect(spoken, isEmpty);
   });
 
-  test('does not overlap speech and ignores lost events', () async {
+  test(
+    'queues an event that arrives while speaking instead of dropping it',
+    () async {
+      final releaseSpeech = Completer<void>();
+      final spoken = <String>[];
+      final controller = VoiceAlertController(
+        speakClassName: (className) async {
+          spoken.add(className);
+          await releaseSpeech.future;
+        },
+      );
+      final now = DateTime(2026);
+
+      final first = controller.handleEvents([event('red_light_circle', now)]);
+      await Future<void>.delayed(Duration.zero);
+      // ห้ามพูดซ้อน แต่ก็ห้ามทิ้ง event ทิ้งไปเฉย ๆ เพราะ stabilizer ยิงครั้งเดียว
+      final overlapping = await controller.handleEvents([
+        event('turn_right', now.add(const Duration(seconds: 1))),
+      ]);
+      final lost = await controller.handleEvents([
+        event(
+          'yellow_light',
+          now.add(const Duration(seconds: 1)),
+          type: DetectionEventType.lost,
+        ),
+      ]);
+
+      expect(overlapping, isNull);
+      expect(lost, isNull);
+      expect(spoken, ['red_light_circle']);
+      expect(controller.pendingCount, 1);
+
+      releaseSpeech.complete();
+      await first;
+
+      expect(spoken, ['red_light_circle', 'turn_right']);
+    },
+  );
+
+  test('a lost event removes that class from the waiting queue', () async {
     final releaseSpeech = Completer<void>();
     final spoken = <String>[];
     final controller = VoiceAlertController(
@@ -99,21 +138,131 @@ void main() {
 
     final first = controller.handleEvents([event('red_light_circle', now)]);
     await Future<void>.delayed(Duration.zero);
-    final overlapping = await controller.handleEvents([
-      event('off_light', now.add(const Duration(seconds: 1))),
+    await controller.handleEvents([
+      event('turn_right', now.add(const Duration(seconds: 1))),
     ]);
-    final lost = await controller.handleEvents([
+    await controller.handleEvents([
       event(
-        'yellow_light',
-        now.add(const Duration(seconds: 1)),
+        'turn_right',
+        now.add(const Duration(seconds: 2)),
         type: DetectionEventType.lost,
       ),
     ]);
+    expect(controller.pendingCount, 0);
+
     releaseSpeech.complete();
     await first;
 
-    expect(overlapping, isNull);
-    expect(lost, isNull);
+    // ป้ายหลุดจอไปแล้ว จึงต้องไม่ถูกประกาศตามหลัง
+    expect(spoken, ['red_light_circle']);
+  });
+
+  test('a more important event interrupts the message being spoken', () async {
+    final releaseGreen = Completer<void>();
+    final spoken = <String>[];
+    var interruptCount = 0;
+    final controller = VoiceAlertController(
+      speakClassName: (className) async {
+        spoken.add(className);
+        if (className == 'green_light_circle') {
+          await releaseGreen.future;
+        }
+      },
+      interruptSpeech: () async {
+        interruptCount = interruptCount + 1;
+        // จำลอง TrafficVoiceService.stop() ที่ทำให้ประโยคเดิมจบทันที
+        releaseGreen.complete();
+      },
+    );
+    final now = DateTime(2026);
+
+    final greenSpeech = controller.handleEvents([
+      event('green_light_circle', now),
+    ]);
+    await Future<void>.delayed(Duration.zero);
+    final redSpeech = await controller.handleEvents([
+      event('red_light_circle', now.add(const Duration(milliseconds: 500))),
+    ]);
+    await greenSpeech;
+
+    expect(interruptCount, 1);
+    expect(redSpeech?.detection.className, 'red_light_circle');
+    expect(spoken, ['green_light_circle', 'red_light_circle']);
+  });
+
+  test('a less important event never interrupts', () async {
+    final releaseSpeech = Completer<void>();
+    final spoken = <String>[];
+    var interruptCount = 0;
+    final controller = VoiceAlertController(
+      speakClassName: (className) async {
+        spoken.add(className);
+        await releaseSpeech.future;
+      },
+      interruptSpeech: () async {
+        interruptCount = interruptCount + 1;
+      },
+    );
+    final now = DateTime(2026);
+
+    final first = controller.handleEvents([event('red_light_circle', now)]);
+    await Future<void>.delayed(Duration.zero);
+    await controller.handleEvents([
+      event('turn_left', now.add(const Duration(milliseconds: 500))),
+    ]);
+
+    expect(interruptCount, 0);
+    expect(spoken, ['red_light_circle']);
+
+    releaseSpeech.complete();
+    await first;
+  });
+
+  test('announces every direction signal seen at the same moment', () async {
+    final spoken = <String>[];
+    final controller = VoiceAlertController(
+      speakClassName: (className) async => spoken.add(className),
+    );
+    final now = DateTime(2026);
+
+    await controller.handleEvents([
+      event('go_straight_arrow', now),
+      event('turn_right', now),
+    ]);
+
+    // ทิศทางสองอย่างเป็นจริงพร้อมกันได้ จึงต้องได้ยินครบ (เรียงตาม priority)
+    expect(spoken, ['turn_right', 'go_straight_arrow']);
+  });
+
+  test('drops queued events that are too old to still be true', () async {
+    final releaseSpeech = Completer<void>();
+    final spoken = <String>[];
+    final controller = VoiceAlertController(
+      speakClassName: (className) async {
+        spoken.add(className);
+        await releaseSpeech.future;
+      },
+      pendingRetention: const Duration(seconds: 1),
+    );
+    final now = DateTime(2026);
+
+    final first = controller.handleEvents([event('red_light_circle', now)]);
+    await Future<void>.delayed(Duration.zero);
+    await controller.handleEvents([
+      event('turn_right', now.add(const Duration(milliseconds: 100))),
+    ]);
+    expect(controller.pendingCount, 1);
+
+    // เวลาเดินไปไกลกว่าอายุคิว -> ข้อมูลเก่าเกินกว่าจะพูดออกไปแล้ว
+    await controller.handleEvents(
+      const <DetectionEvent>[],
+      timestamp: now.add(const Duration(seconds: 5)),
+    );
+    expect(controller.pendingCount, 0);
+
+    releaseSpeech.complete();
+    await first;
+
     expect(spoken, ['red_light_circle']);
   });
 
