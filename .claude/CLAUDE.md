@@ -19,15 +19,11 @@ Source comments and all user-facing strings are Thai; keep new code consistent w
 - `flutter analyze` — static analysis (required before commit)
 - `flutter build apk --debug --no-pub` — required after touching native or model wiring
 
-CI (`.github/workflows/ci.yml`) runs `flutter analyze` + `flutter test` on every push and PR.
-`.github/workflows/release.yml` fires only on a `vX.Y.Z` tag: it runs tests, builds a signed
-release APK, and publishes it to GitHub Releases with `SHA256SUMS.txt`. Both workflows pin
-Flutter 3.44.6 stable — match that locally when a failure looks version-dependent.
+CI workflows pin Flutter 3.44.6 stable — match that locally when a failure looks version-dependent.
 
 ## Tech stack
 
 - State: `provider` only. `get` is in `pubspec.yaml` but its reactive state is unused — don't start using it.
-- ML: `ultralytics_yolo` 0.6.10 (pinned), YOLO11 `.tflite`
 
 ## Architecture
 
@@ -108,9 +104,7 @@ These are not general tuning knobs. Do not loosen them to "make it react faster"
 
 ## Model classes and Thai labels
 
-11 classes: `turn_left`, `turn_right`, `go_straight_arrow`, `dont_turn_left`, `dont_turn_right`,
-`dont_go_straight_arrow`, `red_light_circle`, `yellow_light`, `green_light_circle`, `sign_number`,
-`off_light`.
+Class list lives in `assets/models/labels.txt`.
 
 - Scope sections 3.10 (broken light) and 3.11 (blinking light) are collapsed into the single
   `off_light` class. There is no separate blinking-light class.
@@ -381,14 +375,7 @@ if (parsed == null) {
 
 ## ขอบเขตการแก้
 
-โค้ดเดิมยังไม่ได้ใช้สไตล์นี้ ยอดที่ต้องแก้ ณ คอมมิต `387307f`:
-
-| รายการ | จำนวน |
-|---|---|
-| `??` ใน `lib/` | 62 จุด ใน 21 ไฟล์ |
-| ternary (`? :`) | ~91 จุด |
-| cascade (`..`) | 21 จุด ใน 13 ไฟล์ |
-| initializer list (`:`) | 11 จุด |
+โค้ดเดิมบางส่วนยังไม่ได้ใช้สไตล์นี้ (นับยอดคงเหลือได้ด้วย grep)
 
 **อย่าแก้ทั้งหมดรวดเดียว** ให้แก้เฉพาะไฟล์ที่กำลังทำงานอยู่ในงานนั้น ๆ
 แล้ว commit แยกด้วยข้อความ `style: <ชื่อไฟล์> ตามกฎใน CLAUDE.md`
