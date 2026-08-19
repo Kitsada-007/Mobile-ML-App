@@ -80,6 +80,7 @@ class CameraInferenceController extends ChangeNotifier {
   double _confidenceThreshold = 0.5;
   double _iouThreshold = 0.45;
   int _numItemsThreshold = 11;
+  bool _showDetectionOverlay = false;
   SliderType _activeSlider = SliderType.none;
 
   final ModelType _selectedModel = ModelType.traffic;
@@ -159,6 +160,9 @@ class CameraInferenceController extends ChangeNotifier {
   double get confidenceThreshold => _confidenceThreshold;
   double get iouThreshold => _iouThreshold;
   int get numItemsThreshold => _numItemsThreshold;
+
+  /// true เมื่อให้ YOLO ฝั่ง native วาดกรอบ/ชื่อคลาสทับภาพกล้อง
+  bool get showDetectionOverlay => _showDetectionOverlay;
   SliderType get activeSlider => _activeSlider;
   ModelType get selectedModel => _selectedModel;
   bool get isModelLoading => _isModelLoading;
@@ -400,8 +404,18 @@ class CameraInferenceController extends ChangeNotifier {
     required double confidenceThreshold,
     required double iouThreshold,
     required int numItemsThreshold,
+    bool showDetectionOverlay = false,
   }) {
     if (_isDisposed) return;
+
+    // กรอบที่ native วาดเป็นคนละชุดกับผลที่ผ่านการยืนยันแล้ว จึงแยกจาก threshold
+    // และส่งให้ native ทันทีที่ค่าเปลี่ยน ไม่ต้องรอ setThresholds
+    if (_showDetectionOverlay != showDetectionOverlay) {
+      _showDetectionOverlay = showDetectionOverlay;
+      // เรียกก่อน platform view ผูกเสร็จได้ ปลั๊กอินจำค่าไว้ให้แล้วส่งซ้ำตอน init
+      _yoloController.setShowOverlays(showDetectionOverlay);
+      notifyListeners();
+    }
 
     bool changed = false;
     if ((_confidenceThreshold - confidenceThreshold).abs() > 0.001) {

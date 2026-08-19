@@ -126,6 +126,12 @@ These are not general tuning knobs. Do not loosen them to "make it react faster"
 - **`offLightMinimumFrames` is per-pipeline because it is a frame count, not a duration.**
   Camera passes `realtimeOffLightMinimumFrames` (30 ≈ 3 s at 10 fps) so a faster device does not
   confirm a broken light sooner than the 4 fps video path (12 frames = 3 s).
+- **The native overlay is off by default and is a debug aid, not the driver's channel.**
+  `YOLOView` draws its own boxes and English class labels from raw per-frame detections at the
+  native threshold (pinned to ≤ 0.25), so they appear long before the stabilizer confirms
+  anything and do not match what is announced. `SettingsProvider.showDetectionOverlay` drives
+  `setShowOverlays` through `applyDetectionSettings`. The driver-facing channel stays the Thai
+  banner plus speech.
 - **The user's confidence threshold has a ceiling for safety-critical classes.**
   `DetectionAlertConfig.effectiveConfidenceThreshold` caps red/yellow/`off_light`/`dont_*` at
   `safetyCriticalConfidenceCeiling` (0.5). The slider may make detection *more* sensitive, never

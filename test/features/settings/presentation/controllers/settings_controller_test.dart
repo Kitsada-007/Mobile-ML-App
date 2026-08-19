@@ -104,6 +104,30 @@ void main() {
     provider.dispose();
   });
 
+  test('กรอบตรวจจับปิดไว้เป็นค่าเริ่มต้น และสลับแล้วถูกบันทึก', () async {
+    SharedPreferences.setMockInitialValues({});
+    final provider = SettingsProvider();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.showDetectionOverlay, isFalse);
+
+    await provider.toggleDetectionOverlay(true);
+    expect(provider.showDetectionOverlay, isTrue);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('showDetectionOverlay'), isTrue);
+    provider.dispose();
+  });
+
+  test('ค่าที่บันทึกไว้ถูกอ่านกลับมาตอนเปิดแอป', () async {
+    SharedPreferences.setMockInitialValues({'showDetectionOverlay': true});
+    final provider = SettingsProvider();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.showDetectionOverlay, isTrue);
+    provider.dispose();
+  });
+
   test('ค่าที่ตั้งถูกบันทึกลง SharedPreferences ด้วย', () async {
     SharedPreferences.setMockInitialValues({});
     final provider = SettingsProvider();
