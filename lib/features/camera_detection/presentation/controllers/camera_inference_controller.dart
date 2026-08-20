@@ -107,9 +107,17 @@ class CameraInferenceController extends ChangeNotifier {
   late final LatestFrameQueue<RealtimeFramePacket> _streamQueue;
   late final DetectionStabilizer _detectionStabilizer;
   late final VoiceAlertController _voiceAlertController;
+
+  /// คอนฟิกกลางของหน้ากล้อง (priority / cooldown / เพดาน confidence)
+  ///
+  /// ค่า offLightMinimumFrames ในนี้เป็นค่าเริ่มต้นเท่านั้น ตัวที่มีผลจริงคือคอนฟิก
+  /// ที่ส่งให้ DetectionStabilizer ซึ่งผู้ใช้ปรับได้จากหน้า Settings
+  /// (ฟิลด์นี้ถูกใช้เฉพาะกับ priority/threshold ที่ไม่เกี่ยวกับ off_light)
   static const DetectionAlertConfig _detectionConfig = DetectionAlertConfig(
     offLightMinimumFrames: realtimeOffLightMinimumFrames,
   );
+
+  int _offLightMinimumFrames = realtimeOffLightMinimumFrames;
   late final RealtimeFrameFreshnessGuard _frameFreshnessGuard;
   late final RealtimePipelineMonitor _pipelineMonitor;
   late final DateTime Function() _clock; // ฟังก์ชันเวลาที่แทรกได้ (เพื่อเทสต์)
@@ -159,6 +167,9 @@ class CameraInferenceController extends ChangeNotifier {
   double get confidenceThreshold => _confidenceThreshold;
   double get iouThreshold => _iouThreshold;
   int get numItemsThreshold => _numItemsThreshold;
+
+  /// จำนวนเฟรมต่อเนื่องที่ต้องเห็นไฟดับก่อนยืนยันว่าไฟเสีย (ปรับได้จากหน้า Settings)
+  int get offLightMinimumFrames => _offLightMinimumFrames;
 
   /// true เมื่อให้ YOLO ฝั่ง native วาดกรอบ/ชื่อคลาสทับภาพกล้อง
   ///
@@ -345,7 +356,7 @@ class CameraInferenceController extends ChangeNotifier {
     if (voiceAlertController == null) {
       _voiceAlertController = VoiceAlertController(
         config: _detectionConfig,
-        speakClassName: _speakStableClass,
+        speakClassName: _speakStableClasses,
         // ให้ข้อความที่สำคัญกว่า (เช่นไฟแดง) ตัดข้อความที่กำลังพูดอยู่ได้
         interruptSpeech: _voiceService.stop,
       );
@@ -408,8 +419,18 @@ class CameraInferenceController extends ChangeNotifier {
     required double iouThreshold,
     required int numItemsThreshold,
     bool showDetectionOverlay = false,
+    int offLightMinimumFrames = realtimeOffLightMinimumFrames,
   }) {
     if (_isDisposed) return;
+
+    // เกณฑ์ยืนยันไฟเสียอ่านใหม่ทุกครั้งที่ stabilizer ตัดสิน จึงสลับคอนฟิกกลางคันได้
+    if (_offLightMinimumFrames != offLightMinimumFrames) {
+      _offLightMinimumFrames = offLightMinimumFrames;
+      _detectionStabilizer.config = DetectionAlertConfig(
+        offLightMinimumFrames: offLightMinimumFrames,
+      );
+      notifyListeners();
+    }
 
     // กรอบที่ native วาดเป็นคนละชุดกับผลที่ผ่านการยืนยันแล้ว จึงแยกจาก threshold
     // และส่งให้ native ทันทีที่ค่าต่างจากที่ native ถืออยู่ (ค่าเริ่มต้นของปลั๊กอินคือเปิด
@@ -1103,16 +1124,39 @@ class CameraInferenceController extends ChangeNotifier {
     return trafficLights;
   }
 
-  Future<void> _speakStableClass(String className) {
-    final formalName = videoFormalThaiName(className);
-    final alertMessage = _voiceService.getThaiMessage(className);
-    String message;
-    if (alertMessage.isEmpty) {
-      message = formalName;
-    } else {
-      message = '$formalName: $alertMessage';
+  /// ประกอบข้อความเสียงจากสัญญาณที่เป็นจริงพร้อมกัน
+  ///
+  /// สัญญาณเดียว: ใช้รูปแบบเดิม 'ชื่อทางการ: ข้อความเตือน'
+  /// หลายสัญญาณ: ใช้ข้อความเตือนสั้น ๆ ต่อกัน เช่น 'ไฟแดง หยุดรถ ตรงไปได้'
+  /// เพราะถ้าใส่ชื่อทางการทุกตัวประโยคจะยาวจนไฟเปลี่ยนไปก่อนพูดจบ
+  Future<void> _speakStableClasses(List<String> classNames) {
+    if (classNames.isEmpty) {
+      return Future<void>.value();
     }
-    return _voiceService.speak(message);
+
+    if (classNames.length == 1) {
+      final className = classNames.first;
+      final formalName = videoFormalThaiName(className);
+      final alertMessage = _voiceService.getThaiMessage(className);
+      String message;
+      if (alertMessage.isEmpty) {
+        message = formalName;
+      } else {
+        message = '$formalName: $alertMessage';
+      }
+      return _voiceService.speak(message);
+    }
+
+    final parts = <String>[];
+    for (final className in classNames) {
+      final alertMessage = _voiceService.getThaiMessage(className);
+      if (alertMessage.isEmpty) {
+        parts.add(videoFormalThaiName(className));
+      } else {
+        parts.add(alertMessage);
+      }
+    }
+    return _voiceService.speak(parts.join(' '));
   }
 
   /// รับการแจ้ง FPS ของฝั่ง native (ใช้ก็ต่อเมื่อค่าเปลี่ยนจริง)

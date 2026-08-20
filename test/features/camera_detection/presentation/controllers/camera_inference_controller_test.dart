@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:trffic_ilght_app/core/services/detection/detection_stabilizer.dart';
 import 'package:trffic_ilght_app/core/services/inference/countdown_reading_hold.dart';
 import 'package:trffic_ilght_app/core/services/inference/countdown_reading_stabilizer.dart';
 import 'package:trffic_ilght_app/core/services/inference/signal_interpreter.dart';
@@ -887,6 +888,29 @@ void main() {
     expect(controller.showDetectionOverlay, isFalse);
     expect(controller.yoloController.showOverlays, isFalse);
     expect(notifyCount, 2);
+    controller.dispose();
+  });
+
+  test('off-light frame threshold follows the user setting', () {
+    final stabilizer = DetectionStabilizer();
+    final controller = CameraInferenceController(
+      voiceService: FakeTrafficVoiceService(),
+      detectionStabilizer: stabilizer,
+      enableFreshnessWatchdog: false,
+    );
+    // ค่าเริ่มต้นของโหมดกล้อง = 30 เฟรม (≈3 วินาทีที่ 10fps)
+    expect(controller.offLightMinimumFrames, realtimeOffLightMinimumFrames);
+
+    controller.applyDetectionSettings(
+      confidenceThreshold: 0.5,
+      iouThreshold: 0.45,
+      numItemsThreshold: 11,
+      offLightMinimumFrames: 45,
+    );
+
+    expect(controller.offLightMinimumFrames, 45);
+    // ต้องถึง stabilizer จริง ไม่ใช่เก็บไว้ในตัวแปรเฉย ๆ
+    expect(stabilizer.config.offLightMinimumFrames, 45);
     controller.dispose();
   });
 
