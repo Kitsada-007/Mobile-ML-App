@@ -107,7 +107,10 @@ These are not general tuning knobs. Do not loosen them to "make it react faster"
   highest-priority candidate, then `_selectCompanions` adds the other pending classes within
   `combineWindow` (up to `maximumCombinedClasses`), and `StableClassSpeaker` receives the whole
   list. Traffic-light states are never companions of each other — only one light state can be
-  true, and reading two out loud is a contradictory instruction. A single class keeps the
+  true, and reading two out loud is a contradictory instruction. Classes in
+  `soloAnnouncementClasses` (red, yellow, `off_light`) are announced alone and drop the
+  directional signals seen in the same moment, mirroring `SignalInterpreter._buildMessage`:
+  "ไฟแดง หยุดรถ ตรงไปได้" is a contradiction whether it is one sentence or two. A single class keeps the
   `formal name: alert` wording; a combined message uses the short alert texts so the sentence
   does not outlive the signal.
 - **Events that cannot be spoken right now are queued, never dropped.** `DetectionStabilizer`

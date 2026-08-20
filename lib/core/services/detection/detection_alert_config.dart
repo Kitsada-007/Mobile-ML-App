@@ -120,6 +120,19 @@ final class DetectionAlertConfig {
     'dont_turn_right',
   };
 
+  /// คลาสที่ต้องประกาศ "เดี่ยว ๆ" ห้ามพูดรวมกับสัญญาณอื่นในประโยคเดียว
+  ///
+  /// ไฟแดง/เหลือง/ไฟเสีย เป็นคำสั่งให้หยุดหรือระวัง การพูดต่อท้ายว่า "ตรงไปได้"
+  /// หรือ "เลี้ยวขวาได้" ในประโยคเดียวกันคือคำสั่งที่ขัดกันเอง
+  /// (กติกาเดียวกับ SignalInterpreter._buildMessage ที่ทิ้งป้ายทิศทางทั้งหมดเมื่อไฟแดง)
+  static const soloAnnouncementClasses = <String>{
+    'red_light_circle',
+    'red_light',
+    'yellow_light',
+    'yellow_light_circle',
+    'off_light',
+  };
+
   /// เพดาน confidence threshold ของคลาสตาม [safetyCriticalClasses]
   ///
   /// ผู้ใช้ปรับ threshold ในหน้า Settings ได้ถึง 0.9 ซึ่งถ้าใช้กับทุกคลาสเท่ากันหมด
@@ -207,6 +220,11 @@ final class DetectionAlertConfig {
   /// ตรวจสอบว่าคลาสนี้ส่งเสียงแจ้งเตือนได้หรือไม่
   bool participatesInVoiceAlerts(String className) =>
       participatesInStableDetection(className);
+
+  /// true เมื่อคลาสนี้ต้องพูดเดี่ยว ๆ (ดู [soloAnnouncementClasses])
+  bool announcesAlone(String className) {
+    return soloAnnouncementClasses.contains(className);
+  }
 
   /// threshold ที่ใช้จริงกับคลาสนี้ หลังบังคับเพดานของคลาสที่เกี่ยวกับความปลอดภัย
   double effectiveConfidenceThreshold(

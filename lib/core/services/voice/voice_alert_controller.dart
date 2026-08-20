@@ -193,6 +193,12 @@ final class VoiceAlertController {
       if (DetectionAlertConfig.trafficLightClasses.contains(className)) {
         _dropCompetingTrafficLights(className, candidate.timestamp);
       }
+
+      // ไฟที่สั่งหยุด/ระวัง ต้องทิ้งสัญญาณทิศทางที่เห็นในจังหวะเดียวกันด้วย
+      // ไม่งั้นมันจะถูกพูดเป็นประโยคถัดไป กลายเป็นคำสั่งขัดกันอยู่ดี
+      if (config.announcesAlone(className)) {
+        _dropContradictingSignals(candidate.timestamp);
+      }
     }
   }
 
@@ -202,6 +208,13 @@ final class VoiceAlertController {
   /// (สีไฟเป็นจริงได้ทีละสถานะ พูดรวมกันจะกลายเป็นคำสั่งที่ขัดกันเอง)
   List<DetectionEvent> _selectCompanions(DetectionEvent primary) {
     final primaryClass = primary.detection.className;
+
+    // ไฟแดง/เหลือง/ไฟเสีย ต้องพูดเดี่ยว ๆ ไม่งั้นจะได้ยิน "ไฟแดง หยุดรถ ตรงไปได้"
+    // ซึ่งเป็นคำสั่งที่ขัดกันเอง (ไฟเขียวรวมกับลูกศรได้ เพราะไปในทางเดียวกัน)
+    if (config.announcesAlone(primaryClass)) {
+      return const <DetectionEvent>[];
+    }
+
     final companions = <DetectionEvent>[];
 
     final candidates = _pendingByClass.values.toList();
@@ -235,6 +248,20 @@ final class VoiceAlertController {
       companions.add(candidate);
     }
     return companions;
+  }
+
+  /// ทิ้งสัญญาณที่เป็นจริงในจังหวะเดียวกับคำสั่งหยุด (ไม่ใช่ของรอบถัดไป)
+  void _dropContradictingSignals(DateTime timestamp) {
+    final contradictingClasses = <String>[];
+    _pendingByClass.forEach((pendingClass, pendingEvent) {
+      final gap = pendingEvent.timestamp.difference(timestamp).abs();
+      if (gap <= combineWindow) {
+        contradictingClasses.add(pendingClass);
+      }
+    });
+    for (final contradictingClass in contradictingClasses) {
+      _pendingByClass.remove(contradictingClass);
+    }
   }
 
   DetectionEvent? _firstOrNull(List<DetectionEvent> events) {

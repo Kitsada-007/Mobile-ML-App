@@ -46,7 +46,23 @@ void main() {
     expect(spoken, ['off_light']);
   });
 
-  test('รวมไฟกับลูกศรที่เห็นพร้อมกันเป็นประโยคเดียว', () async {
+  test('รวมไฟเขียวกับลูกศรที่เห็นพร้อมกันเป็นประโยคเดียว', () async {
+    final spoken = <String>[];
+    final controller = VoiceAlertController(
+      speakClassName: (classNames) async => spoken.add(classNames.join(' + ')),
+    );
+    final now = DateTime(2026);
+
+    await controller.handleEvents([
+      event('green_light_circle', now),
+      event('go_straight_arrow', now),
+    ]);
+
+    // ไฟเขียวกับลูกศรไปในทางเดียวกัน รวมได้
+    expect(spoken, ['green_light_circle + go_straight_arrow']);
+  });
+
+  test('ไฟแดงพูดเดี่ยว และไม่พูดลูกศรตามหลัง', () async {
     final spoken = <String>[];
     final controller = VoiceAlertController(
       speakClassName: (classNames) async => spoken.add(classNames.join(' + ')),
@@ -58,7 +74,44 @@ void main() {
       event('go_straight_arrow', now),
     ]);
 
-    expect(spoken, ['red_light_circle + go_straight_arrow']);
+    // 'ไฟแดง หยุดรถ ตรงไปได้' เป็นคำสั่งที่ขัดกันเอง ทั้งในประโยคเดียวและคนละประโยค
+    expect(spoken, ['red_light_circle']);
+    expect(controller.pendingCount, 0);
+  });
+
+  test('ไฟเหลืองและไฟเสียก็ต้องพูดเดี่ยวเช่นกัน', () async {
+    final now = DateTime(2026);
+
+    for (final soloClass in ['yellow_light', 'off_light']) {
+      final spoken = <String>[];
+      final controller = VoiceAlertController(
+        speakClassName: (classNames) async =>
+            spoken.add(classNames.join(' + ')),
+      );
+
+      await controller.handleEvents([
+        event(soloClass, now),
+        event('turn_right', now),
+      ]);
+
+      expect(spoken, [soloClass], reason: '$soloClass ต้องพูดเดี่ยว');
+    }
+  });
+
+  test('ลูกศรที่เห็นคนละจังหวะกับไฟแดงยังพูดได้ตามปกติ', () async {
+    final spoken = <String>[];
+    final controller = VoiceAlertController(
+      speakClassName: (classNames) async => spoken.add(classNames.join(' + ')),
+      combineWindow: const Duration(seconds: 1),
+    );
+    final now = DateTime(2026);
+
+    await controller.handleEvents([event('red_light_circle', now)]);
+    await controller.handleEvents([
+      event('turn_right', now.add(const Duration(seconds: 5))),
+    ]);
+
+    expect(spoken, ['red_light_circle', 'turn_right']);
   });
 
   test('ไม่รวมสถานะไฟสองสีเข้าด้วยกัน', () async {
@@ -147,11 +200,12 @@ void main() {
       );
       final now = DateTime(2026);
 
-      final first = controller.handleEvents([event('red_light_circle', now)]);
+      final first = controller.handleEvents([event('turn_right', now)]);
       await Future<void>.delayed(Duration.zero);
       // ห้ามพูดซ้อน แต่ก็ห้ามทิ้ง event ทิ้งไปเฉย ๆ เพราะ stabilizer ยิงครั้งเดียว
+      // (ไฟแดงที่โผล่มาระหว่างกำลังพูดอยู่ คือเคสที่เคยเงียบหายไปเลย)
       final overlapping = await controller.handleEvents([
-        event('turn_right', now.add(const Duration(seconds: 1))),
+        event('red_light_circle', now.add(const Duration(seconds: 1))),
       ]);
       final lost = await controller.handleEvents([
         event(
@@ -163,13 +217,13 @@ void main() {
 
       expect(overlapping, isNull);
       expect(lost, isNull);
-      expect(spoken, ['red_light_circle']);
+      expect(spoken, ['turn_right']);
       expect(controller.pendingCount, 1);
 
       releaseSpeech.complete();
       await first;
 
-      expect(spoken, ['red_light_circle', 'turn_right']);
+      expect(spoken, ['turn_right', 'red_light_circle']);
     },
   );
 
@@ -184,7 +238,7 @@ void main() {
     );
     final now = DateTime(2026);
 
-    final first = controller.handleEvents([event('red_light_circle', now)]);
+    final first = controller.handleEvents([event('go_straight_arrow', now)]);
     await Future<void>.delayed(Duration.zero);
     await controller.handleEvents([
       event('turn_right', now.add(const Duration(seconds: 1))),
@@ -202,7 +256,7 @@ void main() {
     await first;
 
     // ป้ายหลุดจอไปแล้ว จึงต้องไม่ถูกประกาศตามหลัง
-    expect(spoken, ['red_light_circle']);
+    expect(spoken, ['go_straight_arrow']);
   });
 
   test('a more important event interrupts the message being spoken', () async {
