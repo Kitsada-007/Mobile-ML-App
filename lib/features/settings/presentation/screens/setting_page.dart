@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:trffic_ilght_app/core/services/detection/detection_alert_config.dart';
 import 'package:trffic_ilght_app/features/settings/presentation/controllers/settings_controller.dart';
-import 'package:trffic_ilght_app/core/services/voice/traffic_voice_service.dart';
 
 class SettingPage extends StatelessWidget {
   const SettingPage({super.key});
@@ -116,17 +116,38 @@ class SettingPage extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      onPressed: () async {
-                        final voiceService = TrafficVoiceService();
-                        await voiceService.speak(
-                          "ทดสอบการแจ้งเตือนสัญญาณไฟจราจร",
-                        );
+                      // ให้ SettingsProvider เป็นผู้เล่น เพราะมันถือ TrafficVoiceService
+                      // ตัวเดียวกับที่แอปใช้จริง เสียงที่ได้ยินจึงตรงกับค่าที่เพิ่งเลื่อน
+                      onPressed: () {
+                        context.read<SettingsProvider>().previewVoice();
                       },
                     ),
                   ),
                 ),
                 const SizedBox(height: 8),
               ],
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.0),
+                child: Divider(height: 1),
+              ),
+              SettingMenuItem(
+                icon: Icons.crop_free_rounded,
+                title: 'Show Detection Boxes',
+                trailing: Switch.adaptive(
+                  value: settings.showDetectionOverlay,
+                  onChanged: (val) {
+                    context.read<SettingsProvider>().toggleDetectionOverlay(
+                      val,
+                    );
+                  },
+                ),
+              ),
+              _buildSliderNote(
+                context,
+                'สำหรับทดสอบ: กรอบที่วาดมาจากผลดิบของโมเดลรายเฟรม '
+                'จึงขึ้นก่อนที่ระบบจะยืนยันและแจ้งเตือน ปกติควรปิดไว้ '
+                'แล้วดูคำสั่งจากแถบข้อความและเสียงแทน',
+              ),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16.0),
                 child: Divider(height: 1),
@@ -199,6 +220,28 @@ class SettingPage extends StatelessWidget {
                           .read<SettingsProvider>()
                           .setConfidenceThreshold(val),
                     ),
+                    _buildSliderNote(
+                      context,
+                      'สัญญาณที่เกี่ยวกับความปลอดภัย (ไฟแดง ไฟเหลือง ไฟเสีย และป้ายห้าม) '
+                      'จะไม่ถูกปรับให้สูงกว่า '
+                      '${DetectionAlertConfig.safetyCriticalConfidenceCeiling.toStringAsFixed(2)} '
+                      'ไม่ว่าจะเลื่อนไปเท่าไรก็ตาม',
+                    ),
+                    // ปิดการปรับ Max Detections เพราะไม่จำเป็นแล้ว เพราะ ว่ามี 11 classes
+
+                    // _buildSliderRow(
+                    //   context,
+                    //   icon: Icons.format_list_numbered_rounded,
+                    //   title: 'Max Detections',
+                    //   value: settings.numItemsThreshold.toDouble(),
+                    //   valueDisplay: '${settings.numItemsThreshold}',
+                    //   min: 5,
+                    //   max: 30,
+                    //   divisions: 25,
+                    //   onChanged: (val) => context
+                    //       .read<SettingsProvider>()
+                    //       .setNumItemsThreshold(val.toInt()),
+                    // ),
                     const SizedBox(height: 12),
                   ],
                 ),
@@ -264,6 +307,21 @@ class SettingPage extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// คำอธิบายใต้สไลเดอร์ (ใช้บอกข้อจำกัดที่ผู้ใช้ต้องรู้ก่อนปรับค่า)
+  Widget _buildSliderNote(BuildContext context, String note) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Text(
+        note,
+        style: TextStyle(
+          fontSize: 12,
+          height: 1.4,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
       ),
     );
   }

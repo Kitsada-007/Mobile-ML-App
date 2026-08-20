@@ -13,8 +13,21 @@ class FakeTrafficVoiceService implements TrafficVoiceService {
   bool get isEnabled => _enabled;
 
   @override
+  Future<void> get ready async {}
+
+  @override
   Future<void> setEnabled(bool value) async {
     _enabled = value;
+  }
+
+  @override
+  Future<void> applySettings({
+    required bool isEnabled,
+    required double volume,
+    required double speed,
+    required double pitch,
+  }) async {
+    _enabled = isEnabled;
   }
 
   @override
@@ -30,8 +43,90 @@ class FakeTrafficVoiceService implements TrafficVoiceService {
   Future<void> stop() async {}
 }
 
+YOLOResult _detection(String className, {double confidence = 0.9}) {
+  return YOLOResult(
+    classIndex: 0,
+    className: className,
+    confidence: confidence,
+    boundingBox: const Rect.fromLTRB(40, 10, 60, 30),
+    normalizedBox: const Rect.fromLTRB(0.4, 0.1, 0.6, 0.3),
+  );
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  group('VideoInferenceController - seek detection', () {
+    test('การเล่นต่อเนื่องไม่ถือเป็นการ seek', () {
+      expect(
+        isSeekJump(previousIndex: 10, nextIndex: 11, maximumContinuousGap: 8),
+        isFalse,
+      );
+    });
+
+    test('ข้ามเฟรมที่วิเคราะห์ไม่สำเร็จไม่กี่เฟรมยังไม่ถือเป็นการ seek', () {
+      expect(
+        isSeekJump(previousIndex: 10, nextIndex: 16, maximumContinuousGap: 8),
+        isFalse,
+      );
+    });
+
+    test('seek ถอยหลังต้องเริ่ม session ใหม่', () {
+      expect(
+        isSeekJump(previousIndex: 40, nextIndex: 5, maximumContinuousGap: 8),
+        isTrue,
+      );
+    });
+
+    test('seek เดินหน้าไกล ๆ ก็ต้องเริ่ม session ใหม่เช่นกัน', () {
+      expect(
+        isSeekJump(previousIndex: 10, nextIndex: 90, maximumContinuousGap: 8),
+        isTrue,
+      );
+    });
+  });
+
+  group('VideoInferenceController - confidence threshold', () {
+    test('ใช้ threshold ของผู้ใช้กรองผลเหมือนโหมดเรียลไทม์', () {
+      final controller = VideoInferenceController(
+        voiceService: FakeTrafficVoiceService(),
+      );
+      controller.applyDetectionSettings(confidenceThreshold: 0.9);
+
+      final greenLight = _detection('green_light_circle', confidence: 0.6);
+      for (var frame = 0; frame < 5; frame++) {
+        controller.updateCurrentFrameAnalysis(
+          [greenLight],
+          null,
+          signPresent: false,
+          timestamp: DateTime(2026).add(Duration(milliseconds: 250 * frame)),
+        );
+      }
+
+      expect(controller.currentFormalNames, isEmpty);
+      controller.dispose();
+    });
+
+    test('threshold ที่สูงลิ่วยังต้องไม่ปิดเสียงไฟแดง', () {
+      final controller = VideoInferenceController(
+        voiceService: FakeTrafficVoiceService(),
+      );
+      controller.applyDetectionSettings(confidenceThreshold: 0.9);
+
+      final redLight = _detection('red_light_circle', confidence: 0.6);
+      for (var frame = 0; frame < 5; frame++) {
+        controller.updateCurrentFrameAnalysis(
+          [redLight],
+          null,
+          signPresent: false,
+          timestamp: DateTime(2026).add(Duration(milliseconds: 250 * frame)),
+        );
+      }
+
+      expect(controller.currentDriverSignalResult.action, SignalAction.stop);
+      controller.dispose();
+    });
+  });
 
   group('VideoInferenceController - DriverSignalResult', () {
     test('initializes with empty DriverSignalResult', () {

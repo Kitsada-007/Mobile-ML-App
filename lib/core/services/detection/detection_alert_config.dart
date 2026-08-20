@@ -108,6 +108,25 @@ final class DetectionAlertConfig {
   /// คลาสวัตถุพิเศษที่ใช้สำหรับตัดซูมอ่านตัวเลขเท่านั้น (ROI - Region of Interest) โดยไม่ต้องเข้ากระบวนการโหวตความเสถียร
   static const roiOnlyClasses = <String>{'sign_number'};
 
+  /// คลาสที่พลาดแล้วอันตรายถึงชีวิต (สัญญาณให้หยุด/ระวัง และป้ายห้าม)
+  static const safetyCriticalClasses = <String>{
+    'red_light_circle',
+    'red_light',
+    'yellow_light',
+    'yellow_light_circle',
+    'off_light',
+    'dont_go_straight_arrow',
+    'dont_turn_left',
+    'dont_turn_right',
+  };
+
+  /// เพดาน confidence threshold ของคลาสตาม [safetyCriticalClasses]
+  ///
+  /// ผู้ใช้ปรับ threshold ในหน้า Settings ได้ถึง 0.9 ซึ่งถ้าใช้กับทุกคลาสเท่ากันหมด
+  /// จะเท่ากับปิดการเตือนไฟแดงไปเงียบ ๆ โดยที่ผู้ใช้ไม่รู้ตัว
+  /// จึงยอมให้ปรับ "ให้ไวขึ้น" ได้ แต่ปรับให้หูหนวกกับสัญญาณอันตรายไม่ได้
+  static const double safetyCriticalConfidenceCeiling = 0.5;
+
   /// ค่า IoU ขั้นต่ำสำหรับจับคู่วัตถุระหว่างเฟรม (Object Tracking)
   final double minimumTrackingIou;
 
@@ -188,6 +207,20 @@ final class DetectionAlertConfig {
   /// ตรวจสอบว่าคลาสนี้ส่งเสียงแจ้งเตือนได้หรือไม่
   bool participatesInVoiceAlerts(String className) =>
       participatesInStableDetection(className);
+
+  /// threshold ที่ใช้จริงกับคลาสนี้ หลังบังคับเพดานของคลาสที่เกี่ยวกับความปลอดภัย
+  double effectiveConfidenceThreshold(
+    String className,
+    double selectedThreshold,
+  ) {
+    if (!safetyCriticalClasses.contains(className)) {
+      return selectedThreshold;
+    }
+    if (selectedThreshold < safetyCriticalConfidenceCeiling) {
+      return selectedThreshold;
+    }
+    return safetyCriticalConfidenceCeiling;
+  }
 
   /// ดึงกฎการประมวลผล (DetectionRule) สำหรับชื่อคลาสที่ระบุ
   DetectionRule ruleFor(String className) {

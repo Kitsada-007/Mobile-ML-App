@@ -13,21 +13,40 @@ class TrafficVoiceService {
   String? _lastSpokenMessage;
 
   double _volume = 1.0;
-  double _speed = 0.5;
+  // ค่าเริ่มต้นต้องตรงกับ SettingsProvider ไม่งั้นผู้ใช้ที่ยังไม่เคยแตะสไลเดอร์
+  // จะเห็นค่าในหน้า Settings เป็นอีกค่าหนึ่งแต่ได้ยินเสียงอีกความเร็วหนึ่ง
+  double _speed = 0.6;
   double _pitch = 1.0;
 
+  /// true เมื่อมีการ push ค่าจากหน้า Settings เข้ามาแล้ว
+  /// ใช้กัน reloadSettings() อ่านค่าเก่าจาก SharedPreferences มาทับค่าที่เพิ่งตั้ง
+  bool _hasExternalSettings = false;
+
+  /// งานตั้งค่า TTS ตอนสร้างวัตถุ (ภาษา/ระดับเสียง/handler)
+  /// เก็บไว้ให้ speak() รอได้ ไม่ให้พูดตั้งแต่ยังตั้งค่าไม่เสร็จ
+  late final Future<void> _initialization;
+
   TrafficVoiceService() {
-    _initTts();
+    _initialization = _initTts();
   }
+
+  /// รอให้การตั้งค่า TTS ตอนเริ่มต้นเสร็จก่อน (ใช้ในเทสต์และผู้เรียกที่ต้องการความแน่นอน)
+  Future<void> get ready => _initialization;
 
   Future<void> _initTts() async {
     await reloadSettings();
 
-    await _tts.setLanguage("th-TH");
-    await _tts.setSpeechRate(_speed);
-    await _tts.setPitch(_pitch);
-    await _tts.setVolume(_volume);
-    await _tts.awaitSpeakCompletion(true);
+    // ทุกคำสั่งด้านล่างวิ่งผ่าน plugin channel จึงพังได้ ต้องไม่ปล่อย error หลุด
+    // ออกไปนอก _initialization เพราะ speak() รอ future ตัวนี้อยู่
+    try {
+      await _tts.setLanguage("th-TH");
+      await _tts.setSpeechRate(_speed);
+      await _tts.setPitch(_pitch);
+      await _tts.setVolume(_volume);
+      await _tts.awaitSpeakCompletion(true);
+    } catch (error, stackTrace) {
+      log('ตั้งค่า TTS เริ่มต้นไม่สำเร็จ: $error', stackTrace: stackTrace);
+    }
 
     try {
       await _tts.setIosAudioCategory(IosTextToSpeechAudioCategory.playback, [
@@ -61,8 +80,19 @@ class TrafficVoiceService {
   }
 
   Future<void> reloadSettings() async {
+    // หน้า Settings เป็นเจ้าของค่าเหล่านี้แล้ว การอ่านซ้ำจะเป็นการย้อนค่ากลับ
+    if (_hasExternalSettings) {
+      return;
+    }
+
     try {
       final prefs = await SharedPreferences.getInstance();
+
+      // เช็คซ้ำหลัง await: ระหว่างรออ่านค่า หน้า Settings อาจ push ค่าใหม่เข้ามาแล้ว
+      // ถ้าเขียนทับตรงนี้ ค่าที่ผู้ใช้เพิ่งเลือกจะถูกย้อนกลับเป็นค่าเก่าที่บันทึกไว้
+      if (_hasExternalSettings) {
+        return;
+      }
 
       final savedIsEnabled = prefs.getBool('isVoiceEnabled');
       if (savedIsEnabled == null) {
@@ -80,7 +110,7 @@ class TrafficVoiceService {
 
       final savedSpeed = prefs.getDouble('ttsSpeed');
       if (savedSpeed == null) {
-        _speed = 0.5;
+        _speed = 0.6;
       } else {
         _speed = savedSpeed;
       }
@@ -118,10 +148,50 @@ class TrafficVoiceService {
 
   bool get isEnabled => _isEnabled;
 
+  /// รับค่าจากหน้า Settings มาใช้กับ engine ทันที โดยไม่ต้องรีสตาร์ทแอป
+  /// - ตั้งค่าลงฟิลด์แบบ synchronous ก่อน เพื่อให้ UI ที่อ่าน isEnabled เห็นค่าใหม่ทันที
+  /// - ไม่บันทึกลง SharedPreferences เอง เพราะ SettingsProvider เป็นเจ้าของการบันทึก
+  Future<void> applySettings({
+    required bool isEnabled,
+    required double volume,
+    required double speed,
+    required double pitch,
+  }) async {
+    _hasExternalSettings = true;
+    _isEnabled = isEnabled;
+    _volume = volume;
+    _speed = speed;
+    _pitch = pitch;
+
+    if (!isEnabled) {
+      await stop();
+      return;
+    }
+
+    // ต้องรอ _initTts ให้จบก่อน ไม่งั้นค่าที่เพิ่งตั้งจะถูกคำสั่งใน _initTts ทับ
+    await _initialization;
+
+    try {
+      await _tts.setVolume(_volume);
+      await _tts.setSpeechRate(_speed);
+      await _tts.setPitch(_pitch);
+    } catch (error, stackTrace) {
+      log(
+        'ปรับค่าเสียงตามการตั้งค่าใหม่ไม่สำเร็จ: $error',
+        stackTrace: stackTrace,
+      );
+    }
+  }
+
   /// พูดข้อความภาษาไทยผ่าน TTS (มีกันสั่งซ้ำและกันขัดจังหวะถี่เกินไป)
   Future<void> speak(String message) async {
-    if (!_isEnabled) return;
     if (message.isEmpty) return;
+
+    // รอให้ตั้งค่าภาษา/ระดับเสียงเสร็จก่อน ไม่งั้นข้อความแรก (เช่นปุ่มทดลองฟังเสียง
+    // ในหน้า Settings) จะถูกพูดด้วยค่าเริ่มต้นและอาจยังไม่ได้ตั้งภาษาไทย
+    await _initialization;
+
+    if (!_isEnabled) return;
 
     // ป้องกันไม่ให้ส่งคำสั่งซ้ำกรณีที่กำลังออกเสียงข้อความเดียวกัน
     if (_isSpeaking && _lastSpokenMessage == message) {
@@ -195,6 +265,12 @@ class TrafficVoiceService {
   Future<void> stop() async {
     _isSpeaking = false;
     _lastSpokenMessage = null;
-    await _tts.stop();
+    try {
+      await _tts.stop();
+    } catch (error, stackTrace) {
+      // ผู้เรียกส่วนใหญ่เรียกแบบ unawaited ถ้าปล่อย error หลุดจะกลายเป็น
+      // unhandled async error ทั้งที่สถานะฝั่ง Dart ถูกล้างเรียบร้อยแล้ว
+      log('สั่งหยุดเสียงไม่สำเร็จ: $error', stackTrace: stackTrace);
+    }
   }
 }
