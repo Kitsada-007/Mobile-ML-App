@@ -80,7 +80,6 @@ class CameraInferenceController extends ChangeNotifier {
   double _confidenceThreshold = 0.5;
   double _iouThreshold = 0.45;
   int _numItemsThreshold = 11;
-  bool _showDetectionOverlay = false;
   SliderType _activeSlider = SliderType.none;
 
   final ModelType _selectedModel = ModelType.traffic;
@@ -162,7 +161,11 @@ class CameraInferenceController extends ChangeNotifier {
   int get numItemsThreshold => _numItemsThreshold;
 
   /// true เมื่อให้ YOLO ฝั่ง native วาดกรอบ/ชื่อคลาสทับภาพกล้อง
-  bool get showDetectionOverlay => _showDetectionOverlay;
+  ///
+  /// อ่านจาก YOLOViewController โดยตรง เพราะมันคือตัวที่ถือสถานะจริงของฝั่ง native
+  /// (เคยเก็บเป็นฟิลด์เงาแล้วพัง: ฟิลด์เริ่มที่ false แต่ปลั๊กอินเริ่มที่ true
+  /// การเทียบกับฟิลด์เงาจึงคิดว่า "ค่าไม่เปลี่ยน" แล้วไม่เคยสั่งปิดให้ native เลย)
+  bool get showDetectionOverlay => _yoloController.showOverlays;
   SliderType get activeSlider => _activeSlider;
   ModelType get selectedModel => _selectedModel;
   bool get isModelLoading => _isModelLoading;
@@ -409,9 +412,9 @@ class CameraInferenceController extends ChangeNotifier {
     if (_isDisposed) return;
 
     // กรอบที่ native วาดเป็นคนละชุดกับผลที่ผ่านการยืนยันแล้ว จึงแยกจาก threshold
-    // และส่งให้ native ทันทีที่ค่าเปลี่ยน ไม่ต้องรอ setThresholds
-    if (_showDetectionOverlay != showDetectionOverlay) {
-      _showDetectionOverlay = showDetectionOverlay;
+    // และส่งให้ native ทันทีที่ค่าต่างจากที่ native ถืออยู่ (ค่าเริ่มต้นของปลั๊กอินคือเปิด
+    // การตั้งค่าเริ่มต้นของแอปคือปิด รอบแรกจึงต้องสั่งปิดจริง ๆ ไม่ใช่มองว่าไม่มีอะไรเปลี่ยน)
+    if (_yoloController.showOverlays != showDetectionOverlay) {
       // เรียกก่อน platform view ผูกเสร็จได้ ปลั๊กอินจำค่าไว้ให้แล้วส่งซ้ำตอน init
       _yoloController.setShowOverlays(showDetectionOverlay);
       notifyListeners();
