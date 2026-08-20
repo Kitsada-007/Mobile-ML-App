@@ -505,6 +505,14 @@ void main() {
     expect(controller.iouThreshold, 0.45);
     expect(controller.numItemsThreshold, 11);
 
+    // ตั้งค่า overlay ให้นิ่งก่อน เทสต์นี้สนใจเฉพาะการแจ้งเตือนของ threshold
+    controller.applyDetectionSettings(
+      confidenceThreshold: 0.5,
+      iouThreshold: 0.45,
+      numItemsThreshold: 11,
+      showDetectionOverlay: false,
+    );
+
     var notifyCount = 0;
     controller.addListener(() {
       notifyCount = notifyCount + 1;
@@ -812,12 +820,38 @@ void main() {
     controller.dispose();
   });
 
+  test('turns the native overlay off on the very first apply', () {
+    final controller = CameraInferenceController(
+      voiceService: FakeTrafficVoiceService(),
+      enableFreshnessWatchdog: false,
+    );
+    // ปลั๊กอินเปิด overlay ไว้เป็นค่าเริ่มต้น ส่วนแอปตั้งค่าเริ่มต้นเป็นปิด
+    // รอบแรกจึงต้องสั่งปิดจริง ๆ ไม่ใช่เงียบไปเพราะ "ค่าเท่ากับ default ของแอปแล้ว"
+    expect(controller.showDetectionOverlay, isTrue);
+
+    controller.applyDetectionSettings(
+      confidenceThreshold: 0.5,
+      iouThreshold: 0.45,
+      numItemsThreshold: 11,
+      showDetectionOverlay: false,
+    );
+
+    expect(controller.showDetectionOverlay, isFalse);
+    expect(controller.yoloController.showOverlays, isFalse);
+    controller.dispose();
+  });
+
   test('detection overlay follows the user setting', () {
     final controller = CameraInferenceController(
       voiceService: FakeTrafficVoiceService(),
       enableFreshnessWatchdog: false,
     );
-    // ค่าเริ่มต้นคือปิด เพราะกรอบของ native มาจากผลดิบ ไม่ใช่ผลที่ยืนยันแล้ว
+    controller.applyDetectionSettings(
+      confidenceThreshold: 0.5,
+      iouThreshold: 0.45,
+      numItemsThreshold: 11,
+      showDetectionOverlay: false,
+    );
     expect(controller.showDetectionOverlay, isFalse);
 
     var notifyCount = 0;
