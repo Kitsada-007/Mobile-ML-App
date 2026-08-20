@@ -139,7 +139,9 @@ final class TrackedDetectionState {
 final class DetectionStabilizer {
   DetectionStabilizer({this.config = const DetectionAlertConfig()});
 
-  final DetectionAlertConfig config;
+  /// ไม่ใช่ final เพราะเกณฑ์ยืนยันไฟเสียปรับได้จากหน้า Settings ระหว่างใช้งาน
+  /// (กฎถูกอ่านใหม่ทุกครั้งที่ตัดสิน จึงเปลี่ยนกลางคันได้โดยไม่ต้องล้าง track)
+  DetectionAlertConfig config;
 
   /// ตารางเก็บรายการวัตถุที่กำลังติดตามอยู่ (Key: trackId)
   final Map<int, TrackedDetectionState> _tracks = {};

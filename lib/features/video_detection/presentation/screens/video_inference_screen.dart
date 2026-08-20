@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:trffic_ilght_app/core/services/voice/traffic_voice_service.dart';
 import 'package:trffic_ilght_app/features/settings/settings.dart';
+import 'package:trffic_ilght_app/shared/utils/optional_provider.dart';
 import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/video_detection_panel.dart';
 import 'package:trffic_ilght_app/features/video_detection/presentation/controllers/video_inference_controller.dart';
 import 'package:trffic_ilght_app/features/video_detection/presentation/widgets/video_result_section.dart';
@@ -149,13 +150,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
 
   @override
   Widget build(BuildContext context) {
-    // ดึงค่า Threshold จาก SettingsProvider แบบเรียลไทม์ และอัปเดตให้ Controller
-    final settings = context.watch<SettingsProvider>();
-    _controller.updateThresholds(
-      confidenceThreshold: settings.confidenceThreshold,
-      iouThreshold: settings.iouThreshold,
-    );
-
+    // ค่าจาก SettingsProvider ถูกส่งให้ controller ผ่าน listener ใน initState แล้ว
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
     final colorScheme = Theme.of(context).colorScheme;

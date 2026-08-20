@@ -31,7 +31,7 @@ void main() {
   test('announces only the highest-priority event in one frame', () async {
     final spoken = <String>[];
     final controller = VoiceAlertController(
-      speakClassName: (className) async => spoken.add(className),
+      speakClassName: (classNames) async => spoken.add(classNames.join(' + ')),
     );
     final now = DateTime(2026);
 
@@ -46,10 +46,58 @@ void main() {
     expect(spoken, ['off_light']);
   });
 
+  test('รวมไฟกับลูกศรที่เห็นพร้อมกันเป็นประโยคเดียว', () async {
+    final spoken = <String>[];
+    final controller = VoiceAlertController(
+      speakClassName: (classNames) async => spoken.add(classNames.join(' + ')),
+    );
+    final now = DateTime(2026);
+
+    await controller.handleEvents([
+      event('red_light_circle', now),
+      event('go_straight_arrow', now),
+    ]);
+
+    expect(spoken, ['red_light_circle + go_straight_arrow']);
+  });
+
+  test('ไม่รวมสถานะไฟสองสีเข้าด้วยกัน', () async {
+    final spoken = <String>[];
+    final controller = VoiceAlertController(
+      speakClassName: (classNames) async => spoken.add(classNames.join(' + ')),
+    );
+    final now = DateTime(2026);
+
+    await controller.handleEvents([
+      event('red_light_circle', now),
+      event('green_light_circle', now),
+    ]);
+
+    // แดงกับเขียวเป็นจริงพร้อมกันไม่ได้ พูดรวมกันจะเป็นคำสั่งที่ขัดกันเอง
+    expect(spoken, ['red_light_circle']);
+  });
+
+  test('ไม่รวมสัญญาณที่เกิดคนละจังหวะเข้าด้วยกัน', () async {
+    final spoken = <String>[];
+    final controller = VoiceAlertController(
+      speakClassName: (classNames) async => spoken.add(classNames.join(' + ')),
+      combineWindow: const Duration(seconds: 1),
+    );
+    final now = DateTime(2026);
+
+    await controller.handleEvents([
+      event('turn_right', now),
+      event('go_straight_arrow', now.add(const Duration(seconds: 3))),
+    ]);
+
+    // ยังได้ยินครบ แต่ต้องเป็นคนละประโยค (ไม่มี ' + ' = ไม่ถูกรวม)
+    expect(spoken, ['turn_right', 'go_straight_arrow']);
+  });
+
   test('applies the group cooldown to repeated classes', () async {
     final spoken = <String>[];
     final controller = VoiceAlertController(
-      speakClassName: (className) async => spoken.add(className),
+      speakClassName: (classNames) async => spoken.add(classNames.join(' + ')),
     );
     final start = DateTime(2026);
 
@@ -75,7 +123,7 @@ void main() {
   test('never announces the sign_number ROI class', () async {
     final spoken = <String>[];
     final controller = VoiceAlertController(
-      speakClassName: (className) async => spoken.add(className),
+      speakClassName: (classNames) async => spoken.add(classNames.join(' + ')),
     );
 
     final selected = await controller.handleEvents([
@@ -92,8 +140,8 @@ void main() {
       final releaseSpeech = Completer<void>();
       final spoken = <String>[];
       final controller = VoiceAlertController(
-        speakClassName: (className) async {
-          spoken.add(className);
+        speakClassName: (classNames) async {
+          spoken.add(classNames.join(' + '));
           await releaseSpeech.future;
         },
       );
@@ -129,8 +177,8 @@ void main() {
     final releaseSpeech = Completer<void>();
     final spoken = <String>[];
     final controller = VoiceAlertController(
-      speakClassName: (className) async {
-        spoken.add(className);
+      speakClassName: (classNames) async {
+        spoken.add(classNames.join(' + '));
         await releaseSpeech.future;
       },
     );
@@ -162,9 +210,10 @@ void main() {
     final spoken = <String>[];
     var interruptCount = 0;
     final controller = VoiceAlertController(
-      speakClassName: (className) async {
-        spoken.add(className);
-        if (className == 'green_light_circle') {
+      speakClassName: (classNames) async {
+        final message = classNames.join(' + ');
+        spoken.add(message);
+        if (message == 'green_light_circle') {
           await releaseGreen.future;
         }
       },
@@ -195,8 +244,8 @@ void main() {
     final spoken = <String>[];
     var interruptCount = 0;
     final controller = VoiceAlertController(
-      speakClassName: (className) async {
-        spoken.add(className);
+      speakClassName: (classNames) async {
+        spoken.add(classNames.join(' + '));
         await releaseSpeech.future;
       },
       interruptSpeech: () async {
@@ -221,7 +270,7 @@ void main() {
   test('announces every direction signal seen at the same moment', () async {
     final spoken = <String>[];
     final controller = VoiceAlertController(
-      speakClassName: (className) async => spoken.add(className),
+      speakClassName: (classNames) async => spoken.add(classNames.join(' + ')),
     );
     final now = DateTime(2026);
 
@@ -230,16 +279,17 @@ void main() {
       event('turn_right', now),
     ]);
 
-    // ทิศทางสองอย่างเป็นจริงพร้อมกันได้ จึงต้องได้ยินครบ (เรียงตาม priority)
-    expect(spoken, ['turn_right', 'go_straight_arrow']);
+    // ทิศทางสองอย่างเป็นจริงพร้อมกันได้ ต้องได้ยินครบในประโยคเดียว
+    // (ถ้าแยกเป็นสองประโยค ไฟอาจเปลี่ยนไปก่อนจะพูดจบ)
+    expect(spoken, ['turn_right + go_straight_arrow']);
   });
 
   test('drops queued events that are too old to still be true', () async {
     final releaseSpeech = Completer<void>();
     final spoken = <String>[];
     final controller = VoiceAlertController(
-      speakClassName: (className) async {
-        spoken.add(className);
+      speakClassName: (classNames) async {
+        spoken.add(classNames.join(' + '));
         await releaseSpeech.future;
       },
       pendingRetention: const Duration(seconds: 1),
@@ -272,8 +322,8 @@ void main() {
       final releaseSpeech = Completer<void>();
       final spoken = <String>[];
       final controller = VoiceAlertController(
-        speakClassName: (className) async {
-          spoken.add(className);
+        speakClassName: (classNames) async {
+          spoken.add(classNames.join(' + '));
           await releaseSpeech.future;
         },
       );
@@ -298,7 +348,8 @@ void main() {
     () async {
       final spoken = <String>[];
       final controller = VoiceAlertController(
-        speakClassName: (className) async => spoken.add(className),
+        speakClassName: (classNames) async =>
+            spoken.add(classNames.join(' + ')),
       );
       final start = DateTime(2026);
 

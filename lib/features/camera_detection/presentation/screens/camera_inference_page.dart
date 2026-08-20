@@ -3,8 +3,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:trffic_ilght_app/features/settings/settings.dart';
+import 'package:trffic_ilght_app/core/services/voice/traffic_voice_service.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/controllers/camera_inference_controller.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_detection_panel.dart';
 import 'package:trffic_ilght_app/features/camera_detection/presentation/widgets/camera_inference_content.dart';
@@ -140,6 +139,7 @@ class _CameraInferencePageState extends State<CameraInferencePage>
       iouThreshold: settings.iouThreshold,
       numItemsThreshold: settings.numItemsThreshold,
       showDetectionOverlay: settings.showDetectionOverlay,
+      offLightMinimumFrames: settings.offLightMinimumFrames,
     );
   }
 
@@ -153,14 +153,8 @@ class _CameraInferencePageState extends State<CameraInferencePage>
 
   @override
   Widget build(BuildContext context) {
-    // ดึงค่า Threshold จาก SettingsProvider แบบเรียลไทม์ และอัปเดตให้ Controller
-    final settings = context.watch<SettingsProvider>();
-    _controller.updateThresholds(
-      confidenceThreshold: settings.confidenceThreshold,
-      iouThreshold: settings.iouThreshold,
-      numItemsThreshold: settings.numItemsThreshold,
-    );
-
+    // ค่าจาก SettingsProvider ถูกส่งให้ controller ผ่าน listener ใน _bindSettings แล้ว
+    // (ห้ามเรียกที่นี่ เพราะเป็น side effect ระหว่าง build และทำให้ notifyListeners พัง)
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
     final colorScheme = Theme.of(context).colorScheme;
@@ -289,7 +283,10 @@ class _CameraInferencePageState extends State<CameraInferencePage>
                         minHeight: availableHeight,
                       ),
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.start,
+                        // ต้องเป็น spaceBetween เพื่อให้แผงผลชิดขอบล่างเสมอ
+                        // (เทสต์ layout บังคับว่าห้ามเหลือช่องว่างค้างท้ายจอ)
+                        // ส่วนระยะห่างรอบกล้องใช้ padding ด้านล่างแทน
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           header,

@@ -3,7 +3,9 @@ import 'dart:developer';
 import 'package:trffic_ilght_app/core/services/detection/detection_alert_config.dart';
 import 'package:trffic_ilght_app/core/services/detection/detection_stabilizer.dart';
 
-typedef StableClassSpeaker = Future<void> Function(String className);
+/// พูดสัญญาณที่เป็นจริงพร้อมกันหลายอย่างเป็นข้อความเดียว
+/// (ผู้เรียกเป็นคนประกอบประโยค เพราะรู้ชุดคำไทยของตัวเอง)
+typedef StableClassSpeaker = Future<void> Function(List<String> classNames);
 
 /// สั่งหยุดเสียงที่กำลังพูดอยู่ (ใช้ตอนต้องแทรกข้อความที่สำคัญกว่า)
 typedef SpeechInterrupter = Future<void> Function();
@@ -21,6 +23,8 @@ final class VoiceAlertController {
     SpeechInterrupter? interruptSpeech,
     this.config = const DetectionAlertConfig(),
     this.pendingRetention = const Duration(seconds: 5),
+    this.combineWindow = const Duration(seconds: 2),
+    this.maximumCombinedClasses = 3,
   }) {
     _speakClassName = speakClassName;
     _interruptSpeech = interruptSpeech;
@@ -36,6 +40,12 @@ final class VoiceAlertController {
   /// อายุสูงสุดของ event ที่รออยู่ในคิว เกินกว่านี้ถือว่าไม่จริงแล้ว ต้องทิ้ง
   /// (พูดสถานะไฟที่ผ่านไปนานแล้วอันตรายกว่าเงียบ)
   final Duration pendingRetention;
+
+  /// ช่วงเวลาที่ถือว่าสัญญาณ "เกิดพร้อมกัน" จนควรพูดรวมเป็นประโยคเดียว
+  final Duration combineWindow;
+
+  /// จำนวนสัญญาณสูงสุดที่รวมได้ในหนึ่งประโยค (ยาวกว่านี้ไฟเปลี่ยนก่อนพูดจบ)
+  final int maximumCombinedClasses;
 
   final Map<String, DateTime> _lastSpokenAtByClass = {};
 
@@ -154,14 +164,28 @@ final class VoiceAlertController {
         if (!interrupted) return _firstOrNull(spokenEvents);
       }
 
-      _pendingByClass.remove(className);
+      // สัญญาณอื่นที่เป็นจริงพร้อมกัน (เช่นไฟแดง + ลูกศรตรงไป) ต้องได้ยินในประโยค
+      // เดียวกัน ไม่ใช่ต่อคิวกันทีละประโยคจนไฟเปลี่ยนไปก่อนจะพูดครบ
+      final companions = _selectCompanions(candidate);
+      final spokenClasses = <String>[className];
+      for (final companion in companions) {
+        spokenClasses.add(companion.detection.className);
+      }
+      for (final spokenClass in spokenClasses) {
+        _pendingByClass.remove(spokenClass);
+      }
+
       final didSpeak = await speakMessageIfIdle(
-        () => _speakClassName(className),
+        () => _speakClassName(spokenClasses),
         priority: priority,
       );
       if (!didSpeak) return _firstOrNull(spokenEvents);
 
       _lastSpokenAtByClass[className] = candidate.timestamp;
+      for (final companion in companions) {
+        _lastSpokenAtByClass[companion.detection.className] =
+            companion.timestamp;
+      }
       spokenEvents.add(candidate);
 
       // พูดสถานะไฟไปแล้วหนึ่งอย่าง ไฟดวงอื่นที่เห็นในจังหวะเดียวกันเป็นทางเลือก
@@ -170,6 +194,47 @@ final class VoiceAlertController {
         _dropCompetingTrafficLights(className, candidate.timestamp);
       }
     }
+  }
+
+  /// เลือกสัญญาณอื่นที่ควรพูดรวมกับ [primary] ในประโยคเดียว
+  ///
+  /// เงื่อนไข: พ้น cooldown ของตัวเอง, เกิดในช่วงเวลาใกล้กัน และไม่ใช่สถานะไฟอีกดวง
+  /// (สีไฟเป็นจริงได้ทีละสถานะ พูดรวมกันจะกลายเป็นคำสั่งที่ขัดกันเอง)
+  List<DetectionEvent> _selectCompanions(DetectionEvent primary) {
+    final primaryClass = primary.detection.className;
+    final companions = <DetectionEvent>[];
+
+    final candidates = _pendingByClass.values.toList();
+    candidates.sort((first, second) {
+      final firstPriority = config.ruleFor(first.detection.className).priority;
+      final secondPriority = config
+          .ruleFor(second.detection.className)
+          .priority;
+      return firstPriority.compareTo(secondPriority);
+    });
+
+    for (final candidate in candidates) {
+      if (companions.length >= maximumCombinedClasses - 1) break;
+
+      final className = candidate.detection.className;
+      if (className == primaryClass) continue;
+      final isTrafficLight = DetectionAlertConfig.trafficLightClasses.contains(
+        className,
+      );
+      if (isTrafficLight) continue;
+
+      final gap = candidate.timestamp.difference(primary.timestamp).abs();
+      if (gap > combineWindow) continue;
+
+      final cooldown = config.ruleFor(className).voiceCooldown;
+      final lastSpokenAt = _lastSpokenAtByClass[className];
+      if (lastSpokenAt != null &&
+          candidate.timestamp.difference(lastSpokenAt) < cooldown) {
+        continue;
+      }
+      companions.add(candidate);
+    }
+    return companions;
   }
 
   DetectionEvent? _firstOrNull(List<DetectionEvent> events) {

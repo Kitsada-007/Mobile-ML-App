@@ -97,7 +97,7 @@ class VideoInferenceController extends ChangeNotifier {
     if (voiceAlertController == null) {
       _voiceAlertController = VoiceAlertController(
         config: _detectionConfig,
-        speakClassName: _speakStableClass,
+        speakClassName: _speakStableClasses,
         // ให้ข้อความที่สำคัญกว่า (เช่นไฟแดง) ตัดข้อความที่กำลังพูดอยู่ได้
         interruptSpeech: _voiceService.stop,
       );
@@ -164,18 +164,6 @@ class VideoInferenceController extends ChangeNotifier {
   double _progressValue = 0.0;
   String _progressText = '';
   String? _snackBarMessage;
-
-  double _confidenceThreshold = 0.25;
-  double _iouThreshold = 0.45;
-
-  /// อัปเดตค่า Threshold เพื่อใช้ในการวิเคราะห์วิดีโอรอบต่อไป
-  void updateThresholds({
-    required double confidenceThreshold,
-    required double iouThreshold,
-  }) {
-    _confidenceThreshold = confidenceThreshold;
-    _iouThreshold = iouThreshold;
-  }
 
   VideoPlayerController? _videoController;
   VideoPlayerController? _selectedPreviewController;
@@ -403,8 +391,9 @@ class VideoInferenceController extends ChangeNotifier {
         frameAnalysisService: _videoFrameAnalysisService!,
         countdownStabilizer: _countdownStabilizer,
         targetFps: targetChecksPerSecond, // ใช้ค่าที่ controller กำหนดจริง
-        confidenceThreshold: _confidenceThreshold,
-        iouThreshold: _iouThreshold,
+        // โมเดลยังถูกเรียกด้วย threshold ต่ำตามค่าเริ่มต้น (0.25/0.45) เพื่อให้
+        // DetectionStabilizer มีของให้โหวต ส่วนค่าที่ผู้ใช้ตั้งถูกใช้กรองฝั่ง Dart
+        // ใน updateCurrentFrameAnalysis พร้อมเพดานของคลาสที่เกี่ยวกับความปลอดภัย
         isCancelled: () => _isDisposed,
         onProgress: (progressValue, progressText) {
           if (!_isDisposed) {
@@ -637,16 +626,39 @@ class VideoInferenceController extends ChangeNotifier {
     _countdownAlertController.allowThresholdEventRetry();
   }
 
-  Future<void> _speakStableClass(String className) {
-    final formalName = videoFormalThaiName(className);
-    final alertMessage = _voiceService.getThaiMessage(className);
-    String message;
-    if (alertMessage.isEmpty) {
-      message = formalName;
-    } else {
-      message = '$formalName: $alertMessage';
+  /// ประกอบข้อความเสียงจากสัญญาณที่เป็นจริงพร้อมกัน
+  ///
+  /// สัญญาณเดียว: ใช้รูปแบบเดิม 'ชื่อทางการ: ข้อความเตือน'
+  /// หลายสัญญาณ: ใช้ข้อความเตือนสั้น ๆ ต่อกัน เช่น 'ไฟแดง หยุดรถ ตรงไปได้'
+  /// เพราะถ้าใส่ชื่อทางการทุกตัวประโยคจะยาวจนไฟเปลี่ยนไปก่อนพูดจบ
+  Future<void> _speakStableClasses(List<String> classNames) {
+    if (classNames.isEmpty) {
+      return Future<void>.value();
     }
-    return _voiceService.speak(message);
+
+    if (classNames.length == 1) {
+      final className = classNames.first;
+      final formalName = videoFormalThaiName(className);
+      final alertMessage = _voiceService.getThaiMessage(className);
+      String message;
+      if (alertMessage.isEmpty) {
+        message = formalName;
+      } else {
+        message = '$formalName: $alertMessage';
+      }
+      return _voiceService.speak(message);
+    }
+
+    final parts = <String>[];
+    for (final className in classNames) {
+      final alertMessage = _voiceService.getThaiMessage(className);
+      if (alertMessage.isEmpty) {
+        parts.add(videoFormalThaiName(className));
+      } else {
+        parts.add(alertMessage);
+      }
+    }
+    return _voiceService.speak(parts.join(' '));
   }
 
   void _resetDetectionSession({bool stopVoice = true}) {

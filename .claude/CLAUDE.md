@@ -103,6 +103,13 @@ These are not general tuning knobs. Do not loosen them to "make it react faster"
   candidates are chosen by `priority` (lower number = more important, see
   `DetectionAlertConfig._priorityFor`) then by per-class `voiceCooldown`. Do not add a parallel
   speaking path — route new speech through `speakMessageIfIdle`.
+- **Signals that are true at the same moment are spoken as one sentence.** The queue picks the
+  highest-priority candidate, then `_selectCompanions` adds the other pending classes within
+  `combineWindow` (up to `maximumCombinedClasses`), and `StableClassSpeaker` receives the whole
+  list. Traffic-light states are never companions of each other — only one light state can be
+  true, and reading two out loud is a contradictory instruction. A single class keeps the
+  `formal name: alert` wording; a combined message uses the short alert texts so the sentence
+  does not outlive the signal.
 - **Events that cannot be spoken right now are queued, never dropped.** `DetectionStabilizer`
   emits `detected`/`changed` once per state change, so an event dropped while the TTS is busy is
   gone forever — that is how a red light used to go unannounced. `_pendingByClass` holds one entry
@@ -124,8 +131,11 @@ These are not general tuning knobs. Do not loosen them to "make it react faster"
   that `detectionStatus` tells the user to restart the app. Keep the attempt cap — an unbounded
   retry loop flickers the camera forever.
 - **`offLightMinimumFrames` is per-pipeline because it is a frame count, not a duration.**
-  Camera passes `realtimeOffLightMinimumFrames` (30 ≈ 3 s at 10 fps) so a faster device does not
-  confirm a broken light sooner than the 4 fps video path (12 frames = 3 s).
+  Camera defaults to `realtimeOffLightMinimumFrames` (30 ≈ 3 s at 10 fps) so a faster device does
+  not confirm a broken light sooner than the 4 fps video path (12 frames = 3 s). The camera value
+  is tunable from Settings for field testing — it reaches `DetectionStabilizer.config`, which is
+  why that field is mutable. The run must still be **consecutive** and the flicker lookback still
+  rejects a light seen lit nearby; do not relax either to make confirmation easier.
 - **The native overlay is off by default and is a debug aid, not the driver's channel.**
   `YOLOView` draws its own boxes and English class labels from raw per-frame detections at the
   native threshold (pinned to ≤ 0.25), so they appear long before the stabilizer confirms

@@ -30,7 +30,8 @@ void main() {
       final start = DateTime(2026);
       final spoken = <String>[];
       final voice = VoiceAlertController(
-        speakClassName: (className) async => spoken.add(className),
+        speakClassName: (classNames) async =>
+            spoken.add(classNames.join(' + ')),
       );
 
       for (var frame = 0; frame < 4; frame++) {
@@ -70,7 +71,8 @@ void main() {
       final start = DateTime(2026);
       final spoken = <String>[];
       final voice = VoiceAlertController(
-        speakClassName: (className) async => spoken.add(className),
+        speakClassName: (classNames) async =>
+            spoken.add(classNames.join(' + ')),
       );
 
       for (var frame = 0; frame < 4; frame++) {
@@ -107,7 +109,8 @@ void main() {
       final events = <DetectionEvent>[];
       final spoken = <String>[];
       final voice = VoiceAlertController(
-        speakClassName: (className) async => spoken.add(className),
+        speakClassName: (classNames) async =>
+            spoken.add(classNames.join(' + ')),
       );
 
       for (var frame = 0; frame < 8; frame++) {
