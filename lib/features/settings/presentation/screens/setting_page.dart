@@ -227,6 +227,25 @@ class SettingPage extends StatelessWidget {
                       '${DetectionAlertConfig.safetyCriticalConfidenceCeiling.toStringAsFixed(2)} '
                       'ไม่ว่าจะเลื่อนไปเท่าไรก็ตาม',
                     ),
+                    _buildSliderRow(
+                      context,
+                      icon: Icons.timer_outlined,
+                      title: 'Off-Light Frames',
+                      value: settings.offLightMinimumFrames.toDouble(),
+                      valueDisplay: '${settings.offLightMinimumFrames}',
+                      min: 10,
+                      max: 60,
+                      divisions: 50,
+                      onChanged: (val) => context
+                          .read<SettingsProvider>()
+                          .setOffLightMinimumFrames(val.toInt()),
+                    ),
+                    _buildSliderNote(
+                      context,
+                      'จำนวนเฟรมที่ต้องเห็นไฟดับ "ต่อเนื่อง" ก่อนจะแจ้งว่าไฟเสีย '
+                      '(30 เฟรม ≈ 3 วินาที) ยิ่งน้อยยิ่งไว แต่ไฟปกติที่กล้องเห็นกะพริบ '
+                      'จะถูกแจ้งว่าเสียง่ายขึ้น มีผลเฉพาะโหมดกล้อง',
+                    ),
                     // ปิดการปรับ Max Detections เพราะไม่จำเป็นแล้ว เพราะ ว่ามี 11 classes
 
                     // _buildSliderRow(

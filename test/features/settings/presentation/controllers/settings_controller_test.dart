@@ -128,6 +128,21 @@ void main() {
     provider.dispose();
   });
 
+  test('เกณฑ์ไฟเสียเริ่มต้นที่ 30 เฟรม และปรับแล้วถูกบันทึก', () async {
+    SharedPreferences.setMockInitialValues({});
+    final provider = SettingsProvider();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(provider.offLightMinimumFrames, 30);
+
+    await provider.setOffLightMinimumFrames(45);
+    expect(provider.offLightMinimumFrames, 45);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getInt('offLightMinimumFrames'), 45);
+    provider.dispose();
+  });
+
   test('ค่าที่ตั้งถูกบันทึกลง SharedPreferences ด้วย', () async {
     SharedPreferences.setMockInitialValues({});
     final provider = SettingsProvider();

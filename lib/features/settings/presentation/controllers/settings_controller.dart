@@ -19,6 +19,10 @@ class SettingsProvider extends ChangeNotifier {
   /// เปิดไว้ใช้ตอนทดสอบ/สาธิตว่าโมเดลกำลังเห็นอะไรอยู่
   bool _showDetectionOverlay = false;
   double _iouThreshold = 0.45;
+
+  /// จำนวนเฟรมต่อเนื่องที่ต้องเห็น off_light ก่อนจะยืนยันว่าไฟเสีย (ใช้กับโหมดกล้อง)
+  /// 30 เฟรม ≈ 3 วินาทีที่ 10fps
+  int _offLightMinimumFrames = 30;
   double _confidenceThreshold = 0.5;
   int _numItemsThreshold = 11;
   double _ttsVolume = 1.0;
@@ -29,6 +33,7 @@ class SettingsProvider extends ChangeNotifier {
   bool get isVoiceEnabled => _isVoiceEnabled;
   bool get showDetectionOverlay => _showDetectionOverlay;
   double get iouThreshold => _iouThreshold;
+  int get offLightMinimumFrames => _offLightMinimumFrames;
   double get confidenceThreshold => _confidenceThreshold;
   int get numItemsThreshold => _numItemsThreshold;
   double get ttsVolume => _ttsVolume;
@@ -79,6 +84,13 @@ class SettingsProvider extends ChangeNotifier {
       _showDetectionOverlay = false;
     } else {
       _showDetectionOverlay = storedShowDetectionOverlay;
+    }
+
+    final storedOffLightMinimumFrames = prefs.getInt('offLightMinimumFrames');
+    if (storedOffLightMinimumFrames == null) {
+      _offLightMinimumFrames = 30;
+    } else {
+      _offLightMinimumFrames = storedOffLightMinimumFrames;
     }
 
     final storedIouThreshold = prefs.getDouble('iouThreshold');
@@ -180,6 +192,13 @@ class SettingsProvider extends ChangeNotifier {
     await _saveBool('showDetectionOverlay', value);
   }
 
+  /// ปรับเกณฑ์ยืนยันไฟเสีย (ยิ่งน้อยยิ่งไว แต่เสี่ยงรายงานไฟที่กะพริบว่าเสีย)
+  Future<void> setOffLightMinimumFrames(int value) async {
+    _offLightMinimumFrames = value;
+    notifyListeners();
+    await _saveInt('offLightMinimumFrames', value);
+  }
+
   Future<void> setIouThreshold(double value) async {
     _iouThreshold = value;
     notifyListeners();
@@ -223,12 +242,14 @@ class SettingsProvider extends ChangeNotifier {
     _iouThreshold = 0.45;
     _confidenceThreshold = 0.5;
     _numItemsThreshold = 11;
+    _offLightMinimumFrames = 30;
     _ttsVolume = 1.0;
     _ttsSpeed = 0.6;
     _ttsPitch = 1.0;
     _applyVoiceSettings();
     notifyListeners();
     await _saveDouble('iouThreshold', 0.45);
+    await _saveInt('offLightMinimumFrames', 30);
     await _saveDouble('confidenceThreshold', 0.5);
     await _saveInt('numItemsThreshold', 11);
     await _saveDouble('ttsVolume', 1.0);

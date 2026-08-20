@@ -139,6 +139,7 @@ class _CameraInferencePageState extends State<CameraInferencePage>
       iouThreshold: settings.iouThreshold,
       numItemsThreshold: settings.numItemsThreshold,
       showDetectionOverlay: settings.showDetectionOverlay,
+      offLightMinimumFrames: settings.offLightMinimumFrames,
     );
   }
 
