@@ -38,7 +38,7 @@ class _CameraInferencePageState extends State<CameraInferencePage>
   bool _isAppResumed = true;
 
   /// ระยะขอบบน/ล่างของทั้งหน้า (ใช้คำนวณความสูงที่เหลือด้วย)
-  static const double _screenPadding = 12;
+  static const double _screenPadding = 12.0;
 
   @override
   void initState() {
@@ -153,6 +153,8 @@ class _CameraInferencePageState extends State<CameraInferencePage>
 
   @override
   Widget build(BuildContext context) {
+    // ค่าจาก SettingsProvider ถูกส่งให้ controller ผ่าน listener ใน _bindSettings แล้ว
+    // (ห้ามเรียกที่นี่ เพราะเป็น side effect ระหว่าง build และทำให้ notifyListeners พัง)
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
     final colorScheme = Theme.of(context).colorScheme;
@@ -281,12 +283,15 @@ class _CameraInferencePageState extends State<CameraInferencePage>
                         minHeight: availableHeight,
                       ),
                       child: Column(
+                        // ต้องเป็น spaceBetween เพื่อให้แผงผลชิดขอบล่างเสมอ
+                        // (เทสต์ layout บังคับว่าห้ามเหลือช่องว่างค้างท้ายจอ)
+                        // ส่วนระยะห่างรอบกล้องใช้ padding ด้านล่างแทน
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           header,
                           Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            padding: const EdgeInsets.symmetric(vertical: 32),
                             child: SizedBox(
                               height: previewHeight,
                               child: _buildPreviewCard(cameraContent!),
@@ -349,19 +354,31 @@ class _CameraInferencePageState extends State<CameraInferencePage>
             Positioned(
               top: 10,
               right: 10,
-              child: Semantics(
-                button: true,
-                label: cameraToggleLabel,
-                child: IconButton.filled(
-                  key: const Key('cameraPowerButton'),
-                  tooltip: cameraToggleLabel,
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.black54,
-                    foregroundColor: Colors.white,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Semantics(
+                    button: true,
+                    label: cameraToggleLabel,
+                    child: IconButton.filled(
+                      key: const Key('cameraPowerButton'),
+                      tooltip: cameraToggleLabel,
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black54,
+                        foregroundColor: Colors.white,
+                      ),
+                      icon: Icon(cameraToggleIcon),
+                      onPressed: () => unawaited(_controller.toggleCamera()),
+                    ),
                   ),
-                  icon: Icon(cameraToggleIcon),
-                  onPressed: () => unawaited(_controller.toggleCamera()),
-                ),
+                  if (_controller.isCameraEnabled) ...[
+                    const SizedBox(height: 12),
+                    _ZoomControls(
+                      currentZoom: _controller.currentZoomLevel,
+                      onZoomChanged: _controller.setZoomLevel,
+                    ),
+                  ],
+                ],
               ),
             ),
             Positioned(
@@ -447,6 +464,118 @@ class _LiveStatusBadge extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// ชุดปุ่มควบคุมระดับ Zoom ของกล้อง (สามารถกดซ่อน/ขยายได้)
+class _ZoomControls extends StatefulWidget {
+  const _ZoomControls({required this.currentZoom, required this.onZoomChanged});
+
+  final double currentZoom;
+  final ValueChanged<double> onZoomChanged;
+
+  @override
+  State<_ZoomControls> createState() => _ZoomControlsState();
+}
+
+class _ZoomControlsState extends State<_ZoomControls> {
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final zoomLevels = [1.0, 1.5, 2.0];
+
+    // สถานะพับเก็บ: แสดงเฉพาะระดับซูมปัจจุบัน
+    if (!_isExpanded) {
+      return GestureDetector(
+        onTap: () => setState(() => _isExpanded = true),
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            color: Colors.black54,
+            shape: BoxShape.circle,
+          ),
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: Center(
+              child: Text(
+                '${widget.currentZoom == 1.0 || widget.currentZoom == 2.0 ? widget.currentZoom.toInt() : widget.currentZoom}x',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // สถานะกางออก: แสดงปุ่มเลือกระดับซูม และปุ่มปิด
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ...zoomLevels.map((zoom) {
+              final isSelected = (widget.currentZoom - zoom).abs() < 0.1;
+              return GestureDetector(
+                onTap: () {
+                  widget.onZoomChanged(zoom);
+                  setState(() => _isExpanded = false); // เลือกแล้วพับเก็บเลย
+                },
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  margin: const EdgeInsets.symmetric(vertical: 2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isSelected
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.transparent,
+                  ),
+                  child: Text(
+                    '${zoom == 1.0 || zoom == 2.0 ? zoom.toInt() : zoom}x',
+                    style: TextStyle(
+                      color: isSelected
+                          ? Theme.of(context).colorScheme.onPrimary
+                          : Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              );
+            }),
+            // ปุ่มลูกศรสำหรับกดพับเก็บโดยไม่เปลี่ยนค่า
+            GestureDetector(
+              onTap: () => setState(() => _isExpanded = false),
+              child: Container(
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
+                margin: const EdgeInsets.only(top: 2),
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.transparent,
+                ),
+                child: const Icon(
+                  Icons.keyboard_arrow_up_rounded,
+                  color: Colors.white70,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

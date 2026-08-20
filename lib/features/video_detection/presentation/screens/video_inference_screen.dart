@@ -150,6 +150,7 @@ class _VideoInferenceScreenState extends State<VideoInferenceScreen>
 
   @override
   Widget build(BuildContext context) {
+    // ค่าจาก SettingsProvider ถูกส่งให้ controller ผ่าน listener ใน initState แล้ว
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
     final colorScheme = Theme.of(context).colorScheme;

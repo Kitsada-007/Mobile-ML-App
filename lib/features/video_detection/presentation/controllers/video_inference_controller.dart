@@ -391,6 +391,9 @@ class VideoInferenceController extends ChangeNotifier {
         frameAnalysisService: _videoFrameAnalysisService!,
         countdownStabilizer: _countdownStabilizer,
         targetFps: targetChecksPerSecond, // ใช้ค่าที่ controller กำหนดจริง
+        // โมเดลยังถูกเรียกด้วย threshold ต่ำตามค่าเริ่มต้น (0.25/0.45) เพื่อให้
+        // DetectionStabilizer มีของให้โหวต ส่วนค่าที่ผู้ใช้ตั้งถูกใช้กรองฝั่ง Dart
+        // ใน updateCurrentFrameAnalysis พร้อมเพดานของคลาสที่เกี่ยวกับความปลอดภัย
         isCancelled: () => _isDisposed,
         onProgress: (progressValue, progressText) {
           if (!_isDisposed) {
